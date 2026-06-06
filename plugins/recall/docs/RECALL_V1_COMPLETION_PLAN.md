@@ -18,13 +18,13 @@
 - **Retrieval is schema-first, not model-grade semantic search.** Current V1 should rely on structured memory cards, categories, tags, status, and lexical/hash fallback scoring. This is intentional for local-first reliability; FAISS/Chroma or sentence-transformers remain optional after install/runtime behavior is proven.
 - **Zip install is not release-tested.** `dist/recall.zip` builds and package-inspects cleanly; Codex CLI install from the repo marketplace is verified, including installed-cache smoke. A release workflow still needs built-archive extraction/install verification.
 - **Real Codex lifecycle verification is still open.** The source smoke harness proves save -> recall -> hook simulation -> doctor across a project boundary; the remaining gap is install, hook trust, and new-thread recall inside the actual Codex app/CLI lifecycle.
-- **Manifest presentation is minimal.** There are no assets, screenshots, homepage/repository links, or privacy/terms docs suitable for a polished public plugin card.
+- **Manifest presentation is mostly ready.** Homepage/repository links, privacy/terms docs, and local icon/logo assets are present and validator-accepted. Screenshots are still optional polish.
 
 ## Initial Plan Gap Map
 
 | Original plan item | Current code state | Status | Required V1 action |
 |---|---|---:|---|
-| Codex plugin scaffold and manifest | Installable plugin lives at `plugins/recall`; repo root is the marketplace wrapper | Done | Add richer public metadata/assets before release |
+| Codex plugin scaffold and manifest | Installable plugin lives at `plugins/recall`; repo root is the marketplace wrapper; public metadata/assets validate | Done | Add screenshots only if useful |
 | Default categories and custom categories | Built into `config.py` and template | Mostly done | Add explicit custom-category refinement workflow and docs |
 | `memory_config.json` project root behavior | Root config is copied if present; runtime config lives in `.codex_memory/` | Done | Document precedence in user docs |
 | SQLite backend | Implemented with schema version metadata and additive migration tests | Done | Keep migrations additive |
@@ -164,10 +164,10 @@
 - Modify: `.agents/plugins/marketplace.json`
 - Modify: `README.md`
 
-- [ ] Add repository, homepage, privacy policy, and terms fields if they are stable public URLs.
-- [ ] Add small local assets under `assets/` and reference them from the manifest only after validator confirms they are accepted.
-- [ ] Clarify the practical one-click story: plugin install is one click; hook execution still requires Codex’s trust review for non-managed hooks.
-- [ ] Update README with “Minimal Working Path,” “Troubleshooting,” and “Known Limitations.”
+- [x] Add repository, homepage, privacy policy, and terms fields if they are stable public URLs.
+- [x] Add small local assets under `assets/` and reference them from the manifest only after validator confirms they are accepted.
+- [x] Clarify the practical one-click story: plugin install is one click; hook execution still requires Codex’s trust review for non-managed hooks.
+- [x] Update README with “Minimal Working Path,” “Troubleshooting,” and “Known Limitations.”
 
 ### Task 8: Release Gate And Tag
 
@@ -196,4 +196,4 @@
 - Official Codex hook docs confirm hook trust, event scopes, command hook limitations, `commandWindows`, and `hookSpecificOutput.additionalContext`: https://developers.openai.com/codex/hooks
 - Letta/MemGPT memory docs support the schema-first direction by emphasizing memory hierarchy, editable memory blocks, archival storage, and agent-managed memory updates before raw vector retrieval: https://docs.letta.com/guides/agents/memory and https://docs.letta.com/guides/agents/architectures/memgpt
 - Recent agent-memory survey work frames memory as a write-manage-read loop across temporal scope, representation, and control policy, which supports improving write policy and record structure before adding local models: https://arxiv.org/abs/2603.07670
-- Current repo verification after layout migration and Task 6 CLI work: `python -m unittest discover -s tests` passes 42 tests from `plugins/recall`; source smoke passes; installed-cache smoke passes; plugin validator passes against `plugins/recall`; repo-root `.\build_plugin.ps1` builds and package-inspects `plugins/recall/dist/recall.zip`; `codex plugin add recall@recall-local` succeeds.
+- Current repo verification after Task 7: `python -m unittest discover -s tests` passes 43 tests from `plugins/recall`; source smoke passes; installed-cache smoke passes; plugin validator passes against `plugins/recall`; repo-root `.\build_plugin.ps1` builds and package-inspects `plugins/recall/dist/recall.zip`; `codex plugin add recall@recall-local` succeeds.

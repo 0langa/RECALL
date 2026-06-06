@@ -14,7 +14,18 @@ RECALL is a local-first Codex plugin for project memory. It stores durable conte
 - Plugin-bundled lifecycle hooks in `hooks/hooks.json`, matching Codex's default plugin hook discovery path.
 - Unit tests for config and memory storage.
 
-## Quick Start
+## Minimal Working Path
+
+From the repository root:
+
+```powershell
+codex plugin marketplace add .
+codex plugin add recall@recall-local
+```
+
+Then start a Codex thread in a project and review RECALL's hooks through `/hooks`. Plugin installation is one command once the marketplace is configured; hook execution still requires Codex's normal trust review for non-managed hooks.
+
+For direct CLI use from this plugin folder:
 
 Initialize memory for the current project:
 
@@ -60,7 +71,7 @@ Run the end-to-end smoke harness:
 python .\scripts\smoke_recall.py --json
 ```
 
-Install locally from the repository root:
+## Local Install
 
 ```powershell
 codex plugin marketplace add .
@@ -79,6 +90,25 @@ Build a zip package:
 
 ```powershell
 .\build_plugin.ps1
+```
+
+## Troubleshooting
+
+If `codex plugin add recall@recall-local` cannot find RECALL, confirm the marketplace file is at the repository root and points to `./plugins/recall`.
+
+If retrieval looks stale, run:
+
+```powershell
+python .\scripts\memory_manager.py doctor
+python .\scripts\memory_manager.py repair
+```
+
+If hooks do not run, open `/hooks` and review the RECALL hook definitions. Codex skips untrusted plugin hooks until the user trusts them.
+
+If commands work in the source checkout but not after install, run the smoke harness against the installed plugin root:
+
+```powershell
+python .\scripts\smoke_recall.py --installed-plugin-root <installed-plugin-root> --json
 ```
 
 ## Hooks
@@ -128,6 +158,13 @@ If a project-level `memory_config.json` exists before initialization, RECALL cop
 ## Security
 
 RECALL is designed to stay local. The foundation implementation makes no network calls and redacts common secret-like patterns before storing memory. Still, treat memory as project data: do not ask it to store credentials, private keys, tokens, passwords, or sensitive personal data.
+
+## Known Limitations
+
+- Codex hook trust is intentionally interactive; RECALL cannot bypass that review.
+- Retrieval is schema-first and deterministic, not transformer-grade semantic search.
+- RECALL depends on a local Python runtime being available to run its scripts and hooks.
+- Live Codex App picker visibility and fresh-thread skill discovery still need final manual confirmation before tagging `v0.1.0`.
 
 ## Roadmap
 

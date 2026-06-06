@@ -5,6 +5,8 @@
   "author": {
     "name": "RECALL contributors"
   },
+  "homepage": "https://github.com/0langa/RECALL",
+  "repository": "https://github.com/0langa/RECALL",
   "license": "Apache-2.0",
   "keywords": [
     "memory",
@@ -20,12 +22,17 @@
     "longDescription": "RECALL stores decisions, constraints, debugging history, commands, requirements, risks, and custom categories in a project-local memory store so Codex can recover useful context across sessions.",
     "developerName": "RECALL contributors",
     "category": "Productivity",
+    "websiteURL": "https://github.com/0langa/RECALL",
+    "privacyPolicyURL": "https://github.com/0langa/RECALL/blob/main/plugins/recall/docs/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/0langa/RECALL/blob/main/plugins/recall/docs/TERMS.md",
     "capabilities": [
       "Read",
       "Write",
       "Local"
     ],
     "brandColor": "#256D5A",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png",
     "defaultPrompt": [
       "Remember this project decision.",
       "Recall the relevant project context.",
