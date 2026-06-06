@@ -53,6 +53,12 @@ Run tests:
 python -m unittest discover -s tests
 ```
 
+Run the end-to-end smoke harness:
+
+```powershell
+python .\scripts\smoke_recall.py --json
+```
+
 Install locally:
 
 ```powershell
@@ -121,4 +127,4 @@ RECALL is designed to stay local. The foundation implementation makes no network
 
 ## Roadmap
 
-The development plan calls for bundled sentence-transformer embeddings, a persistent vector index file, richer Codex hook integration, packaged dependencies, screenshots/assets, and sample project simulations. This foundation keeps the interfaces ready for those pieces while providing a runnable local memory system now.
+The V1 path now prioritizes structured memory cards, live Codex install verification, hook payload hardening, release-grade packaging, and repeatable e2e smoke tests. Bundled local model embeddings remain optional after V1, only if they can be packaged and smoke-tested without network calls.
