@@ -26,7 +26,7 @@ Date: 2026-06-06
 - User-provided Codex App screenshots confirmed RECALL appears in the plugin picker, bundled skills are discoverable from the composer, and RECALL hooks can be trusted/enabled in Settings > Coding > Hooks.
 - User-provided live continuation and new-session tests confirmed hook activation without `hook exited with code 1`; `Stop` saved checkpoints `#10` and `#27` in the project memory store.
 
-## Not Yet Fully Verified
+## Residual Verification Note
 
 - Direct visual inspection of the exact `SessionStart` injected context in the Codex transcript remains limited by the app UI. Installed-cache smoke verifies the `SessionStart` `additionalContext` payload, and user screenshots verify the live hook activation.
 

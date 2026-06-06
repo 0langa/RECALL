@@ -26,11 +26,11 @@
 | Original plan item | Current code state | Status | Required V1 action |
 |---|---|---:|---|
 | Codex plugin scaffold and manifest | Installable plugin lives at `plugins/recall`; repo root is the marketplace wrapper; public metadata/assets validate | Done | Add screenshots only if useful |
-| Default categories and custom categories | Built into `config.py` and template | Mostly done | Add explicit custom-category refinement workflow and docs |
+| Default categories and custom categories | Built into `config.py` and template; bundled `define_category` skill and adapter support category refinement | Done | Keep category guidance aligned with retrieval behavior |
 | `memory_config.json` project root behavior | Root config is copied if present; runtime config lives in `.codex_memory/` | Done | Document precedence in user docs |
 | SQLite backend | Implemented with schema version metadata and additive migration tests | Done | Keep migrations additive |
 | JSONL backend | Implemented with malformed-row recovery tests | Done | Keep corrupt rows visible in `doctor` |
-| Vector index | JSONL `vector_index.bin`, rebuild, doctor, auto-repair, integrity diagnostics | Mostly done | Add install-cache e2e tests |
+| Vector index | JSONL `vector_index.bin`, rebuild, doctor, auto-repair, integrity diagnostics, source smoke, installed-cache smoke, and built-zip marketplace smoke | Done | Keep install-cache e2e tests current |
 | FAISS/Chroma vector search | Not implemented | Optional after V1 | Keep out of V1 unless packaged locally and e2e verified |
 | Bundled sentence-transformer embeddings | Not implemented | Optional after V1 | Defer; V1 should use structured memory cards and deterministic retrieval |
 | Structured memory-card schema | Implemented as metadata convention with adapter/CLI flags, hook write policy, and retrieval scoring over card fields | Done | Keep card policy aligned with bundled skills |
