@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -28,7 +29,8 @@ class PackageMetadataTests(unittest.TestCase):
                 for hook in group["hooks"]:
                     self.assertEqual(hook["type"], "command")
                     self.assertIn("${PLUGIN_ROOT}", hook["command"])
-                    self.assertIn("%PLUGIN_ROOT%", hook["commandWindows"])
+                    self.assertIn("os.environ['PLUGIN_ROOT']", hook["commandWindows"])
+                    self.assertNotIn("%PLUGIN_ROOT%", hook["commandWindows"])
 
     def test_repo_marketplace_points_to_child_plugin(self) -> None:
         payload = json.loads((REPO_ROOT / ".agents" / "plugins" / "marketplace.json").read_text(encoding="utf-8"))
@@ -116,6 +118,58 @@ class PackageMetadataTests(unittest.TestCase):
             self.assertEqual(report["status"], "fail")
             self.assertTrue(any("Forbidden package path" in error for error in report["errors"]))
             self.assertTrue(any("Secret-like string" in error for error in report["errors"]))
+
+    @unittest.skipUnless(os.name == "nt", "Windows hook command regression only runs on Windows.")
+    def test_windows_hook_commands_run_through_powershell(self) -> None:
+        hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+        payloads = {
+            "SessionStart": {"hook_event_name": "SessionStart"},
+            "UserPromptSubmit": {
+                "hook_event_name": "UserPromptSubmit",
+                "prompt": "remember this: commandWindows regression test",
+            },
+            "PostToolUse": {
+                "hook_event_name": "PostToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": "python -m unittest discover -s tests"},
+                "tool_response": {"exit_code": 0, "stdout": "Ran 1 test in 0.1s\nOK", "stderr": ""},
+            },
+            "PreCompact": {
+                "hook_event_name": "PreCompact",
+                "trigger": "manual",
+                "turn_id": "windows-command-regression",
+                "summary": "Windows command hook regression checkpoint.",
+            },
+            "Stop": {
+                "hook_event_name": "Stop",
+                "turn_id": "windows-command-regression",
+                "last_assistant_message": "Windows command hook regression completed.",
+            },
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env["PLUGIN_ROOT"] = str(ROOT)
+            for event_name, matcher_groups in hooks.items():
+                command = matcher_groups[0]["hooks"][0]["commandWindows"]
+                payload = {**payloads[event_name], "cwd": tmp}
+                completed = subprocess.run(
+                    [
+                        "powershell",
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-Command",
+                        command,
+                    ],
+                    input=json.dumps(payload),
+                    text=True,
+                    capture_output=True,
+                    cwd=ROOT,
+                    env=env,
+                )
+                self.assertEqual(completed.returncode, 0, f"{event_name}: {completed.stderr}")
+                output = json.loads(completed.stdout)
+                self.assertTrue(output["continue"], event_name)
 
 
 if __name__ == "__main__":

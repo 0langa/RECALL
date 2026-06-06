@@ -25,7 +25,7 @@ Date: 2026-06-06
 ## Not Yet Fully Verified
 
 - Codex App plugin picker visibility. CLI listing confirms the marketplace entry; App UI still needs visual confirmation.
-- Hook trust flow through `/hooks`. Hook definitions are source-tested and installed-cache smoke-tested, but the interactive trust review must be confirmed in a live Codex thread.
+- Hook trust flow through `/hooks`. Hook definitions are source-tested, installed-cache smoke-tested, and installed-cache Windows `commandWindows` execution is verified; the interactive trust review must still be confirmed in a live Codex thread.
 - Bundled skill discovery in a new thread after install. Current source tests verify skill files and plugin installation, but new-thread slash/mention behavior needs live UI/CLI confirmation.
 - Real `SessionStart` injection in a fresh Codex thread. Smoke harness invokes the installed hook scripts with Codex-shaped payloads; live lifecycle injection still needs manual thread verification.
 
@@ -33,3 +33,18 @@ Date: 2026-06-06
 
 - Repo-root marketplace paths `./`, `./.`, and `.` were skipped by `codex plugin add`. Moving the plugin to `./plugins/recall` matches the official repo-marketplace layout and makes `recall@recall-local` discoverable/installable.
 - Runtime memories remained project-local under temp project `.codex_memory/` directories during smoke tests.
+
+## Hook Follow-Up
+
+Date: 2026-06-06
+
+Observed user evidence showed `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` all exiting with code `1` in the Codex hook panel. Manual skill/CLI save and retrieve worked, and the live project database/index were healthy.
+
+Follow-up testing showed:
+
+- Direct script execution with `PLUGIN_ROOT` expanded by PowerShell exited `0`.
+- The previous `commandWindows` form used `%PLUGIN_ROOT%`, which is fragile when invoked from PowerShell-style command execution.
+- The Windows hook command now uses a Python launcher that reads `PLUGIN_ROOT` from `os.environ`, adds the hook script directory to `sys.path`, and runs the script with `runpy`.
+- Source regression test: `test_windows_hook_commands_run_through_powershell` passes.
+- Installed-cache hook command test: all installed `commandWindows` hooks exit `0` through PowerShell.
+- Source smoke, installed-cache smoke, plugin validator, package inspection, and root build all pass after reinstalling `recall@recall-local`.
