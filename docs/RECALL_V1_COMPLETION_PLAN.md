@@ -33,9 +33,9 @@
 | FAISS/Chroma vector search | Not implemented | Optional after V1 | Keep out of V1 unless packaged locally and e2e verified |
 | Bundled sentence-transformer embeddings | Not implemented | Optional after V1 | Defer; V1 should use structured memory cards and deterministic retrieval |
 | Structured memory-card schema | Not implemented as first-class schema | Missing | Add summary/details/tags/source/status/importance fields and write policy |
-| `save_insight` skill | Exists, CLI-oriented | Partial | Make skill instructions emit memory-card shaped records and match installed-plugin usage |
-| `retrieve_memory` skill | Exists with CLI examples | Partial | Add schema-first retrieval guidance, installed-plugin usage, and recovery guidance |
-| `define_category` skill | Exists | Done | Add tests for category updates and retrieval weights |
+| `save_insight` skill | Installed-plugin-first guidance with structured memory-card examples | Done | Keep examples aligned with CLI |
+| `retrieve_memory` skill | Installed-plugin-first guidance with schema-first retrieval and repair advice | Done | Keep recovery guidance current |
+| `define_category` skill | Installed-plugin-first guidance with auto-created category refinement advice | Done | Add deeper category-weight behavior tests if ranking changes |
 | `SessionStart` hook | Simulated and works with project_state categories | Partial | Live Codex install verification required |
 | `PreCompact` hook | Parses useful event text and metadata; avoids raw envelope storage | Mostly done | Live Codex install verification required |
 | `PostToolUse` hook | Compact command/error capture implemented | Mostly done | Verify live Bash/apply_patch payloads and failure behavior |
@@ -121,11 +121,11 @@
 - Modify: `examples/workflows.md`
 - Test: `tests/test_package_metadata.py`
 
-- [ ] Update skill docs so they describe installed-plugin behavior first and direct CLI fallback second.
-- [ ] Make unknown category behavior explicit: auto-create, warn in metadata, then recommend `define_category` refinement.
-- [ ] Add examples for saving requirements, risks, commands, and session summaries.
-- [ ] Add test assertions that every skill mentions local-only storage and no secrets.
-- [ ] Remove any wording that implies cloud, hosted services, or remote APIs are needed.
+- [x] Update skill docs so they describe installed-plugin behavior first and direct CLI fallback second.
+- [x] Make unknown category behavior explicit: auto-create, warn in metadata, then recommend `define_category` refinement.
+- [x] Add examples for saving requirements, risks, commands, and session summaries.
+- [x] Add test assertions that every skill mentions local-only storage and no secrets.
+- [x] Remove any wording that implies cloud, hosted services, or remote APIs are needed.
 
 ### Task 5: Make Packaging Truly Release-Checkable
 
@@ -196,4 +196,4 @@
 - Official Codex hook docs confirm hook trust, event scopes, command hook limitations, `commandWindows`, and `hookSpecificOutput.additionalContext`: https://developers.openai.com/codex/hooks
 - Letta/MemGPT memory docs support the schema-first direction by emphasizing memory hierarchy, editable memory blocks, archival storage, and agent-managed memory updates before raw vector retrieval: https://docs.letta.com/guides/agents/memory and https://docs.letta.com/guides/agents/architectures/memgpt
 - Recent agent-memory survey work frames memory as a write-manage-read loop across temporal scope, representation, and control policy, which supports improving write policy and record structure before adding local models: https://arxiv.org/abs/2603.07670
-- Current repo verification after Task 3: `python -m unittest discover -s tests` passes 38 tests; `python scripts/smoke_recall.py --json` passes; plugin validator passes against the repo root.
+- Current repo verification after Task 4: `python -m unittest discover -s tests` passes 40 tests; `python scripts/smoke_recall.py --json` passes; plugin validator passes against the repo root.

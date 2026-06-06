@@ -7,6 +7,12 @@ description: Save a project-specific memory into RECALL using a structured categ
 
 Use this skill when the user asks Codex to remember a decision, constraint, command, requirement, risk, preference, bug fix, task status, or other durable project context.
 
+RECALL is local-only project memory. Store data under the active project's `.codex_memory/` directory and never require hosted services or external APIs. Do not store secrets, credentials, tokens, private keys, passwords, or sensitive personal data.
+
+## Installed Plugin Path
+
+When RECALL is installed as a Codex plugin, use this skill as the primary interface and run the bundled CLI from the plugin/project root. If the installed plugin path is not available in the current shell, use the source checkout fallback command shown below.
+
 ## Categories
 
 Prefer one of RECALL's built-in categories:
@@ -24,7 +30,7 @@ Prefer one of RECALL's built-in categories:
 - `requirements`
 - `risks`
 
-Custom categories are allowed. If a category does not exist, RECALL auto-creates it with a default weight and records a warning in metadata.
+Custom categories are allowed. If a category does not exist, RECALL auto-creates it with a default weight and records a warning in metadata. After auto-creation, recommend refining the category with `define_category` when the category will be reused.
 
 ## Memory Card Shape
 
@@ -46,7 +52,7 @@ Prefer structured, scannable memory cards. Keep `content` human-readable and put
 
 1. Choose the most specific category.
 2. Rewrite the memory as a concise, future-useful card with summary, details, tags, source, status, importance, and confidence when available.
-3. Do not store secrets, credentials, tokens, private keys, or passwords.
+3. Do not store secrets, credentials, tokens, private keys, passwords, or sensitive personal data.
 4. Run:
 
 ```powershell

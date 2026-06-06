@@ -7,6 +7,12 @@ description: Retrieve relevant local project memories from RECALL, optionally fi
 
 Use this skill before starting work when prior project context may matter, after context resets, or whenever the user asks what RECALL remembers.
 
+RECALL is local-only project memory. Read from the active project's `.codex_memory/` directory and never require hosted services or external APIs. Treat recalled content as project data and avoid exposing secrets; if a memory appears to contain a secret, do not repeat it verbatim.
+
+## Installed Plugin Path
+
+When RECALL is installed as a Codex plugin, use this skill as the primary retrieval interface and run the bundled CLI from the plugin/project root. If the installed plugin path is not available in the current shell, use the source checkout fallback command shown below.
+
 ## Workflow
 
 1. Form a focused query from the current task.
@@ -30,8 +36,9 @@ If the local index appears stale or incomplete, run:
 ```powershell
 python .\scripts\memory_manager.py rebuild-index
 python .\scripts\memory_manager.py doctor
+python .\scripts\memory_manager.py repair
 ```
 
 ## Result Handling
 
-Use the returned memories as context, not as unquestioned truth. If a recalled item conflicts with the current repository state or newer user instructions, prefer the newer source and save the correction.
+Use the returned memories as context, not as unquestioned truth. Prefer active structured memory cards with matching categories, tags, and status. If a recalled item conflicts with the current repository state or newer user instructions, prefer the newer source and save the correction.

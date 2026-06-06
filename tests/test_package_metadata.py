@@ -34,6 +34,21 @@ class PackageMetadataTests(unittest.TestCase):
         self.assertEqual(entry["policy"]["installation"], "AVAILABLE")
         self.assertEqual(entry["policy"]["authentication"], "ON_INSTALL")
 
+    def test_skills_describe_local_only_storage_and_secret_safety(self) -> None:
+        for path in sorted((ROOT / "skills").glob("*/SKILL.md")):
+            text = path.read_text(encoding="utf-8").lower()
+            self.assertIn("local-only", text, path)
+            self.assertIn("secret", text, path)
+            self.assertNotIn("cloud", text, path)
+            self.assertNotIn("remote api", text, path)
+
+    def test_workflow_examples_cover_core_memory_cards(self) -> None:
+        text = (ROOT / "examples" / "workflows.md").read_text(encoding="utf-8").lower()
+        for category in ("requirements", "risks", "commands", "session_summaries"):
+            self.assertIn(category, text)
+        for flag in ("--summary", "--details", "--tag", "--status"):
+            self.assertIn(flag, text)
+
 
 if __name__ == "__main__":
     unittest.main()
