@@ -13,7 +13,7 @@
 ## Current Known Limitations
 
 - **Install is not live-verified in Codex.** Unit tests and plugin validation pass, but we have not yet proven install, enablement, hook trust, and new-thread recall in the actual Codex app/CLI lifecycle.
-- **Hook payload handling is partial.** `SessionStart` and `UserPromptSubmit` are simulated well; `PreCompact` and `Stop` currently need real payload parsing for `trigger`, `last_assistant_message`, and any transcript fields Codex provides.
+- **Hook payload handling is source-verified but not live-verified.** Tests cover Codex-shaped `SessionStart`, `UserPromptSubmit`, `PreCompact`, `Stop`, Bash `PostToolUse`, and `apply_patch` payloads; the remaining risk is actual Codex install lifecycle verification.
 - **One-click install is not truly sealed.** The plugin still assumes `python`/`py -3` is available. Codex hook trust is also mandatory for non-managed hooks, so the practical V1 target is “one install plus one hook trust review,” unless Codex adds managed trust for public plugins.
 - **Retrieval is schema-first, not model-grade semantic search.** Current V1 should rely on structured memory cards, categories, tags, status, and lexical/hash fallback scoring. This is intentional for local-first reliability; FAISS/Chroma or sentence-transformers remain optional after install/runtime behavior is proven.
 - **No packaged runtime artifact is release-tested.** `dist/recall.zip` builds cleanly, but there is no release workflow that installs that zip or verifies the installed cache copy.
@@ -37,10 +37,10 @@
 | `retrieve_memory` skill | Exists with CLI examples | Partial | Add schema-first retrieval guidance, installed-plugin usage, and recovery guidance |
 | `define_category` skill | Exists | Done | Add tests for category updates and retrieval weights |
 | `SessionStart` hook | Simulated and works with project_state categories | Partial | Live Codex install verification required |
-| `PreCompact` hook | Stores summary from raw stdin | Partial | Parse real hook payload; avoid summarizing JSON wrapper as content |
+| `PreCompact` hook | Parses useful event text and metadata; avoids raw envelope storage | Mostly done | Live Codex install verification required |
 | `PostToolUse` hook | Compact command/error capture implemented | Mostly done | Verify live Bash/apply_patch payloads and failure behavior |
 | `UserPromptSubmit` hook | Simulated and works | Mostly done | Verify live prompt capture and avoid false positives |
-| `Stop` hook | Stores summary from raw stdin | Partial | Parse `last_assistant_message`; avoid noisy JSON memory |
+| `Stop` hook | Parses `last_assistant_message`; avoids noisy JSON memory | Mostly done | Live Codex install verification required |
 | `UpdateCategories` hook | Script exists but not configured as a real Codex event | Optional | Convert to CLI command/docs; do not invent unsupported hook event |
 | Heuristic summarization | Implemented with category/timestamp context | Done | Add quality regression fixtures |
 | Packaged dependencies/venv/models | Not implemented | Optional after V1 | Replace with no-dependency release path for V1 |
@@ -88,12 +88,12 @@
 - Modify: `hooks/scripts/post_tool_use.py`
 - Test: `tests/test_hooks.py`
 
-- [ ] Parse hook JSON into event-specific fields instead of summarizing raw JSON wrappers.
-- [ ] For `PreCompact`, store a `session_summaries` record only when useful text is present; include `trigger`, `turn_id`, and source metadata.
-- [ ] For `Stop`, store `last_assistant_message` as `project_state` only when non-empty; never store the whole hook envelope as memory content.
-- [ ] For `SessionStart`, return `hookSpecificOutput.additionalContext` only when relevant memories exist; otherwise exit cleanly with no noisy UI message.
-- [ ] For `PostToolUse`, verify live-shaped Bash and `apply_patch` payloads, keep command/error summaries compact, and redact secrets before storage.
-- [ ] Add regression tests for empty payloads, malformed JSON, missing fields, real-shaped `PreCompact`, real-shaped `Stop`, Bash success, Bash failure, and `apply_patch`.
+- [x] Parse hook JSON into event-specific fields instead of summarizing raw JSON wrappers.
+- [x] For `PreCompact`, store a `session_summaries` record only when useful text is present; include `trigger`, `turn_id`, and source metadata.
+- [x] For `Stop`, store `last_assistant_message` as `project_state` only when non-empty; never store the whole hook envelope as memory content.
+- [x] For `SessionStart`, return `hookSpecificOutput.additionalContext` only when relevant memories exist; otherwise exit cleanly with no noisy UI message.
+- [x] For `PostToolUse`, verify live-shaped Bash and `apply_patch` payloads, keep command/error summaries compact, and redact secrets before storage.
+- [x] Add regression tests for empty payloads, malformed JSON, missing fields, real-shaped `PreCompact`, real-shaped `Stop`, Bash success, Bash failure, and `apply_patch`.
 
 ### Task 3: Harden Storage, Config, And Index Recovery
 
@@ -196,4 +196,4 @@
 - Official Codex hook docs confirm hook trust, event scopes, command hook limitations, `commandWindows`, and `hookSpecificOutput.additionalContext`: https://developers.openai.com/codex/hooks
 - Letta/MemGPT memory docs support the schema-first direction by emphasizing memory hierarchy, editable memory blocks, archival storage, and agent-managed memory updates before raw vector retrieval: https://docs.letta.com/guides/agents/memory and https://docs.letta.com/guides/agents/architectures/memgpt
 - Recent agent-memory survey work frames memory as a write-manage-read loop across temporal scope, representation, and control policy, which supports improving write policy and record structure before adding local models: https://arxiv.org/abs/2603.07670
-- Current repo verification at plan-writing time: `python -m unittest discover -s tests` passes 21 tests; plugin validator passes against the repo root.
+- Current repo verification after Task 2: `python -m unittest discover -s tests` passes 32 tests; `python scripts/smoke_recall.py --json` passes; plugin validator passes against the repo root.

@@ -8,16 +8,22 @@ import json
 import re
 
 import _recall_path  # noqa: F401
-from hook_io import additional_context, read_hook_input, root_from_payload
+from hook_io import additional_context, event_name, patch_targets, read_hook_input, root_from_payload, tool_command, tool_response_text
 import memory_manager
 
 
 ERROR_RE = re.compile(r"(?i)\b(error|exception|traceback|failed|failure)\b")
-SUCCESS_RE = re.compile(r"(?i)\b(passed|success|succeeded|0 failures|exit code: 0)\b")
+SUCCESS_RE = re.compile(r"(?i)\b(passed|success|succeeded|done|0 failures|exit[_ ]code: 0)\b")
 MAX_CAPTURE_CHARS = 700
 
 
-def compact_tool_response(command: str | None, output: str) -> str:
+def compact_tool_response(tool_name: str, command: str | None, output: str) -> str:
+    if tool_name == "apply_patch":
+        targets = patch_targets(command or "")
+        target_text = ", ".join(targets[:8]) if targets else "unknown files"
+        status = "success" if SUCCESS_RE.search(output) else "completed"
+        return f"Tool: apply_patch\nFiles: {target_text}\nResult: {status}"
+
     lines = [line.rstrip() for line in output.splitlines() if line.strip()]
     selected: list[str] = []
     for line in lines:
@@ -28,7 +34,7 @@ def compact_tool_response(command: str | None, output: str) -> str:
     body = "\n".join(selected)
     if len(body) > MAX_CAPTURE_CHARS:
         body = body[:MAX_CAPTURE_CHARS].rstrip() + "\n[truncated]"
-    return "\n".join(part for part in [f"Command: {command}" if command else "", body] if part)
+    return "\n".join(part for part in [f"Tool: {tool_name}" if tool_name else "", f"Command: {command}" if command else "", body] if part)
 
 
 def main() -> None:
@@ -38,21 +44,39 @@ def main() -> None:
     args = parser.parse_args()
     payload, raw = read_hook_input()
     root = root_from_payload(payload, args.root)
-    tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
-    tool_response = payload.get("tool_response")
-    command = args.command or tool_input.get("command")
-    output = json.dumps(tool_response, sort_keys=True) if tool_response is not None else raw.strip()
+    tool_name = str(payload.get("tool_name") or "").strip()
+    command = args.command or tool_command(payload)
+    output = tool_response_text(payload, raw)
     if not output and not args.command:
         print(json.dumps({"continue": True}))
         return
 
-    content = compact_tool_response(command, output)
+    content = compact_tool_response(tool_name, command, output)
     category = "debug_history" if ERROR_RE.search(content) else "commands"
-    if category == "commands" and not SUCCESS_RE.search(content) and not command:
+    if category == "commands" and tool_name != "apply_patch" and not SUCCESS_RE.search(content) and not command:
         print(json.dumps({"continue": True}))
         return
 
-    record = memory_manager.add_record(category, content, {"source": "post_tool_use"}, root)
+    record = memory_manager.add_record(
+        category,
+        content,
+        memory_manager.build_card_metadata(
+            summary=f"{tool_name or 'Tool'} result captured.",
+            details=content,
+            tags=["tool-use", tool_name.lower() if tool_name else "tool"],
+            source="post_tool_use",
+            status="active",
+            importance=0.5 if category == "commands" else 0.7,
+            confidence=0.8,
+            base={
+                "hook_event": event_name(payload, "PostToolUse"),
+                "tool_name": tool_name,
+                "tool_use_id": payload.get("tool_use_id"),
+                "turn_id": payload.get("turn_id"),
+            },
+        ),
+        root,
+    )
     print(
         json.dumps(
             additional_context(

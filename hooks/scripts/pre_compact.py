@@ -7,7 +7,7 @@ import argparse
 import json
 
 import _recall_path  # noqa: F401
-from hook_io import read_hook_input, root_from_payload
+from hook_io import event_name, pre_compact_text, read_hook_input, root_from_payload
 import memory_manager
 from summarizer import summarize_texts
 
@@ -19,11 +19,12 @@ def main() -> None:
     args = parser.parse_args()
     payload, raw = read_hook_input()
     root = root_from_payload(payload, args.root)
-    raw = raw.strip()
-    if not raw:
+    text = pre_compact_text(payload, raw)
+    if not text:
         print(json.dumps({"continue": True}))
         return
-    summary = summarize_texts([raw], token_budget=700)
+    summary = summarize_texts([text], token_budget=700)
+    metadata = json.loads(args.metadata)
     record = memory_manager.add_record(
         "session_summaries",
         summary,
@@ -35,7 +36,12 @@ def main() -> None:
             status="active",
             importance=0.7,
             confidence=0.8,
-            base={"hook_event": payload.get("hook_event_name"), **json.loads(args.metadata)},
+            base={
+                "hook_event": event_name(payload, "PreCompact"),
+                "trigger": payload.get("trigger"),
+                "turn_id": payload.get("turn_id"),
+                **metadata,
+            },
         ),
         root,
     )
