@@ -40,7 +40,7 @@ Run local plugin commands from `<repo-root>/plugins/recall` unless a step explic
 
 ## Tag And Artifact
 
-- [ ] Tag `v0.1.0` only after local gates and install lifecycle pass.
-- [ ] Create the GitHub release from the tag.
-- [ ] Attach `dist/recall.zip` as a release artifact.
-- [ ] Do not commit `dist/recall.zip`.
+- [x] Tag `v0.1.0` only after local gates and install lifecycle pass.
+- [x] Create the GitHub release from the tag.
+- [x] Attach `dist/recall.zip` as a release artifact.
+- [x] Do not commit `dist/recall.zip`.

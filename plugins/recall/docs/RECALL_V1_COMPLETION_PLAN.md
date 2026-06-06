@@ -183,7 +183,7 @@
 - [x] Run `.\build_plugin.ps1`.
 - [x] Run package inspection against `dist/recall.zip`.
 - [x] Run the Codex install lifecycle checklist from Task 6 against the installed plugin bundle, not source-only backend commands.
-- [ ] If all checks pass, tag `v0.1.0`, create a GitHub release, and attach the built zip as a release artifact rather than committing it.
+- [x] If all checks pass, tag `v0.1.0`, create a GitHub release, and attach the built zip as a release artifact rather than committing it.
 
 ## Optional After V1
 

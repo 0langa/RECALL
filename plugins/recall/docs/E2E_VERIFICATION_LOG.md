@@ -22,6 +22,7 @@ Date: 2026-06-06
 - Built-archive marketplace smoke: extract `dist/recall.zip` into a temporary marketplace wrapper, install `recall@recall-zip-test-*`, run installed-cache smoke, then remove the temporary plugin and marketplace: pass.
 - `./build_plugin.ps1` from `<repo-root>`: pass; delegates to `<repo-root>/plugins/recall`, runs tests, validator, smoke, builds `dist/recall.zip`, and package-inspects the zip.
 - `codex plugin remove recall@recall-local` followed by `codex plugin add recall@recall-local`: pass.
+- `v0.1.0` tag and GitHub release with `recall.zip` artifact: pass.
 - User-provided Codex App screenshots confirmed RECALL appears in the plugin picker, bundled skills are discoverable from the composer, and RECALL hooks can be trusted/enabled in Settings > Coding > Hooks.
 - User-provided live continuation and new-session tests confirmed hook activation without `hook exited with code 1`; `Stop` saved checkpoints `#10` and `#27` in the project memory store.
 
