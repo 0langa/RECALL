@@ -1,0 +1,20 @@
+{
+  "name": "recall-local",
+  "interface": {
+    "displayName": "RECALL Local"
+  },
+  "plugins": [
+    {
+      "name": "recall",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

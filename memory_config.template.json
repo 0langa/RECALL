@@ -1,0 +1,57 @@
+{
+  "backend": "sqlite",
+  "token_budget": 1200,
+  "recency_days": null,
+  "embedding_model": "local-hash-v1",
+  "summarizer_model": "heuristic-v1",
+  "categories": {
+    "decisions": {
+      "description": "Architectural choices, library selections, design rationale, and trade-offs.",
+      "weight": 1.2
+    },
+    "constraints": {
+      "description": "Hard rules such as banned patterns, dependency pins, naming conventions, and security rules.",
+      "weight": 1.4
+    },
+    "debug_history": {
+      "description": "Bugs, error patterns, failed attempts, root causes, fixes, and commands that worked.",
+      "weight": 1.1
+    },
+    "preferences": {
+      "description": "User or project preferences, coding style, formatting rules, and workflow expectations.",
+      "weight": 1.0
+    },
+    "tasks": {
+      "description": "Completed work, open TODOs, milestones, and current implementation status.",
+      "weight": 1.0
+    },
+    "session_summaries": {
+      "description": "Compressed summaries of prior sessions to maintain continuity across context resets.",
+      "weight": 0.9
+    },
+    "project_state": {
+      "description": "Current repository status, active branch, pending refactors, known broken areas, and checkpoints.",
+      "weight": 1.3
+    },
+    "architecture": {
+      "description": "Stable system structure, module responsibilities, data flows, and overall system design.",
+      "weight": 1.3
+    },
+    "commands": {
+      "description": "Verified commands for building, testing, linting, and running the project.",
+      "weight": 1.1
+    },
+    "lessons_learned": {
+      "description": "Reusable insights from prior mistakes or successful fixes that guide future development.",
+      "weight": 1.1
+    },
+    "requirements": {
+      "description": "Explicit user requirements and acceptance criteria that must be met.",
+      "weight": 1.5
+    },
+    "risks": {
+      "description": "Known fragile areas, performance bottlenecks, and security-sensitive code paths.",
+      "weight": 1.4
+    }
+  }
+}

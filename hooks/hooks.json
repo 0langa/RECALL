@@ -1,0 +1,72 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${PLUGIN_ROOT}/hooks/scripts/session_start.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\hooks\\scripts\\session_start.py\"",
+            "statusMessage": "Loading RECALL project memory",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${PLUGIN_ROOT}/hooks/scripts/prompt_inspector.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\hooks\\scripts\\prompt_inspector.py\"",
+            "statusMessage": "Checking RECALL memory cues",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${PLUGIN_ROOT}/hooks/scripts/post_tool_use.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\hooks\\scripts\\post_tool_use.py\"",
+            "statusMessage": "Capturing useful RECALL context",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${PLUGIN_ROOT}/hooks/scripts/pre_compact.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\hooks\\scripts\\pre_compact.py\"",
+            "statusMessage": "Saving RECALL compaction checkpoint",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${PLUGIN_ROOT}/hooks/scripts/stop.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\hooks\\scripts\\stop.py\"",
+            "statusMessage": "Saving RECALL session checkpoint",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

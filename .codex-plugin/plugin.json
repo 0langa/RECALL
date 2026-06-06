@@ -1,0 +1,35 @@
+{
+  "name": "recall",
+  "version": "0.1.0",
+  "description": "Local-first project memory for Codex agents.",
+  "author": {
+    "name": "RECALL contributors"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "memory",
+    "recall",
+    "local-first",
+    "codex",
+    "context"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "RECALL",
+    "shortDescription": "Project memory that stays on your machine.",
+    "longDescription": "RECALL stores decisions, constraints, debugging history, commands, requirements, risks, and custom categories in a project-local memory store so Codex can recover useful context across sessions.",
+    "developerName": "RECALL contributors",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Local"
+    ],
+    "brandColor": "#256D5A",
+    "defaultPrompt": [
+      "Remember this project decision.",
+      "Recall the relevant project context.",
+      "Define a RECALL memory category."
+    ]
+  }
+}

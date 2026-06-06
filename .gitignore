@@ -1,0 +1,4 @@
+.codex_memory/
+dist/
+__pycache__/
+*.pyc
