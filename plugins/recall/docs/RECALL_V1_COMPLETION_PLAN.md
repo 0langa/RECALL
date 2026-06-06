@@ -42,7 +42,7 @@
 | `PostToolUse` hook | Compact command/error capture implemented, noisy successful output reduced, live runs observed | Done | Watch for future Codex payload drift |
 | `UserPromptSubmit` hook | Explicit memory cues work and false-positive `remembered` regression is covered | Done | Watch for future Codex payload drift |
 | `Stop` hook | Parses `last_assistant_message`, avoids noisy JSON memory, live checkpoints observed | Done | Watch for future Codex payload drift |
-| `UpdateCategories` hook | Script exists but not configured as a real Codex event | Optional | Convert to CLI command/docs; do not invent unsupported hook event |
+| `UpdateCategories` hook | Unsupported hook wrapper removed; category normalization is an explicit support CLI command documented in README/INSTALL | Done | Do not invent unsupported hook events |
 | Heuristic summarization | Implemented with category/timestamp context | Done | Add quality regression fixtures |
 | Packaged dependencies/venv/models | Not implemented | Optional after V1 | Replace with no-dependency release path for V1 |
 | Build script | Runs tests, validator, smoke, zip build, and package inspection | Done | Keep release gates current |

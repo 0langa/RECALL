@@ -44,3 +44,11 @@ python ./scripts/recall_skill.py retrieve-memory "current project context" --sum
 ```
 
 For developer/support diagnostics, the internal backend script also exposes maintenance commands such as `doctor`, `repair`, and `rebuild-index`. Those commands are not the normal end-user workflow.
+
+If a support session needs to normalize category names after manual config edits, run:
+
+```bash
+python ./scripts/update_categories.py --root <project-root>
+```
+
+RECALL does not register an `UpdateCategories` hook event; category maintenance is an explicit support command, while normal category refinement uses the bundled `define_category` skill.

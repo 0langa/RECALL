@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Removed the unsupported `UpdateCategories` hook wrapper and documented category normalization as an explicit support command.
+- Added regression coverage to keep category maintenance out of the hook surface.
+
 ## 0.1.0 - 2026-06-06
 
 - Added validation-ready Codex plugin manifest.

@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 import sys
 import json
+import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,6 +58,29 @@ class ConfigTests(unittest.TestCase):
             recall_config.validate_config({"categories": {"bad": {"weight": 0}}})
         with self.assertRaisesRegex(ValueError, "weight must be numeric"):
             recall_config.validate_config({"categories": {"bad": {"weight": "heavy"}}})
+
+    def test_update_categories_script_normalizes_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root_config = Path(tmp) / "memory_config.json"
+            payload = recall_config.default_config()
+            payload["categories"]["API Contracts"] = {
+                "description": "Stable API shapes",
+                "weight": 1.4,
+            }
+            root_config.write_text(json.dumps(payload), encoding="utf-8")
+
+            completed = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "update_categories.py"), "--root", tmp],
+                text=True,
+                capture_output=True,
+                check=True,
+                cwd=ROOT,
+            )
+            report = json.loads(completed.stdout)
+            cfg = recall_config.load_config(tmp)
+            self.assertIn("api_contracts", report["categories"])
+            self.assertIn("api_contracts", cfg["categories"])
+            self.assertNotIn("API Contracts", cfg["categories"])
 
 
 if __name__ == "__main__":

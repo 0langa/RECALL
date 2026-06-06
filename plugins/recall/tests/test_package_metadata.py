@@ -32,6 +32,12 @@ class PackageMetadataTests(unittest.TestCase):
                     self.assertIn("os.environ['PLUGIN_ROOT']", hook["commandWindows"])
                     self.assertNotIn("%PLUGIN_ROOT%", hook["commandWindows"])
 
+    def test_no_unsupported_update_categories_hook_surface(self) -> None:
+        payload = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+        self.assertNotIn("UpdateCategories", payload["hooks"])
+        self.assertFalse((ROOT / "hooks" / "scripts" / "update_categories.py").exists())
+        self.assertTrue((ROOT / "scripts" / "update_categories.py").is_file())
+
     def test_repo_marketplace_points_to_child_plugin(self) -> None:
         payload = json.loads((REPO_ROOT / ".agents" / "plugins" / "marketplace.json").read_text(encoding="utf-8"))
         self.assertEqual(payload["name"], "recall-local")

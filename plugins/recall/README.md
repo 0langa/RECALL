@@ -106,6 +106,14 @@ python ./scripts/recall_skill.py retrieve-memory "current project context" --sum
 
 If that still looks wrong, use the internal backend maintenance commands as support diagnostics.
 
+If category names or weights were edited manually in `memory_config.json`, normalize and rewrite the project-local runtime config with:
+
+```bash
+python ./scripts/update_categories.py --root <project-root>
+```
+
+This is a developer/support maintenance command, not a Codex hook event. Normal category creation and refinement should use the `define_category` skill.
+
 If hooks do not run, open Codex Settings > Coding > Hooks and review the RECALL hook definitions. Codex skips untrusted plugin hooks until the user trusts them.
 
 If commands work in the source checkout but not after install, run the smoke harness against the installed plugin root:
@@ -167,7 +175,7 @@ RECALL is designed to stay local. The foundation implementation makes no network
 - Codex hook trust is intentionally interactive; RECALL cannot bypass that review.
 - Retrieval is schema-first and deterministic, not transformer-grade semantic search.
 - RECALL depends on a local Python runtime being available to run its scripts and hooks.
-- Live Codex App picker visibility and fresh-thread skill discovery still need final manual confirmation before tagging `v0.1.0`.
+- Live Codex App picker visibility, fresh-thread skill discovery, hook trust, installed-cache smoke, and built-zip marketplace smoke were verified for `v0.1.0`; future Codex payload drift remains a normal compatibility risk.
 
 ## Roadmap
 
