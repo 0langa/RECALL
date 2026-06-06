@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 import json
+import sqlite3
 from pathlib import Path
 import sys
 
@@ -39,6 +40,23 @@ class MemoryManagerTests(unittest.TestCase):
             result = memory_manager.query("unit test command", categories=["commands"], root=tmp, summarize=True)
             self.assertEqual(result["results"][0]["category"], "commands")
             self.assertIn("unittest", result["summary"])
+
+    def test_malformed_jsonl_rows_are_skipped_and_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.ensure_config(tmp)
+            cfg = recall_config.load_config(tmp)
+            cfg["backend"] = "jsonl"
+            recall_config.save_config(cfg, tmp)
+            memory_manager.add_record("commands", "Good JSONL command survives corrupt rows.", root=tmp)
+            bad_path = Path(tmp) / ".codex_memory" / "jsonl" / "commands.jsonl"
+            with bad_path.open("a", encoding="utf-8") as handle:
+                handle.write("{bad json\n")
+
+            result = memory_manager.query("JSONL command", categories=["commands"], root=tmp)
+            report = memory_manager.doctor(tmp)
+            self.assertEqual(len(result["results"]), 1)
+            self.assertEqual(report["malformed_jsonl_rows"], 1)
+            self.assertTrue(any("Malformed JSONL" in warning for warning in report["warnings"]))
 
     def test_unknown_category_is_created(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -83,6 +101,86 @@ class MemoryManagerTests(unittest.TestCase):
             self.assertEqual(report["records"], 1)
             self.assertEqual(report["index_records"], 1)
             self.assertTrue(report["index_complete"])
+            self.assertEqual(report["warnings"], [])
+            self.assertEqual(report["repairs_available"], [])
+
+    def test_doctor_reports_index_integrity_warnings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            memory_manager.add_record("decisions", "Index diagnostics should catch stale and bad rows.", root=tmp)
+            index_path = Path(tmp) / ".codex_memory" / "vector_index.bin"
+            index_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "id": 999,
+                                "category": "decisions",
+                                "timestamp": "2026-01-01T00:00:00+00:00",
+                                "embedding_model": "local-hash-v1",
+                                "dimensions": 64,
+                                "embedding": [0.0] * 64,
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "id": 1,
+                                "category": "decisions",
+                                "timestamp": "2026-01-01T00:00:00+00:00",
+                                "dimensions": 2,
+                                "embedding": [0.0],
+                            }
+                        ),
+                        "{bad json",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            report = memory_manager.doctor(tmp)
+            self.assertIn(999, report["stale_index_ids"])
+            self.assertIn("rebuild-index", report["repairs_available"])
+            self.assertGreaterEqual(report["invalid_index_rows"], 2)
+            self.assertTrue(any("Invalid index" in warning for warning in report["warnings"]))
+
+    def test_repair_rebuilds_index_and_reports_final_health(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            memory_manager.add_record("requirements", "Repair should rebuild incomplete indexes.", root=tmp)
+            (Path(tmp) / ".codex_memory" / "vector_index.bin").write_text("", encoding="utf-8")
+            report = memory_manager.repair(tmp)
+            self.assertTrue(report["doctor"]["index_complete"])
+            self.assertEqual(report["doctor"]["warnings"], [])
+
+    def test_sqlite_migration_preserves_old_schema_records(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.ensure_config(tmp)
+            db = Path(tmp) / ".codex_memory" / "memory.sqlite"
+            db.parent.mkdir(parents=True, exist_ok=True)
+            connection = sqlite3.connect(db)
+            try:
+                connection.execute(
+                    """
+                    CREATE TABLE memories (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        category TEXT NOT NULL,
+                        timestamp TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        metadata TEXT NOT NULL DEFAULT '{}'
+                    )
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO memories (category, timestamp, content, metadata)
+                    VALUES ('requirements', '2026-01-01T00:00:00+00:00', 'Old schema record survives.', '{}')
+                    """
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            memory_manager.init_store(tmp)
+            result = memory_manager.query("old schema", root=tmp)
+            self.assertEqual(result["results"][0]["content"], "Old schema record survives.")
+            self.assertGreaterEqual(memory_manager.doctor(tmp)["schema_version"], 1)
 
     def test_retrieval_prefers_weighted_lexical_matches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

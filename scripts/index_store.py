@@ -37,10 +37,33 @@ def append_record(record: storage.MemoryRecord, root: str | Path | None = None) 
 
 
 def load_index(root: str | Path | None = None) -> dict[int, dict[str, Any]]:
+    return inspect_index(root)["index"]
+
+
+def validate_index_payload(payload: Any) -> tuple[int | None, bool]:
+    if not isinstance(payload, dict):
+        return None, False
+    record_id = payload.get("id")
+    embedding = payload.get("embedding")
+    dimensions = payload.get("dimensions")
+    embedding_model = payload.get("embedding_model")
+    if not isinstance(record_id, int):
+        return None, False
+    if not isinstance(embedding, list) or not all(isinstance(value, (int, float)) for value in embedding):
+        return record_id, False
+    if not isinstance(dimensions, int) or dimensions != len(embedding) or dimensions != DIMENSIONS:
+        return record_id, False
+    if not isinstance(embedding_model, str) or not embedding_model.strip():
+        return record_id, False
+    return record_id, True
+
+
+def inspect_index(root: str | Path | None = None) -> dict[str, Any]:
     path = index_path(root)
     if not path.exists():
-        return {}
+        return {"index": {}, "invalid_index_rows": 0}
     loaded: dict[int, dict[str, Any]] = {}
+    invalid_rows = 0
     with path.open(encoding="utf-8") as handle:
         for line in handle:
             if not line.strip():
@@ -48,13 +71,14 @@ def load_index(root: str | Path | None = None) -> dict[int, dict[str, Any]]:
             try:
                 payload = json.loads(line)
             except json.JSONDecodeError:
+                invalid_rows += 1
                 continue
-            record_id = payload.get("id")
-            embedding = payload.get("embedding")
-            if not isinstance(record_id, int) or not isinstance(embedding, list):
+            record_id, valid = validate_index_payload(payload)
+            if not valid or record_id is None:
+                invalid_rows += 1
                 continue
             loaded[record_id] = payload
-    return loaded
+    return {"index": loaded, "invalid_index_rows": invalid_rows}
 
 
 def rebuild(root: str | Path | None = None) -> dict[str, Any]:
@@ -70,7 +94,8 @@ def rebuild(root: str | Path | None = None) -> dict[str, Any]:
 
 def diagnostics(root: str | Path | None = None) -> dict[str, Any]:
     records = list(storage.iter_records(root))
-    index = load_index(root)
+    inspected = inspect_index(root)
+    index = inspected["index"]
     record_ids = {record.id for record in records}
     index_ids = set(index)
     return {
@@ -79,7 +104,8 @@ def diagnostics(root: str | Path | None = None) -> dict[str, Any]:
         "index_records": len(index),
         "missing_index_ids": sorted(record_ids - index_ids),
         "stale_index_ids": sorted(index_ids - record_ids),
-        "index_complete": record_ids == index_ids,
+        "invalid_index_rows": inspected["invalid_index_rows"],
+        "index_complete": record_ids == index_ids and inspected["invalid_index_rows"] == 0,
     }
 
 

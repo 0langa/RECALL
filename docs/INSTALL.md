@@ -45,4 +45,5 @@ If retrieval ever looks stale, rebuild and inspect the local index:
 ```powershell
 python .\scripts\memory_manager.py rebuild-index
 python .\scripts\memory_manager.py doctor
+python .\scripts\memory_manager.py repair
 ```

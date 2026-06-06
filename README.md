@@ -9,7 +9,7 @@ RECALL is a local-first Codex plugin for project memory. It stores durable conte
 - Project-local configuration in `.codex_memory/memory_config.json`.
 - SQLite storage by default, with JSONL support available through config.
 - Deterministic local embeddings, a project-local `vector_index.bin`, and weighted retrieval with no network calls.
-- Rebuildable vector index and backend diagnostics through `rebuild-index` and `doctor`.
+- Rebuildable vector index and backend diagnostics through `rebuild-index`, `doctor`, and `repair`.
 - Heuristic summarization for compact context injection.
 - Plugin-bundled lifecycle hooks in `hooks/hooks.json`, matching Codex's default plugin hook discovery path.
 - Unit tests for config and memory storage.
@@ -39,6 +39,7 @@ Repair or inspect the backend:
 ```powershell
 python .\scripts\memory_manager.py rebuild-index
 python .\scripts\memory_manager.py doctor
+python .\scripts\memory_manager.py repair
 ```
 
 Define a custom category:
@@ -120,6 +121,8 @@ RECALL writes all runtime data under `.codex_memory/`, which is ignored by git. 
 ```
 
 To use JSONL files, change `backend` in `.codex_memory/memory_config.json` to `jsonl`.
+
+If a project-level `memory_config.json` exists before initialization, RECALL copies it into `.codex_memory/memory_config.json` and uses the project-local runtime copy from there.
 
 ## Security
 

@@ -17,7 +17,7 @@
 - **One-click install is not truly sealed.** The plugin still assumes `python`/`py -3` is available. Codex hook trust is also mandatory for non-managed hooks, so the practical V1 target is “one install plus one hook trust review,” unless Codex adds managed trust for public plugins.
 - **Retrieval is schema-first, not model-grade semantic search.** Current V1 should rely on structured memory cards, categories, tags, status, and lexical/hash fallback scoring. This is intentional for local-first reliability; FAISS/Chroma or sentence-transformers remain optional after install/runtime behavior is proven.
 - **No packaged runtime artifact is release-tested.** `dist/recall.zip` builds cleanly, but there is no release workflow that installs that zip or verifies the installed cache copy.
-- **No real sample project lifecycle test exists.** We need a repeatable e2e harness that proves save -> recall -> new session context -> repair/doctor across a project boundary.
+- **Real Codex lifecycle verification is still open.** The source smoke harness proves save -> recall -> hook simulation -> doctor across a project boundary; the remaining gap is install, hook trust, and new-thread recall inside the actual Codex app/CLI lifecycle.
 - **Manifest presentation is minimal.** There are no assets, screenshots, homepage/repository links, or privacy/terms docs suitable for a polished public plugin card.
 
 ## Initial Plan Gap Map
@@ -26,10 +26,10 @@
 |---|---|---:|---|
 | Codex plugin scaffold and manifest | `.codex-plugin/plugin.json`, skills, hooks, marketplace exist | Done | Add richer public metadata/assets before release |
 | Default categories and custom categories | Built into `config.py` and template | Mostly done | Add explicit custom-category refinement workflow and docs |
-| `memory_config.json` project root behavior | Root config is copied if present; runtime config lives in `.codex_memory/` | Mostly done | Document precedence and add tests for root config copy |
-| SQLite backend | Implemented with schema version metadata | Done | Add migration/corruption tests |
-| JSONL backend | Implemented and tested | Done | Add malformed-row recovery behavior |
-| Vector index | JSONL `vector_index.bin`, rebuild, doctor, auto-repair | Partial | Treat as deterministic fallback index; add integrity checks and install-cache e2e tests |
+| `memory_config.json` project root behavior | Root config is copied if present; runtime config lives in `.codex_memory/` | Done | Document precedence in user docs |
+| SQLite backend | Implemented with schema version metadata and additive migration tests | Done | Keep migrations additive |
+| JSONL backend | Implemented with malformed-row recovery tests | Done | Keep corrupt rows visible in `doctor` |
+| Vector index | JSONL `vector_index.bin`, rebuild, doctor, auto-repair, integrity diagnostics | Mostly done | Add install-cache e2e tests |
 | FAISS/Chroma vector search | Not implemented | Optional after V1 | Keep out of V1 unless packaged locally and e2e verified |
 | Bundled sentence-transformer embeddings | Not implemented | Optional after V1 | Defer; V1 should use structured memory cards and deterministic retrieval |
 | Structured memory-card schema | Not implemented as first-class schema | Missing | Add summary/details/tags/source/status/importance fields and write policy |
@@ -105,12 +105,12 @@
 - Test: `tests/test_config.py`
 - Test: `tests/test_memory_manager.py`
 
-- [ ] Add tests for project-root `memory_config.json` copy precedence and invalid category weights.
-- [ ] Add malformed JSONL row recovery: skip bad rows, report them in `doctor`, and never fail the whole query because one line is corrupt.
-- [ ] Add index integrity checks for missing IDs, stale IDs, wrong dimensions, missing embedding model, and invalid JSON rows.
-- [ ] Make `doctor` return `warnings` and `repairs_available` fields so support output is actionable.
-- [ ] Add `memory_manager.py repair` as a single command that validates config, rebuilds the index, and reports final health.
-- [ ] Add SQLite migration tests using an older schema fixture and assert additive migration preserves records.
+- [x] Add tests for project-root `memory_config.json` copy precedence and invalid category weights.
+- [x] Add malformed JSONL row recovery: skip bad rows, report them in `doctor`, and never fail the whole query because one line is corrupt.
+- [x] Add index integrity checks for missing IDs, stale IDs, wrong dimensions, missing embedding model, and invalid JSON rows.
+- [x] Make `doctor` return `warnings` and `repairs_available` fields so support output is actionable.
+- [x] Add `memory_manager.py repair` as a single command that validates config, rebuilds the index, and reports final health.
+- [x] Add SQLite migration tests using an older schema fixture and assert additive migration preserves records.
 
 ### Task 4: Close The Skill And User Workflow Gaps
 
@@ -196,4 +196,4 @@
 - Official Codex hook docs confirm hook trust, event scopes, command hook limitations, `commandWindows`, and `hookSpecificOutput.additionalContext`: https://developers.openai.com/codex/hooks
 - Letta/MemGPT memory docs support the schema-first direction by emphasizing memory hierarchy, editable memory blocks, archival storage, and agent-managed memory updates before raw vector retrieval: https://docs.letta.com/guides/agents/memory and https://docs.letta.com/guides/agents/architectures/memgpt
 - Recent agent-memory survey work frames memory as a write-manage-read loop across temporal scope, representation, and control policy, which supports improving write policy and record structure before adding local models: https://arxiv.org/abs/2603.07670
-- Current repo verification after Task 2: `python -m unittest discover -s tests` passes 32 tests; `python scripts/smoke_recall.py --json` passes; plugin validator passes against the repo root.
+- Current repo verification after Task 3: `python -m unittest discover -s tests` passes 38 tests; `python scripts/smoke_recall.py --json` passes; plugin validator passes against the repo root.

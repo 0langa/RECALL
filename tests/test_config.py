@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 import sys
+import json
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +37,26 @@ class ConfigTests(unittest.TestCase):
             path.write_text(payload, encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "Unsupported RECALL backend"):
                 recall_config.load_config(tmp)
+
+    def test_project_root_config_is_copied_before_default_creation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root_config = Path(tmp) / "memory_config.json"
+            payload = recall_config.default_config()
+            payload["backend"] = "jsonl"
+            payload["categories"]["requirements"]["weight"] = 1.9
+            root_config.write_text(json.dumps(payload), encoding="utf-8")
+
+            target = recall_config.ensure_config(tmp)
+            cfg = recall_config.load_config(tmp)
+            self.assertEqual(target, Path(tmp) / ".codex_memory" / "memory_config.json")
+            self.assertEqual(cfg["backend"], "jsonl")
+            self.assertEqual(cfg["categories"]["requirements"]["weight"], 1.9)
+
+    def test_invalid_category_weight_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "weight must be greater than zero"):
+            recall_config.validate_config({"categories": {"bad": {"weight": 0}}})
+        with self.assertRaisesRegex(ValueError, "weight must be numeric"):
+            recall_config.validate_config({"categories": {"bad": {"weight": "heavy"}}})
 
 
 if __name__ == "__main__":

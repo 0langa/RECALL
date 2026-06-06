@@ -157,15 +157,40 @@ def iter_jsonl_records(root: str | Path | None = None) -> Iterable[MemoryRecord]
             for line in handle:
                 if not line.strip():
                     continue
-                payload = json.loads(line)
-                yield MemoryRecord(
-                    int(payload["id"]),
-                    payload["category"],
-                    payload["timestamp"],
-                    payload["content"],
-                    payload.get("metadata", {}),
-                    embedding=payload.get("embedding"),
-                )
+                try:
+                    payload = json.loads(line)
+                    yield MemoryRecord(
+                        int(payload["id"]),
+                        payload["category"],
+                        payload["timestamp"],
+                        payload["content"],
+                        payload.get("metadata", {}),
+                        embedding=payload.get("embedding"),
+                    )
+                except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                    continue
+
+
+def jsonl_diagnostics(root: str | Path | None = None) -> dict[str, Any]:
+    base = jsonl_dir(root)
+    malformed_rows = 0
+    invalid_rows = 0
+    if not base.exists():
+        return {"malformed_jsonl_rows": 0, "invalid_jsonl_rows": 0}
+    for path in sorted(base.glob("*.jsonl")):
+        with path.open(encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError:
+                    malformed_rows += 1
+                    continue
+                required = ("id", "category", "timestamp", "content")
+                if not isinstance(payload, dict) or any(key not in payload for key in required):
+                    invalid_rows += 1
+    return {"malformed_jsonl_rows": malformed_rows, "invalid_jsonl_rows": invalid_rows}
 
 
 def next_jsonl_id(root: str | Path | None = None) -> int:

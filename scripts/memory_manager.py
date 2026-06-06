@@ -182,6 +182,24 @@ def doctor(root: str | Path | None = None) -> dict[str, Any]:
     storage.init_store(root)
     index_report = index_store.diagnostics(root)
     backend = storage.backend(root)
+    jsonl_report = storage.jsonl_diagnostics(root) if backend == "jsonl" else {
+        "malformed_jsonl_rows": 0,
+        "invalid_jsonl_rows": 0,
+    }
+    warnings: list[str] = []
+    repairs_available: list[str] = []
+    if index_report["missing_index_ids"]:
+        warnings.append(f"Index is missing {len(index_report['missing_index_ids'])} storage record(s).")
+    if index_report["stale_index_ids"]:
+        warnings.append(f"Index contains {len(index_report['stale_index_ids'])} stale record id(s).")
+    if index_report["invalid_index_rows"]:
+        warnings.append(f"Invalid index row count: {index_report['invalid_index_rows']}.")
+    if not index_report["index_complete"]:
+        repairs_available.extend(["rebuild-index", "repair"])
+    if jsonl_report["malformed_jsonl_rows"]:
+        warnings.append(f"Malformed JSONL row count: {jsonl_report['malformed_jsonl_rows']}.")
+    if jsonl_report["invalid_jsonl_rows"]:
+        warnings.append(f"Invalid JSONL row count: {jsonl_report['invalid_jsonl_rows']}.")
     return {
         "backend": backend,
         "schema_version": storage.schema_version(root),
@@ -190,9 +208,20 @@ def doctor(root: str | Path | None = None) -> dict[str, Any]:
         "index_complete": index_report["index_complete"],
         "missing_index_ids": index_report["missing_index_ids"],
         "stale_index_ids": index_report["stale_index_ids"],
+        "invalid_index_rows": index_report["invalid_index_rows"],
+        "malformed_jsonl_rows": jsonl_report["malformed_jsonl_rows"],
+        "invalid_jsonl_rows": jsonl_report["invalid_jsonl_rows"],
+        "warnings": warnings,
+        "repairs_available": repairs_available,
         "storage_path": str(db_path(root) if backend == "sqlite" else jsonl_dir(root)),
         "index_path": index_report["index_path"],
     }
+
+
+def repair(root: str | Path | None = None) -> dict[str, Any]:
+    storage.init_store(root)
+    rebuild_report = rebuild_index(root)
+    return {"repair": rebuild_report, "doctor": doctor(root)}
 
 
 def define_category(
@@ -244,6 +273,7 @@ def main() -> None:
 
     subparsers.add_parser("rebuild-index")
     subparsers.add_parser("doctor")
+    subparsers.add_parser("repair")
 
     args = parser.parse_args()
     if args.command == "init":
@@ -287,6 +317,8 @@ def main() -> None:
         print(json.dumps(rebuild_index(args.root), indent=2, sort_keys=True))
     elif args.command == "doctor":
         print(json.dumps(doctor(args.root), indent=2, sort_keys=True))
+    elif args.command == "repair":
+        print(json.dumps(repair(args.root), indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":
