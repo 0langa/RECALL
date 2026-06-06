@@ -21,12 +21,12 @@ When RECALL is installed as a Codex plugin, use this skill as the primary catego
 4. If RECALL auto-created this category from a saved memory, preserve the normalized name and refine only the description/weight.
 5. Run:
 
-```powershell
-python .\scripts\memory_manager.py define-category <category> --description "<description>" --weight <weight>
+```bash
+python ./scripts/memory_manager.py define-category <category> --description "<description>" --weight <weight>
 ```
 
 ## Example
 
-```powershell
-python .\scripts\memory_manager.py define-category api_contracts --description "Stable API shapes and compatibility promises." --weight 1.4
+```bash
+python ./scripts/memory_manager.py define-category api_contracts --description "Stable API shapes and compatibility promises." --weight 1.4
 ```

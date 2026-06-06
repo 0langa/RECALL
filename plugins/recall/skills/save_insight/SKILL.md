@@ -55,15 +55,15 @@ Prefer structured, scannable memory cards. Keep `content` human-readable and put
 3. Do not store secrets, credentials, tokens, private keys, passwords, or sensitive personal data.
 4. Run:
 
-```powershell
-python .\scripts\memory_manager.py add <category> "<memory text>" --summary "<short summary>" --details "<supporting detail>" --tag <tag> --source manual --status active --importance 0.8 --confidence 0.9
+```bash
+python ./scripts/memory_manager.py add <category> "<memory text>" --summary "<short summary>" --details "<supporting detail>" --tag <tag> --source manual --status active --importance 0.8 --confidence 0.9
 ```
 
 Use `--metadata` with a JSON object when file paths, command names, or issue IDs matter.
 
 ## Examples
 
-```powershell
-python .\scripts\memory_manager.py add decisions "Use SQLite as RECALL's default backend." --summary "SQLite is the default backend." --details "It is local, embedded, and requires no service." --tag sqlite --tag local-first --source manual --status active --importance 0.8 --confidence 0.9
-python .\scripts\memory_manager.py add commands "Verified test command: python -m unittest discover -s tests" --summary "Use unittest discovery for validation." --tag tests --tag command --source manual --status active --importance 0.7 --confidence 1.0
+```bash
+python ./scripts/memory_manager.py add decisions "Use SQLite as RECALL's default backend." --summary "SQLite is the default backend." --details "It is local, embedded, and requires no service." --tag sqlite --tag local-first --source manual --status active --importance 0.8 --confidence 0.9
+python ./scripts/memory_manager.py add commands "Verified test command: python -m unittest discover -s tests" --summary "Use unittest discovery for validation." --tag tests --tag command --source manual --status active --importance 0.7 --confidence 1.0
 ```

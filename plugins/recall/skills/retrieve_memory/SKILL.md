@@ -20,23 +20,23 @@ When RECALL is installed as a Codex plugin, use this skill as the primary retrie
 3. Ask for a summary when the result will be injected into the conversation.
 4. Run:
 
-```powershell
-python .\scripts\memory_manager.py query "<query>" --summary
+```bash
+python ./scripts/memory_manager.py query "<query>" --summary
 ```
 
 Category-filtered retrieval:
 
-```powershell
-python .\scripts\memory_manager.py query "build and test commands" --category commands --summary
-python .\scripts\memory_manager.py query "known fragile areas" --category risks --category debug_history --summary
+```bash
+python ./scripts/memory_manager.py query "build and test commands" --category commands --summary
+python ./scripts/memory_manager.py query "known fragile areas" --category risks --category debug_history --summary
 ```
 
 If the local index appears stale or incomplete, run:
 
-```powershell
-python .\scripts\memory_manager.py rebuild-index
-python .\scripts\memory_manager.py doctor
-python .\scripts\memory_manager.py repair
+```bash
+python ./scripts/memory_manager.py rebuild-index
+python ./scripts/memory_manager.py doctor
+python ./scripts/memory_manager.py repair
 ```
 
 ## Result Handling

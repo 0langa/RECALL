@@ -18,7 +18,7 @@ RECALL is a local-first Codex plugin for project memory. It stores durable conte
 
 From the repository root:
 
-```powershell
+```bash
 codex plugin marketplace add .
 codex plugin add recall@recall-local
 ```
@@ -29,51 +29,51 @@ For direct CLI use from this plugin folder:
 
 Initialize memory for the current project:
 
-```powershell
-python .\scripts\memory_manager.py init
+```bash
+python ./scripts/memory_manager.py init
 ```
 
 Save a memory:
 
-```powershell
-python .\scripts\memory_manager.py add decisions "Use SQLite as the default backend because it is local and requires no service."
+```bash
+python ./scripts/memory_manager.py add decisions "Use SQLite as the default backend because it is local and requires no service."
 ```
 
 Retrieve memories:
 
-```powershell
-python .\scripts\memory_manager.py query "local backend choice" --summary
+```bash
+python ./scripts/memory_manager.py query "local backend choice" --summary
 ```
 
 Repair or inspect the backend:
 
-```powershell
-python .\scripts\memory_manager.py rebuild-index
-python .\scripts\memory_manager.py doctor
-python .\scripts\memory_manager.py repair
+```bash
+python ./scripts/memory_manager.py rebuild-index
+python ./scripts/memory_manager.py doctor
+python ./scripts/memory_manager.py repair
 ```
 
 Define a custom category:
 
-```powershell
-python .\scripts\memory_manager.py define-category api_contracts --description "Stable API shapes and compatibility promises." --weight 1.4
+```bash
+python ./scripts/memory_manager.py define-category api_contracts --description "Stable API shapes and compatibility promises." --weight 1.4
 ```
 
 Run tests:
 
-```powershell
+```bash
 python -m unittest discover -s tests
 ```
 
 Run the end-to-end smoke harness:
 
-```powershell
-python .\scripts\smoke_recall.py --json
+```bash
+python ./scripts/smoke_recall.py --json
 ```
 
 ## Local Install
 
-```powershell
+```bash
 codex plugin marketplace add .
 codex plugin add recall@recall-local
 ```
@@ -82,11 +82,19 @@ Then open Plugins or `/plugins`, choose `RECALL Local`, and install `RECALL` if 
 
 Validate the plugin:
 
-```powershell
-python <path-to-plugin-creator>\scripts\validate_plugin.py <path-to-RECALL>
+```bash
+python <path-to-plugin-creator>/scripts/validate_plugin.py <path-to-RECALL>
 ```
 
 Build a zip package:
+
+macOS/Linux:
+
+```bash
+./build_plugin.sh
+```
+
+Windows PowerShell:
 
 ```powershell
 .\build_plugin.ps1
@@ -98,17 +106,17 @@ If `codex plugin add recall@recall-local` cannot find RECALL, confirm the market
 
 If retrieval looks stale, run:
 
-```powershell
-python .\scripts\memory_manager.py doctor
-python .\scripts\memory_manager.py repair
+```bash
+python ./scripts/memory_manager.py doctor
+python ./scripts/memory_manager.py repair
 ```
 
 If hooks do not run, open `/hooks` and review the RECALL hook definitions. Codex skips untrusted plugin hooks until the user trusts them.
 
 If commands work in the source checkout but not after install, run the smoke harness against the installed plugin root:
 
-```powershell
-python .\scripts\smoke_recall.py --installed-plugin-root <installed-plugin-root> --json
+```bash
+python ./scripts/smoke_recall.py --installed-plugin-root <installed-plugin-root> --json
 ```
 
 ## Hooks

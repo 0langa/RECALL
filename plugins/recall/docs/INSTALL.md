@@ -14,7 +14,7 @@ RECALL's installable plugin is kept at `plugins/recall/`. The repo includes a ma
 
 From the repository root:
 
-```powershell
+```bash
 codex plugin marketplace add .
 codex plugin add recall@recall-local
 ```
@@ -43,8 +43,8 @@ Project memories are written to `.codex_memory/` in the active project, not to t
 
 If retrieval ever looks stale, rebuild and inspect the local index:
 
-```powershell
-python .\scripts\memory_manager.py rebuild-index
-python .\scripts\memory_manager.py doctor
-python .\scripts\memory_manager.py repair
+```bash
+python ./scripts/memory_manager.py rebuild-index
+python ./scripts/memory_manager.py doctor
+python ./scripts/memory_manager.py repair
 ```

@@ -10,6 +10,17 @@ Codex reads the repo marketplace from `.agents/plugins/marketplace.json`, which 
 
 ## Common Commands
 
+macOS/Linux:
+
+```bash
+cd ./plugins/recall
+python -m unittest discover -s tests
+python ./scripts/smoke_recall.py --json
+./build_plugin.sh
+```
+
+Windows PowerShell:
+
 ```powershell
 cd .\plugins\recall
 python -m unittest discover -s tests
@@ -18,6 +29,10 @@ python .\scripts\smoke_recall.py --json
 ```
 
 From the repo root, the build wrappers delegate to `plugins/recall`:
+
+```bash
+./build_plugin.sh
+```
 
 ```powershell
 .\build_plugin.ps1
