@@ -44,7 +44,7 @@
 | `UpdateCategories` hook | Script exists but not configured as a real Codex event | Optional | Convert to CLI command/docs; do not invent unsupported hook event |
 | Heuristic summarization | Implemented with category/timestamp context | Done | Add quality regression fixtures |
 | Packaged dependencies/venv/models | Not implemented | Optional after V1 | Replace with no-dependency release path for V1 |
-| Build script | Builds zip and strips caches | Partial | Add validation, e2e smoke, and manifest/package inspection to build |
+| Build script | Runs tests, validator, smoke, zip build, and package inspection | Done | Keep release gates current |
 | Sample project simulations | `scripts/smoke_recall.py` creates a temp project and verifies the lifecycle | Mostly done | Add packaged/install-cache smoke runs and real Codex lifecycle log |
 | Documentation/release | README, install docs, changelog exist | Partial | Add release checklist, known limitations, troubleshooting, and tag workflow |
 
@@ -136,10 +136,10 @@
 - Create: `docs/RELEASE_CHECKLIST.md`
 - Test: `tests/test_package_metadata.py`
 
-- [ ] Update build scripts to run unit tests, plugin validation, package inspection, and the smoke harness before producing the final zip.
-- [ ] Add `scripts/inspect_package.py` to reject `__pycache__`, `.pyc`, `.git`, `.codex_memory`, personal paths, fake key-shaped strings, missing manifest, missing hooks, and missing skills.
-- [ ] Add a release checklist covering install from repo marketplace, install from built archive/extraction, hook trust, new-thread recall, and uninstall/reinstall.
-- [ ] Add package metadata tests for homepage/repository/license fields once public URLs are finalized.
+- [x] Update build scripts to run unit tests, plugin validation, package inspection, and the smoke harness before producing the final zip.
+- [x] Add `scripts/inspect_package.py` to reject `__pycache__`, `.pyc`, `.git`, `.codex_memory`, personal paths, fake key-shaped strings, missing manifest, missing hooks, and missing skills.
+- [x] Add a release checklist covering install from repo marketplace, install from built archive/extraction, hook trust, new-thread recall, and uninstall/reinstall.
+- [x] Keep homepage/repository metadata tests deferred until public URLs are finalized; retain manifest/license/marketplace/package tests.
 
 ### Task 6: Verify Actual Codex Install Lifecycle
 
@@ -196,4 +196,4 @@
 - Official Codex hook docs confirm hook trust, event scopes, command hook limitations, `commandWindows`, and `hookSpecificOutput.additionalContext`: https://developers.openai.com/codex/hooks
 - Letta/MemGPT memory docs support the schema-first direction by emphasizing memory hierarchy, editable memory blocks, archival storage, and agent-managed memory updates before raw vector retrieval: https://docs.letta.com/guides/agents/memory and https://docs.letta.com/guides/agents/architectures/memgpt
 - Recent agent-memory survey work frames memory as a write-manage-read loop across temporal scope, representation, and control policy, which supports improving write policy and record structure before adding local models: https://arxiv.org/abs/2603.07670
-- Current repo verification after Task 4: `python -m unittest discover -s tests` passes 40 tests; `python scripts/smoke_recall.py --json` passes; plugin validator passes against the repo root.
+- Current repo verification after Task 5: `python -m unittest discover -s tests` passes 42 tests; `python scripts/smoke_recall.py --json` passes; plugin validator passes against the repo root; `.\build_plugin.ps1` builds and package-inspects `dist/recall.zip`.

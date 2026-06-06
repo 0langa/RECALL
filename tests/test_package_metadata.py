@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 
@@ -48,6 +52,48 @@ class PackageMetadataTests(unittest.TestCase):
             self.assertIn(category, text)
         for flag in ("--summary", "--details", "--tag", "--status"):
             self.assertIn(flag, text)
+
+    def test_package_inspector_accepts_minimal_valid_zip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "recall.zip"
+            with zipfile.ZipFile(archive, "w") as package:
+                package.writestr(".codex-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
+                package.writestr("hooks/hooks.json", "{}")
+                package.writestr("skills/save_insight/SKILL.md", "# Save")
+                package.writestr("skills/retrieve_memory/SKILL.md", "# Retrieve")
+                package.writestr("skills/define_category/SKILL.md", "# Define")
+                package.writestr("scripts/memory_manager.py", "print('ok')\n")
+            completed = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "inspect_package.py"), str(archive)],
+                text=True,
+                capture_output=True,
+                check=True,
+                cwd=ROOT,
+            )
+            self.assertEqual(json.loads(completed.stdout)["status"], "pass")
+
+    def test_package_inspector_rejects_runtime_and_secret_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "recall.zip"
+            with zipfile.ZipFile(archive, "w") as package:
+                package.writestr(".codex-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
+                package.writestr("hooks/hooks.json", "{}")
+                package.writestr("skills/save_insight/SKILL.md", "# Save")
+                package.writestr("skills/retrieve_memory/SKILL.md", "# Retrieve")
+                package.writestr("skills/define_category/SKILL.md", "# Define")
+                package.writestr("scripts/memory_manager.py", "token=dummy-secret-value\n")
+                package.writestr(".codex_memory/memory.sqlite", "")
+            completed = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "inspect_package.py"), str(archive)],
+                text=True,
+                capture_output=True,
+                cwd=ROOT,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            report = json.loads(completed.stdout)
+            self.assertEqual(report["status"], "fail")
+            self.assertTrue(any("Forbidden package path" in error for error in report["errors"]))
+            self.assertTrue(any("Secret-like string" in error for error in report["errors"]))
 
 
 if __name__ == "__main__":
