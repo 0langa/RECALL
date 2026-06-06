@@ -12,7 +12,9 @@ from hook_io import additional_context, read_hook_input, root_from_payload
 import memory_manager
 
 
-REMEMBER_RE = re.compile(r"(?is)\bremember(?: this| that)?:?\s*(?P<content>.+)")
+REMEMBER_RE = re.compile(
+    r"(?is)(?:^|\n)\s*(?:please\s+)?remember(?:\s+(?:this|that|the following))?\s*[:\-]\s*(?P<content>.+)"
+)
 CATEGORY_RE = re.compile(
     r"(?is)\bdefine category\s+(?P<name>[a-zA-Z0-9_-]+)(?:\s*:\s*(?P<description>.+))?"
 )

@@ -81,6 +81,20 @@ class HookTests(unittest.TestCase):
             result = json.loads(query.stdout)
             self.assertIn("local-only", result["summary"])
 
+    def test_prompt_inspector_ignores_incidental_remembered_word(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = run_hook(
+                "prompt_inspector.py",
+                {
+                    "cwd": tmp,
+                    "hook_event_name": "UserPromptSubmit",
+                    "prompt": "Make a fake project so there is more that can actually be remembered.",
+                },
+            )
+            self.assertEqual(output, {"continue": True})
+            result = query_memory(tmp, "actually remembered", "preferences")
+            self.assertEqual(result["results"], [])
+
     def test_session_start_injects_additional_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             subprocess.run(
@@ -157,6 +171,31 @@ class HookTests(unittest.TestCase):
             stored = result["results"][0]["content"]
             self.assertIn("python -m unittest", stored)
             self.assertLess(len(stored), 900)
+
+    def test_post_tool_use_successful_listing_avoids_raw_output_dump(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = run_hook(
+                "post_tool_use.py",
+                {
+                    "cwd": tmp,
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "Get-ChildItem -Force"},
+                    "tool_response": {
+                        "exit_code": 0,
+                        "stdout": "\x1b[32;1mMode\x1b[0m Name\n-a--- 1000 README.md\n-a--- 2000 secrets.txt",
+                        "stderr": "",
+                    },
+                },
+            )
+            self.assertTrue(output["continue"])
+            result = query_memory(tmp, "Get-ChildItem", "commands")
+            stored = result["results"][0]["content"]
+            self.assertIn("Get-ChildItem -Force", stored)
+            self.assertIn("exit_code: 0", stored)
+            self.assertNotIn("README.md", stored)
+            self.assertNotIn("\x1b", stored)
+            self.assertLess(len(stored), 220)
 
     def test_pre_compact_uses_event_fields_not_raw_envelope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

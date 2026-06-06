@@ -15,6 +15,21 @@ import memory_manager
 ERROR_RE = re.compile(r"(?i)\b(error|exception|traceback|failed|failure)\b")
 SUCCESS_RE = re.compile(r"(?i)\b(passed|success|succeeded|done|0 failures|exit[_ ]code: 0)\b")
 MAX_CAPTURE_CHARS = 700
+ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
+
+def clean_output_line(line: str) -> str:
+    return ANSI_RE.sub("", line).strip()
+
+
+def exit_code_from_output(output: str) -> int | None:
+    match = re.search(r"(?i)\bexit[_ ]code:\s*(-?\d+)\b", output)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
 
 
 def compact_tool_response(tool_name: str, command: str | None, output: str) -> str:
@@ -24,13 +39,16 @@ def compact_tool_response(tool_name: str, command: str | None, output: str) -> s
         status = "success" if SUCCESS_RE.search(output) else "completed"
         return f"Tool: apply_patch\nFiles: {target_text}\nResult: {status}"
 
-    lines = [line.rstrip() for line in output.splitlines() if line.strip()]
+    lines = [clean_output_line(line) for line in output.splitlines() if clean_output_line(line)]
     selected: list[str] = []
     for line in lines:
-        if ERROR_RE.search(line) or SUCCESS_RE.search(line) or "exit_code" in line or "stderr" in line:
+        if ERROR_RE.search(line) or SUCCESS_RE.search(line):
             selected.append(line)
-    if not selected:
-        selected = lines[-8:]
+    exit_code = exit_code_from_output(output)
+    if exit_code is not None:
+        selected.append(f"exit_code: {exit_code}")
+    if not selected and command:
+        selected = ["Result: completed"]
     body = "\n".join(selected)
     if len(body) > MAX_CAPTURE_CHARS:
         body = body[:MAX_CAPTURE_CHARS].rstrip() + "\n[truncated]"

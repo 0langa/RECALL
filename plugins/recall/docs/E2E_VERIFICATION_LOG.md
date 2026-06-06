@@ -48,3 +48,17 @@ Follow-up testing showed:
 - Source regression test: `test_windows_hook_commands_run_through_powershell` passes.
 - Installed-cache hook command test: all installed `commandWindows` hooks exit `0` through PowerShell.
 - Source smoke, installed-cache smoke, plugin validator, package inspection, and root build all pass after reinstalling `recall@recall-local`.
+
+## Live Hook Retest Follow-Up
+
+Date: 2026-06-06
+
+User retested RECALL in a local `RECALL-testing` project with a continuation thread and a new thread. Hook UI screenshots showed no `hook exited with code 1` failures after reinstall/trust. Database/index cross-check found `27` SQLite records and `27` vector-index rows with `doctor` reporting `index_complete: true` and no warnings.
+
+Findings:
+
+- Continuation test matched hook UI: `UserPromptSubmit`, `8` `PostToolUse` runs, and `Stop` produced records `#1` through `#10`, with Stop saving checkpoint `#10`.
+- New-session test matched hook UI: `SessionStart`, `UserPromptSubmit`, `15` `PostToolUse` runs, and `Stop` produced records `#11` through `#27`, with Stop saving checkpoint `#27`.
+- `SessionStart` injection ran without writing a record, which is expected.
+- `UserPromptSubmit` created one false-positive memory from incidental text containing `remembered`; prompt cue detection was tightened to explicit `remember:` / `remember this:` / `remember that:` forms.
+- `PostToolUse` was functionally working but still captured noisy successful command output in some cases; command compaction now strips ANSI sequences and stores command/status summaries instead of raw directory or file-list dumps.
