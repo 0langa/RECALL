@@ -102,9 +102,14 @@ If retrieval looks stale, run:
 
 ```bash
 python ./scripts/recall_skill.py retrieve-memory "current project context" --summary
+python ./scripts/recall_skill.py doctor
 ```
 
-If that still looks wrong, use the internal backend maintenance commands as support diagnostics.
+If `doctor` reports repairable index issues, run the safe public repair action:
+
+```bash
+python ./scripts/recall_skill.py repair
+```
 
 If category names or weights were edited manually in `memory_config.json`, normalize and rewrite the project-local runtime config with:
 
@@ -113,6 +118,12 @@ python ./scripts/update_categories.py --root <project-root>
 ```
 
 This is a developer/support maintenance command, not a Codex hook event. Normal category creation and refinement should use the `define_category` skill.
+
+To inspect available categories through the public adapter:
+
+```bash
+python ./scripts/recall_skill.py list-categories
+```
 
 If hooks do not run, open Codex Settings > Coding > Hooks and review the RECALL hook definitions. Codex skips untrusted plugin hooks until the user trusts them.
 

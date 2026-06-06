@@ -25,7 +25,7 @@ def main() -> None:
         return
     summary = summarize_texts([text], token_budget=700)
     metadata = json.loads(args.metadata)
-    record = memory_manager.add_record(
+    save_result = memory_manager.add_record_if_useful(
         "session_summaries",
         summary,
         memory_manager.build_card_metadata(
@@ -45,6 +45,10 @@ def main() -> None:
         ),
         root,
     )
+    if save_result["action"] == "duplicate_suppressed":
+        print(json.dumps({"continue": True}))
+        return
+    record = save_result["record"]
     print(json.dumps({"continue": True, "systemMessage": f"RECALL saved compaction checkpoint #{record.id}."}))
 
 

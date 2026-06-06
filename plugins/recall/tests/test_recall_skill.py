@@ -72,6 +72,47 @@ class RecallSkillAdapterTests(unittest.TestCase):
             self.assertIn("webhook payload shape", result["summary"])
             self.assertEqual(result["results"][0]["metadata"]["source"], "skill")
 
+    def test_support_actions_return_valid_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_skill(
+                tmp,
+                "define-category",
+                "api_contracts",
+                "--description",
+                "Stable API shapes and compatibility promises.",
+                "--weight",
+                "1.4",
+            )
+            categories = run_skill(tmp, "list-categories")
+            category_names = [item["name"] for item in categories["categories"]]
+            doctor = run_skill(tmp, "doctor")
+
+            self.assertEqual(categories["action"], "list-categories")
+            self.assertIn("requirements", category_names)
+            self.assertIn("api_contracts", category_names)
+            self.assertEqual(doctor["action"], "doctor")
+            self.assertTrue(doctor["report"]["index_complete"])
+
+    def test_repair_restores_broken_index_through_public_adapter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_skill(
+                tmp,
+                "save-insight",
+                "requirements",
+                "Repair must rebuild a broken index.",
+                "--summary",
+                "Repair rebuilds indexes.",
+                "--status",
+                "active",
+            )
+            index_path = Path(tmp) / ".codex_memory" / "vector_index.bin"
+            index_path.write_text("", encoding="utf-8")
+
+            repair = run_skill(tmp, "repair")
+
+            self.assertEqual(repair["action"], "repair")
+            self.assertTrue(repair["report"]["doctor"]["index_complete"])
+
 
 if __name__ == "__main__":
     unittest.main()

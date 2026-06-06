@@ -31,7 +31,17 @@ python ./scripts/recall_skill.py retrieve-memory "build and test commands" --cat
 python ./scripts/recall_skill.py retrieve-memory "known fragile areas" --category risks --category debug_history --summary
 ```
 
-If retrieval appears stale or incomplete, say that RECALL may need maintenance and use the project's normal validation flow rather than running broad repair commands without the user's consent.
+If retrieval appears stale or incomplete, run the safe public diagnostic path before suggesting backend maintenance:
+
+```bash
+python ./scripts/recall_skill.py doctor
+```
+
+If `doctor` reports an incomplete index or available repairs, ask before running:
+
+```bash
+python ./scripts/recall_skill.py repair
+```
 
 ## Result Handling
 

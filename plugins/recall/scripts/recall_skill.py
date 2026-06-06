@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import config as recall_config
 import memory_manager
 
 
@@ -49,6 +50,10 @@ def main() -> None:
     define.add_argument("--description", required=True)
     define.add_argument("--weight", type=float, default=1.0)
 
+    subparsers.add_parser("doctor")
+    subparsers.add_parser("repair")
+    subparsers.add_parser("list-categories")
+
     args = parser.parse_args()
     root = Path(args.root).resolve() if args.root else None
 
@@ -83,6 +88,21 @@ def main() -> None:
     elif args.command == "define-category":
         details = memory_manager.define_category(args.category, args.description, args.weight, root)
         print_json({"action": "define-category", "category": args.category, "details": details})
+    elif args.command == "doctor":
+        print_json({"action": "doctor", "report": memory_manager.doctor(root)})
+    elif args.command == "repair":
+        print_json({"action": "repair", "report": memory_manager.repair(root)})
+    elif args.command == "list-categories":
+        cfg = recall_config.load_config(root)
+        categories = [
+            {
+                "name": name,
+                "description": details["description"],
+                "weight": details["weight"],
+            }
+            for name, details in sorted(cfg["categories"].items())
+        ]
+        print_json({"action": "list-categories", "categories": categories})
 
 
 if __name__ == "__main__":

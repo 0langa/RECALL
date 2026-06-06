@@ -16,10 +16,16 @@ Use this skill as the public RECALL category-management interface. When shell ex
 ## Workflow
 
 1. Normalize the category to lower snake case.
-2. Write a short description that explains what belongs in the category.
-3. Choose a positive weight. Use `1.0` for normal priority, higher values such as `1.3` to surface the category more aggressively, and lower values such as `0.8` for background context.
-4. If RECALL auto-created this category from a saved memory, preserve the normalized name and refine only the description/weight.
-5. Run:
+2. List existing categories when you need to avoid creating a near-duplicate category:
+
+```bash
+python ./scripts/recall_skill.py list-categories
+```
+
+3. Write a short description that explains what belongs in the category.
+4. Choose a positive weight. Use `1.0` for normal priority, higher values such as `1.3` to surface the category more aggressively, and lower values such as `0.8` for background context.
+5. If RECALL auto-created this category from a saved memory, preserve the normalized name and refine only the description/weight.
+6. Run:
 
 ```bash
 python ./scripts/recall_skill.py define-category <category> --description "<description>" --weight <weight>

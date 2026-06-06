@@ -4,6 +4,10 @@
 
 - Removed the unsupported `UpdateCategories` hook wrapper and documented category normalization as an explicit support command.
 - Added regression coverage to keep category maintenance out of the hook surface.
+- Added golden retrieval quality fixtures with status-aware and field-aware ranking.
+- Added automatic hook memory hygiene for duplicate suppression and near-duplicate linking.
+- Added curated grouped `SessionStart` context injection.
+- Exposed safe `doctor`, `repair`, and `list-categories` actions through `recall_skill.py`.
 
 ## 0.1.0 - 2026-06-06
 

@@ -106,6 +106,10 @@ class HookTests(unittest.TestCase):
                     "add",
                     "project_state",
                     "RECALL hook tests have a saved project state.",
+                    "--status",
+                    "active",
+                    "--summary",
+                    "RECALL hook tests have a saved project state.",
                 ],
                 check=True,
                 cwd=ROOT,
@@ -119,6 +123,66 @@ class HookTests(unittest.TestCase):
             self.assertTrue(output["continue"])
             self.assertEqual(output["hookSpecificOutput"]["hookEventName"], "SessionStart")
             self.assertIn("RECALL hook tests", output["hookSpecificOutput"]["additionalContext"])
+
+    def test_session_start_excludes_superseded_when_active_context_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "memory_manager.py"),
+                    "--root",
+                    tmp,
+                    "add",
+                    "requirements",
+                    "Old startup requirement should not appear.",
+                    "--summary",
+                    "Old startup requirement.",
+                    "--tag",
+                    "startup",
+                    "--status",
+                    "superseded",
+                ],
+                check=True,
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "memory_manager.py"),
+                    "--root",
+                    tmp,
+                    "add",
+                    "requirements",
+                    "Current startup requirement should appear.",
+                    "--summary",
+                    "Current startup requirement.",
+                    "--tag",
+                    "startup",
+                    "--status",
+                    "active",
+                ],
+                check=True,
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+
+            output = run_hook(
+                "session_start.py",
+                {
+                    "cwd": tmp,
+                    "hook_event_name": "SessionStart",
+                    "source": "startup",
+                    "query": "startup requirement",
+                },
+            )
+            context = output["hookSpecificOutput"]["additionalContext"]
+
+            self.assertIn("Curated RECALL project memory", context)
+            self.assertIn("Current startup requirement", context)
+            self.assertNotIn("Old startup requirement", context)
 
     def test_session_start_without_memories_is_quiet(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -171,6 +235,44 @@ class HookTests(unittest.TestCase):
             stored = result["results"][0]["content"]
             self.assertIn("python -m unittest", stored)
             self.assertLess(len(stored), 900)
+
+    def test_post_tool_use_suppresses_exact_duplicate_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = {
+                "cwd": tmp,
+                "hook_event_name": "PostToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": "python -m unittest discover -s tests"},
+                "tool_response": {"exit_code": 0, "stdout": "Ran 49 tests in 1.0s\nOK", "stderr": ""},
+            }
+            first = run_hook("post_tool_use.py", payload)
+            second = run_hook("post_tool_use.py", payload)
+            result = query_memory(tmp, "python unittest", "commands")
+
+            self.assertTrue(first["continue"])
+            self.assertEqual(second, {"continue": True})
+            self.assertEqual(len(result["results"]), 1)
+
+    def test_post_tool_use_links_near_duplicate_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = {
+                "cwd": tmp,
+                "hook_event_name": "PostToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": "python -m unittest discover -s tests"},
+            }
+            run_hook(
+                "post_tool_use.py",
+                {**base, "tool_response": {"exit_code": 0, "stdout": "1 passed", "stderr": ""}},
+            )
+            run_hook(
+                "post_tool_use.py",
+                {**base, "tool_response": {"exit_code": 0, "stdout": "2 passed", "stderr": ""}},
+            )
+            result = query_memory(tmp, "python unittest", "commands")
+
+            self.assertEqual(len(result["results"]), 2)
+            self.assertIn("related_memory_id", result["results"][0]["metadata"])
 
     def test_post_tool_use_successful_listing_avoids_raw_output_dump(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

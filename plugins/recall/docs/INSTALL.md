@@ -41,9 +41,16 @@ If retrieval ever looks stale, first verify through the same bundled skill adapt
 
 ```bash
 python ./scripts/recall_skill.py retrieve-memory "current project context" --summary
+python ./scripts/recall_skill.py doctor
 ```
 
-For developer/support diagnostics, the internal backend script also exposes maintenance commands such as `doctor`, `repair`, and `rebuild-index`. Those commands are not the normal end-user workflow.
+If `doctor` reports repairable index issues, use the safe adapter action:
+
+```bash
+python ./scripts/recall_skill.py repair
+```
+
+For developer/support diagnostics, the internal backend script still exposes lower-level maintenance commands such as `rebuild-index`. Those commands are not the normal end-user workflow.
 
 If a support session needs to normalize category names after manual config edits, run:
 

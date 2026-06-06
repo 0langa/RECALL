@@ -13,6 +13,7 @@ from typing import Any
 import config as recall_config
 from embedder import embed
 import index_store
+import memory_hygiene
 import retrieval
 import storage
 
@@ -137,6 +138,34 @@ def add_record(
     )
     index_store.append_record(record, root)
     return record
+
+
+def add_record_if_useful(
+    category: str,
+    content: str,
+    metadata: dict[str, Any] | None = None,
+    root: str | Path | None = None,
+) -> dict[str, Any]:
+    metadata = dict(metadata or {})
+    safe_content = redact_secrets(content.strip())
+    if not safe_content:
+        raise ValueError("Cannot store an empty RECALL memory.")
+    related = memory_hygiene.find_related_record(category, safe_content, metadata, root)
+    fingerprint = memory_hygiene.content_fingerprint(category, safe_content, metadata)
+    if related and related.kind == "exact":
+        return {
+            "action": "duplicate_suppressed",
+            "record": None,
+            "duplicate_id": related.record.id,
+        }
+    metadata["recall_fingerprint"] = fingerprint
+    action = "saved"
+    if related and related.kind == "near":
+        metadata["related_memory_id"] = related.record.id
+        metadata["related_similarity"] = round(related.similarity, 4)
+        action = "saved_related"
+    record = add_record(category, safe_content, metadata, root)
+    return {"action": action, "record": record, "duplicate_id": None}
 
 
 def append_vector_index(

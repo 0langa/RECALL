@@ -23,7 +23,7 @@ def main() -> None:
         print(json.dumps({"continue": True}))
         return
     summary = summarize_texts([notes], token_budget=500)
-    record = memory_manager.add_record(
+    save_result = memory_manager.add_record_if_useful(
         "project_state",
         summary,
         memory_manager.build_card_metadata(
@@ -41,6 +41,10 @@ def main() -> None:
         ),
         root,
     )
+    if save_result["action"] == "duplicate_suppressed":
+        print(json.dumps({"continue": True}))
+        return
+    record = save_result["record"]
     print(json.dumps({"continue": True, "systemMessage": f"RECALL saved session checkpoint #{record.id}."}))
 
 

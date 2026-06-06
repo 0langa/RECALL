@@ -8,7 +8,7 @@ import json
 
 import _recall_path  # noqa: F401
 from hook_io import additional_context, read_hook_input, root_from_payload
-import memory_manager
+import session_context
 
 
 DEFAULT_CATEGORIES = ["project_state", "requirements", "risks", "constraints", "architecture"]
@@ -22,12 +22,11 @@ def main() -> None:
     args = parser.parse_args()
     payload, _ = read_hook_input()
     root = root_from_payload(payload, args.root)
-    result = memory_manager.query(args.query, DEFAULT_CATEGORIES, limit=args.limit, root=root, summarize=True)
-    summary = result.get("summary") or ""
-    if not summary:
+    context = session_context.build_session_context(root, args.query, args.limit)
+    if not context:
         print(json.dumps({"continue": True}))
         return
-    print(json.dumps(additional_context("SessionStart", f"RECALL project memory:\n{summary}")))
+    print(json.dumps(additional_context("SessionStart", context)))
 
 
 if __name__ == "__main__":

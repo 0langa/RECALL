@@ -14,6 +14,16 @@ import storage
 from summarizer import summarize_records
 
 
+STATUS_WEIGHTS = {
+    "active": 1.0,
+    "open": 0.95,
+    "resolved": 0.65,
+    "superseded": 0.25,
+    "archived": 0.15,
+}
+DEFAULT_STATUS_WEIGHT = 0.8
+
+
 def parse_timestamp(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
@@ -59,6 +69,36 @@ def lexical_overlap_score(query_text: str, content: str) -> float:
     return len(query_tokens & content_tokens) / len(query_tokens)
 
 
+def weighted_lexical_score(query_text: str, record: storage.MemoryRecord) -> float:
+    metadata = record.metadata or {}
+    query_tokens = set(tokenize(query_text))
+    if not query_tokens:
+        return 0.0
+
+    score = 0.0
+    fields: list[tuple[float, str]] = [(0.35, record.content)]
+    for weight, key in ((0.9, "summary"), (0.65, "details"), (0.25, "source"), (0.2, "status")):
+        value = metadata.get(key)
+        if isinstance(value, str):
+            fields.append((weight, value))
+    tags = metadata.get("tags")
+    if isinstance(tags, list):
+        fields.append((1.0, " ".join(str(tag) for tag in tags)))
+    elif isinstance(tags, str):
+        fields.append((1.0, tags))
+
+    for weight, text in fields:
+        content_tokens = set(tokenize(text))
+        if content_tokens:
+            score += weight * (len(query_tokens & content_tokens) / len(query_tokens))
+    return score
+
+
+def status_weight(record: storage.MemoryRecord) -> float:
+    status = str((record.metadata or {}).get("status", "")).strip().lower()
+    return STATUS_WEIGHTS.get(status, DEFAULT_STATUS_WEIGHT)
+
+
 def score_record(
     record: storage.MemoryRecord,
     query_text: str,
@@ -69,12 +109,13 @@ def score_record(
     indexed_embedding = index.get(record.id, {}).get("embedding")
     embedding = indexed_embedding if isinstance(indexed_embedding, list) else record.embedding or embed(record.content)
     score = cosine(query_vector, embedding)
-    score += 0.45 * lexical_overlap_score(query_text, searchable_text(record))
+    score += 0.45 * weighted_lexical_score(query_text, record)
     try:
         score += 0.15 * float(record.metadata.get("importance", 0.0))
     except (TypeError, ValueError):
         pass
     score *= recall_config.category_weight(cfg, record.category)
+    score *= status_weight(record)
     age_days = max(0.0, (datetime.now(timezone.utc) - parse_timestamp(record.timestamp)).total_seconds() / 86400)
     score += 0.03 / (1.0 + age_days)
     return score
@@ -106,7 +147,7 @@ def query(
         record.score = score_record(record, query_text, query_vector, index, cfg)
         ranked.append(record)
 
-    ranked.sort(key=lambda item: item.score, reverse=True)
+    ranked.sort(key=lambda item: (item.score, parse_timestamp(item.timestamp), item.id), reverse=True)
     results = [
         {
             "id": record.id,

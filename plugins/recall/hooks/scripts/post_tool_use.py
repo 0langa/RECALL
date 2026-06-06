@@ -75,7 +75,7 @@ def main() -> None:
         print(json.dumps({"continue": True}))
         return
 
-    record = memory_manager.add_record(
+    save_result = memory_manager.add_record_if_useful(
         category,
         content,
         memory_manager.build_card_metadata(
@@ -89,12 +89,17 @@ def main() -> None:
             base={
                 "hook_event": event_name(payload, "PostToolUse"),
                 "tool_name": tool_name,
+                "command": command,
                 "tool_use_id": payload.get("tool_use_id"),
                 "turn_id": payload.get("turn_id"),
             },
         ),
         root,
     )
+    if save_result["action"] == "duplicate_suppressed":
+        print(json.dumps({"continue": True}))
+        return
+    record = save_result["record"]
     print(
         json.dumps(
             additional_context(
