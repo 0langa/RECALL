@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = ROOT.parents[1]
 
 
 class PackageMetadataTests(unittest.TestCase):
@@ -29,12 +30,12 @@ class PackageMetadataTests(unittest.TestCase):
                     self.assertIn("${PLUGIN_ROOT}", hook["command"])
                     self.assertIn("%PLUGIN_ROOT%", hook["commandWindows"])
 
-    def test_repo_marketplace_points_to_repo_root_plugin(self) -> None:
-        payload = json.loads((ROOT / ".agents" / "plugins" / "marketplace.json").read_text(encoding="utf-8"))
+    def test_repo_marketplace_points_to_child_plugin(self) -> None:
+        payload = json.loads((REPO_ROOT / ".agents" / "plugins" / "marketplace.json").read_text(encoding="utf-8"))
         self.assertEqual(payload["name"], "recall-local")
         entry = payload["plugins"][0]
         self.assertEqual(entry["name"], "recall")
-        self.assertEqual(entry["source"], {"source": "local", "path": "./"})
+        self.assertEqual(entry["source"], {"source": "local", "path": "./plugins/recall"})
         self.assertEqual(entry["policy"]["installation"], "AVAILABLE")
         self.assertEqual(entry["policy"]["authentication"], "ON_INSTALL")
 

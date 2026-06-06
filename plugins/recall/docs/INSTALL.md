@@ -1,6 +1,6 @@
 # Install RECALL Locally
 
-RECALL is kept at the repository root. The repo includes a marketplace file at `.agents/plugins/marketplace.json` that points Codex at this root with `source.path: "./"`.
+RECALL's installable plugin is kept at `plugins/recall/`. The repo includes a marketplace file at `.agents/plugins/marketplace.json` that points Codex at the plugin folder with `source.path: "./plugins/recall"`.
 
 ## Codex App
 
@@ -12,13 +12,14 @@ RECALL is kept at the repository root. The repo includes a marketplace file at `
 
 ## Codex CLI
 
-From this repository:
+From the repository root:
 
 ```powershell
 codex plugin marketplace add .
+codex plugin add recall@recall-local
 ```
 
-Then open the plugin browser:
+Or open the plugin browser:
 
 ```text
 /plugins

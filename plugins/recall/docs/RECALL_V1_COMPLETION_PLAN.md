@@ -12,11 +12,11 @@
 
 ## Current Known Limitations
 
-- **Install is not live-verified in Codex.** Unit tests and plugin validation pass, but we have not yet proven install, enablement, hook trust, and new-thread recall in the actual Codex app/CLI lifecycle.
+- **Install is CLI-verified but not fully app-verified.** Codex CLI marketplace add/install, remove/reinstall, and installed-cache smoke pass. App picker visibility, interactive hook trust, bundled skill discovery in a fresh thread, and live `SessionStart` injection still need confirmation.
 - **Hook payload handling is source-verified but not live-verified.** Tests cover Codex-shaped `SessionStart`, `UserPromptSubmit`, `PreCompact`, `Stop`, Bash `PostToolUse`, and `apply_patch` payloads; the remaining risk is actual Codex install lifecycle verification.
 - **One-click install is not truly sealed.** The plugin still assumes `python`/`py -3` is available. Codex hook trust is also mandatory for non-managed hooks, so the practical V1 target is “one install plus one hook trust review,” unless Codex adds managed trust for public plugins.
 - **Retrieval is schema-first, not model-grade semantic search.** Current V1 should rely on structured memory cards, categories, tags, status, and lexical/hash fallback scoring. This is intentional for local-first reliability; FAISS/Chroma or sentence-transformers remain optional after install/runtime behavior is proven.
-- **No packaged runtime artifact is release-tested.** `dist/recall.zip` builds cleanly, but there is no release workflow that installs that zip or verifies the installed cache copy.
+- **Zip install is not release-tested.** `dist/recall.zip` builds and package-inspects cleanly; Codex CLI install from the repo marketplace is verified, including installed-cache smoke. A release workflow still needs built-archive extraction/install verification.
 - **Real Codex lifecycle verification is still open.** The source smoke harness proves save -> recall -> hook simulation -> doctor across a project boundary; the remaining gap is install, hook trust, and new-thread recall inside the actual Codex app/CLI lifecycle.
 - **Manifest presentation is minimal.** There are no assets, screenshots, homepage/repository links, or privacy/terms docs suitable for a polished public plugin card.
 
@@ -24,7 +24,7 @@
 
 | Original plan item | Current code state | Status | Required V1 action |
 |---|---|---:|---|
-| Codex plugin scaffold and manifest | `.codex-plugin/plugin.json`, skills, hooks, marketplace exist | Done | Add richer public metadata/assets before release |
+| Codex plugin scaffold and manifest | Installable plugin lives at `plugins/recall`; repo root is the marketplace wrapper | Done | Add richer public metadata/assets before release |
 | Default categories and custom categories | Built into `config.py` and template | Mostly done | Add explicit custom-category refinement workflow and docs |
 | `memory_config.json` project root behavior | Root config is copied if present; runtime config lives in `.codex_memory/` | Done | Document precedence in user docs |
 | SQLite backend | Implemented with schema version metadata and additive migration tests | Done | Keep migrations additive |
@@ -45,7 +45,7 @@
 | Heuristic summarization | Implemented with category/timestamp context | Done | Add quality regression fixtures |
 | Packaged dependencies/venv/models | Not implemented | Optional after V1 | Replace with no-dependency release path for V1 |
 | Build script | Runs tests, validator, smoke, zip build, and package inspection | Done | Keep release gates current |
-| Sample project simulations | `scripts/smoke_recall.py` creates a temp project and verifies the lifecycle | Mostly done | Add packaged/install-cache smoke runs and real Codex lifecycle log |
+| Sample project simulations | `scripts/smoke_recall.py` creates a temp project and verifies source plus installed-cache lifecycle | Mostly done | Add real Codex thread lifecycle log |
 | Documentation/release | README, install docs, changelog exist | Partial | Add release checklist, known limitations, troubleshooting, and tag workflow |
 
 ## Development Tasks
@@ -147,12 +147,12 @@
 - Modify: `docs/INSTALL.md`
 - Create: `docs/E2E_VERIFICATION_LOG.md`
 
-- [ ] Install from `.agents/plugins/marketplace.json` in Codex CLI/App.
-- [ ] Confirm RECALL appears in the plugin picker and can be enabled.
+- [x] Install from `.agents/plugins/marketplace.json` in Codex CLI.
+- [ ] Confirm RECALL appears in the Codex App plugin picker and can be enabled there.
 - [ ] Confirm bundled skills are discoverable after a new thread starts.
 - [ ] Review and trust bundled hooks via `/hooks`.
 - [ ] Run a real project lifecycle: “remember this,” command capture, new thread, `SessionStart` recall, manual `retrieve_memory`, `doctor`, and `repair`.
-- [ ] Record the exact environment, commands, observed outputs, and any Codex limitations in `docs/E2E_VERIFICATION_LOG.md`.
+- [x] Record the exact environment, commands, observed outputs, and any Codex limitations in `docs/E2E_VERIFICATION_LOG.md`.
 
 ### Task 7: Polish Public Manifest And One-Click Surface
 
@@ -196,4 +196,4 @@
 - Official Codex hook docs confirm hook trust, event scopes, command hook limitations, `commandWindows`, and `hookSpecificOutput.additionalContext`: https://developers.openai.com/codex/hooks
 - Letta/MemGPT memory docs support the schema-first direction by emphasizing memory hierarchy, editable memory blocks, archival storage, and agent-managed memory updates before raw vector retrieval: https://docs.letta.com/guides/agents/memory and https://docs.letta.com/guides/agents/architectures/memgpt
 - Recent agent-memory survey work frames memory as a write-manage-read loop across temporal scope, representation, and control policy, which supports improving write policy and record structure before adding local models: https://arxiv.org/abs/2603.07670
-- Current repo verification after Task 5: `python -m unittest discover -s tests` passes 42 tests; `python scripts/smoke_recall.py --json` passes; plugin validator passes against the repo root; `.\build_plugin.ps1` builds and package-inspects `dist/recall.zip`.
+- Current repo verification after layout migration and Task 6 CLI work: `python -m unittest discover -s tests` passes 42 tests from `plugins/recall`; source smoke passes; installed-cache smoke passes; plugin validator passes against `plugins/recall`; repo-root `.\build_plugin.ps1` builds and package-inspects `plugins/recall/dist/recall.zip`; `codex plugin add recall@recall-local` succeeds.

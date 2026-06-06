@@ -2,12 +2,14 @@
 
 Use this checklist before tagging a public RECALL release.
 
+Run local plugin commands from `<repo-root>/plugins/recall` unless a step explicitly says to use `<repo-root>`.
+
 ## Local Gates
 
 - [ ] `python -m unittest discover -s tests`
-- [ ] `python <plugin-creator-path>\scripts\validate_plugin.py <repo-root>`
+- [ ] `python <plugin-creator-path>\scripts\validate_plugin.py <repo-root>/plugins/recall`
 - [ ] `python .\scripts\smoke_recall.py --json`
-- [ ] `.\build_plugin.ps1`
+- [ ] `.\build_plugin.ps1` from `<repo-root>` or `<repo-root>/plugins/recall`
 - [ ] `python .\scripts\inspect_package.py .\dist\recall.zip`
 
 ## Install Lifecycle
