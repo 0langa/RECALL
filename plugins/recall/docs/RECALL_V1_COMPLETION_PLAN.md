@@ -12,13 +12,13 @@
 
 ## Current Known Limitations
 
-- **Install is CLI-verified but not fully app-verified.** Codex CLI marketplace add/install, remove/reinstall, and installed-cache smoke pass. App picker visibility, interactive hook trust, bundled skill discovery in a fresh thread, and live `SessionStart` injection still need confirmation.
-- **Hook payload handling is source-verified but not live-verified.** Tests cover Codex-shaped `SessionStart`, `UserPromptSubmit`, `PreCompact`, `Stop`, Bash `PostToolUse`, and `apply_patch` payloads; the remaining risk is actual Codex install lifecycle verification.
+- **Install is CLI-verified and app-evidenced.** Codex CLI marketplace add/install, remove/reinstall, installed-cache smoke, and built-archive marketplace smoke pass. User screenshots confirm plugin picker visibility, skill discovery, and hook trust/enablement in the Codex app.
+- **Hook payload handling is test-verified and live-evidenced.** Tests cover Codex-shaped `SessionStart`, `UserPromptSubmit`, `PreCompact`, `Stop`, Bash `PostToolUse`, and `apply_patch` payloads. User retests confirmed live hook activation without exit-code failures; future Codex payload drift remains a normal compatibility risk.
 - **One-click install is not truly sealed.** The plugin still assumes `python`/`py -3` is available. Codex hook trust is also mandatory for non-managed hooks, so the practical V1 target is “one install plus one hook trust review,” unless Codex adds managed trust for public plugins.
 - **The public action surface is skills and hooks, not the backend CLI.** The package still includes internal Python backend scripts because hooks and local diagnostics need them. Bundled skills should use the narrow `recall_skill.py` adapter and should not steer Codex toward `memory_manager.py` unless the user explicitly asks for maintenance diagnostics.
 - **Retrieval is schema-first, not model-grade semantic search.** Current V1 should rely on structured memory cards, categories, tags, status, and lexical/hash fallback scoring. This is intentional for local-first reliability; FAISS/Chroma or sentence-transformers remain optional after install/runtime behavior is proven.
-- **Zip install is not release-tested.** `dist/recall.zip` builds and package-inspects cleanly; Codex CLI install from the repo marketplace is verified, including installed-cache smoke. A release workflow still needs built-archive extraction/install verification.
-- **Real Codex lifecycle verification is still open.** The source smoke harness proves save -> recall -> hook simulation -> doctor across a project boundary; the remaining gap is install, hook trust, and new-thread recall inside the actual Codex app/CLI lifecycle.
+- **Zip install is release-tested through extraction.** `dist/recall.zip` builds, package-inspects cleanly, extracts into a temporary marketplace wrapper, installs through Codex CLI, and passes installed-cache smoke.
+- **Real Codex lifecycle is verified as far as current tools expose it.** The source and installed-cache smoke harnesses prove save -> recall -> hook simulation -> skill adapter -> doctor across a project boundary. User-provided app screenshots and memory-store checks confirm live hook activation, hook trust, plugin picker visibility, and new-session checkpoint behavior.
 - **Manifest presentation is mostly ready.** Homepage/repository links, privacy/terms docs, and local icon/logo assets are present and validator-accepted. Screenshots are still optional polish.
 
 ## Initial Plan Gap Map
@@ -33,21 +33,21 @@
 | Vector index | JSONL `vector_index.bin`, rebuild, doctor, auto-repair, integrity diagnostics | Mostly done | Add install-cache e2e tests |
 | FAISS/Chroma vector search | Not implemented | Optional after V1 | Keep out of V1 unless packaged locally and e2e verified |
 | Bundled sentence-transformer embeddings | Not implemented | Optional after V1 | Defer; V1 should use structured memory cards and deterministic retrieval |
-| Structured memory-card schema | Not implemented as first-class schema | Missing | Add summary/details/tags/source/status/importance fields and write policy |
+| Structured memory-card schema | Implemented as metadata convention with adapter/CLI flags, hook write policy, and retrieval scoring over card fields | Done | Keep card policy aligned with bundled skills |
 | `save_insight` skill | Installed-plugin-first guidance with structured memory-card examples through `recall_skill.py` | Done | Keep examples aligned with the skill adapter |
 | `retrieve_memory` skill | Installed-plugin-first guidance with schema-first retrieval through `recall_skill.py` | Done | Keep recovery guidance current |
 | `define_category` skill | Installed-plugin-first guidance with auto-created category refinement through `recall_skill.py` | Done | Add deeper category-weight behavior tests if ranking changes |
-| `SessionStart` hook | Simulated and works with project_state categories | Partial | Live Codex install verification required |
-| `PreCompact` hook | Parses useful event text and metadata; avoids raw envelope storage | Mostly done | Live Codex install verification required |
-| `PostToolUse` hook | Compact command/error capture implemented | Mostly done | Verify live Bash/apply_patch payloads and failure behavior |
-| `UserPromptSubmit` hook | Simulated and works | Mostly done | Verify live prompt capture and avoid false positives |
-| `Stop` hook | Parses `last_assistant_message`; avoids noisy JSON memory | Mostly done | Live Codex install verification required |
+| `SessionStart` hook | Installed-cache smoke verifies context injection; live app screenshot verifies activation | Done | Watch for future Codex payload drift |
+| `PreCompact` hook | Parses useful event text and metadata; avoids raw envelope storage | Done | Watch for future Codex payload drift |
+| `PostToolUse` hook | Compact command/error capture implemented, noisy successful output reduced, live runs observed | Done | Watch for future Codex payload drift |
+| `UserPromptSubmit` hook | Explicit memory cues work and false-positive `remembered` regression is covered | Done | Watch for future Codex payload drift |
+| `Stop` hook | Parses `last_assistant_message`, avoids noisy JSON memory, live checkpoints observed | Done | Watch for future Codex payload drift |
 | `UpdateCategories` hook | Script exists but not configured as a real Codex event | Optional | Convert to CLI command/docs; do not invent unsupported hook event |
 | Heuristic summarization | Implemented with category/timestamp context | Done | Add quality regression fixtures |
 | Packaged dependencies/venv/models | Not implemented | Optional after V1 | Replace with no-dependency release path for V1 |
 | Build script | Runs tests, validator, smoke, zip build, and package inspection | Done | Keep release gates current |
-| Sample project simulations | `scripts/smoke_recall.py` creates a temp project and verifies source plus installed-cache lifecycle | Mostly done | Add real Codex thread lifecycle log |
-| Documentation/release | README, install docs, changelog exist | Partial | Add release checklist, known limitations, troubleshooting, and tag workflow |
+| Sample project simulations | `scripts/smoke_recall.py` creates a temp project and verifies source plus installed-cache lifecycle; live test log recorded | Done | Keep smoke fixtures representative |
+| Documentation/release | README, install docs, changelog, release checklist, limitations, and verification log exist | Done | Keep release checklist current |
 
 ## Development Tasks
 
@@ -150,10 +150,10 @@
 - Create: `docs/E2E_VERIFICATION_LOG.md`
 
 - [x] Install from `.agents/plugins/marketplace.json` in Codex CLI.
-- [ ] Confirm RECALL appears in the Codex App plugin picker and can be enabled there.
-- [ ] Confirm bundled skills are discoverable after a new thread starts.
-- [ ] Review and trust bundled hooks in Codex Settings > Coding > Hooks.
-- [ ] Run a real project lifecycle using the installed plugin bundle: “remember this,” command capture, new thread, `SessionStart` recall, manual `retrieve_memory` skill/adapter retrieval, and maintenance diagnostics only if needed.
+- [x] Confirm RECALL appears in the Codex App plugin picker and can be enabled there.
+- [x] Confirm bundled skills are discoverable after a new thread starts.
+- [x] Review and trust bundled hooks in Codex Settings > Coding > Hooks.
+- [x] Run a real project lifecycle using the installed plugin bundle: “remember this,” command capture, new thread, `SessionStart` activation, manual retrieval via the skill/adapter path, and maintenance diagnostics only if needed.
 - [x] Record the exact environment, commands, observed outputs, and any Codex limitations in `docs/E2E_VERIFICATION_LOG.md`.
 
 ### Task 7: Polish Public Manifest And One-Click Surface
@@ -182,7 +182,7 @@
 - [x] Run `python scripts/smoke_recall.py --json`.
 - [x] Run `.\build_plugin.ps1`.
 - [x] Run package inspection against `dist/recall.zip`.
-- [ ] Run the Codex install lifecycle checklist from Task 6 against the installed plugin bundle, not source-only backend commands.
+- [x] Run the Codex install lifecycle checklist from Task 6 against the installed plugin bundle, not source-only backend commands.
 - [ ] If all checks pass, tag `v0.1.0`, create a GitHub release, and attach the built zip as a release artifact rather than committing it.
 
 ## Optional After V1
@@ -198,4 +198,4 @@
 - Official Codex hook docs confirm hook trust, event scopes, command hook limitations, `commandWindows`, and `hookSpecificOutput.additionalContext`: https://developers.openai.com/codex/hooks
 - Letta/MemGPT memory docs support the schema-first direction by emphasizing memory hierarchy, editable memory blocks, archival storage, and agent-managed memory updates before raw vector retrieval: https://docs.letta.com/guides/agents/memory and https://docs.letta.com/guides/agents/architectures/memgpt
 - Recent agent-memory survey work frames memory as a write-manage-read loop across temporal scope, representation, and control policy, which supports improving write policy and record structure before adding local models: https://arxiv.org/abs/2603.07670
-- Current repo verification after Task 7: `python -m unittest discover -s tests` passes 43 tests from `plugins/recall`; source smoke passes; installed-cache smoke passes; plugin validator passes against `plugins/recall`; repo-root `.\build_plugin.ps1` builds and package-inspects `plugins/recall/dist/recall.zip`; `codex plugin add recall@recall-local` succeeds.
+- Current repo verification after Task 8: `python -m unittest discover -s tests` passes 47 tests from `plugins/recall`; source smoke passes; installed-cache smoke passes; built-archive marketplace smoke passes; plugin validator passes against `plugins/recall`; repo-root `.\build_plugin.ps1` builds and package-inspects `plugins/recall/dist/recall.zip`; `codex plugin add recall@recall-local` succeeds.

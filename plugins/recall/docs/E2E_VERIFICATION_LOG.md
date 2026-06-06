@@ -12,22 +12,22 @@ Date: 2026-06-06
 
 ## Verified
 
-- `python -m unittest discover -s tests` from `<repo-root>/plugins/recall`: pass, 42 tests.
+- `python -m unittest discover -s tests` from `<repo-root>/plugins/recall`: pass, 47 tests.
 - `python <plugin-creator>/scripts/validate_plugin.py <repo-root>/plugins/recall`: pass.
 - `python ./scripts/smoke_recall.py --json` from `<repo-root>/plugins/recall`: pass.
 - `codex plugin marketplace add <repo-root>`: marketplace `recall-local` added.
 - `codex plugin list`: shows `recall@recall-local` from `<repo-root>/plugins/recall`.
 - `codex plugin add recall@recall-local`: installs and enables RECALL.
 - Installed-cache smoke: `python <repo-root>/plugins/recall/scripts/smoke_recall.py --installed-plugin-root <codex-cache>/plugins/cache/recall-local/recall/0.1.0 --json`: pass.
+- Built-archive marketplace smoke: extract `dist/recall.zip` into a temporary marketplace wrapper, install `recall@recall-zip-test-*`, run installed-cache smoke, then remove the temporary plugin and marketplace: pass.
 - `./build_plugin.ps1` from `<repo-root>`: pass; delegates to `<repo-root>/plugins/recall`, runs tests, validator, smoke, builds `dist/recall.zip`, and package-inspects the zip.
 - `codex plugin remove recall@recall-local` followed by `codex plugin add recall@recall-local`: pass.
+- User-provided Codex App screenshots confirmed RECALL appears in the plugin picker, bundled skills are discoverable from the composer, and RECALL hooks can be trusted/enabled in Settings > Coding > Hooks.
+- User-provided live continuation and new-session tests confirmed hook activation without `hook exited with code 1`; `Stop` saved checkpoints `#10` and `#27` in the project memory store.
 
 ## Not Yet Fully Verified
 
-- Codex App plugin picker visibility. CLI listing confirms the marketplace entry; App UI still needs visual confirmation.
-- Hook trust flow through Codex Settings > Coding > Hooks. Hook definitions are source-tested, installed-cache smoke-tested, and installed-cache Windows `commandWindows` execution is verified; the interactive trust review must still be confirmed in a live Codex thread.
-- Bundled skill discovery in a new thread after install. Current source tests verify skill files and plugin installation, but new-thread slash/mention behavior needs live UI/CLI confirmation.
-- Real `SessionStart` injection in a fresh Codex thread. Smoke harness invokes the installed hook scripts with Codex-shaped payloads; live lifecycle injection still needs manual thread verification.
+- Direct visual inspection of the exact `SessionStart` injected context in the Codex transcript remains limited by the app UI. Installed-cache smoke verifies the `SessionStart` `additionalContext` payload, and user screenshots verify the live hook activation.
 
 ## Notes
 
