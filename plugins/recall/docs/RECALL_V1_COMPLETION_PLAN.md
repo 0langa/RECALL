@@ -175,11 +175,11 @@
 - Modify: `CHANGELOG.md`
 - Modify: `docs/RELEASE_CHECKLIST.md`
 
-- [ ] Run `python -m unittest discover -s tests`.
-- [ ] Run plugin validation.
-- [ ] Run `python scripts/smoke_recall.py --json`.
-- [ ] Run `.\build_plugin.ps1`.
-- [ ] Run package inspection against `dist/recall.zip`.
+- [x] Run `python -m unittest discover -s tests`.
+- [x] Run plugin validation.
+- [x] Run `python scripts/smoke_recall.py --json`.
+- [x] Run `.\build_plugin.ps1`.
+- [x] Run package inspection against `dist/recall.zip`.
 - [ ] Run the Codex install lifecycle checklist from Task 6.
 - [ ] If all checks pass, tag `v0.1.0`, create a GitHub release, and attach the built zip as a release artifact rather than committing it.
 
