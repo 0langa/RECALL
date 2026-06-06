@@ -25,7 +25,7 @@ Date: 2026-06-06
 ## Not Yet Fully Verified
 
 - Codex App plugin picker visibility. CLI listing confirms the marketplace entry; App UI still needs visual confirmation.
-- Hook trust flow through `/hooks`. Hook definitions are source-tested, installed-cache smoke-tested, and installed-cache Windows `commandWindows` execution is verified; the interactive trust review must still be confirmed in a live Codex thread.
+- Hook trust flow through Codex Settings > Coding > Hooks. Hook definitions are source-tested, installed-cache smoke-tested, and installed-cache Windows `commandWindows` execution is verified; the interactive trust review must still be confirmed in a live Codex thread.
 - Bundled skill discovery in a new thread after install. Current source tests verify skill files and plugin installation, but new-thread slash/mention behavior needs live UI/CLI confirmation.
 - Real `SessionStart` injection in a fresh Codex thread. Smoke harness invokes the installed hook scripts with Codex-shaped payloads; live lifecycle injection still needs manual thread verification.
 

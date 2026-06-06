@@ -67,6 +67,8 @@ class PackageMetadataTests(unittest.TestCase):
             text = path.read_text(encoding="utf-8").lower()
             self.assertIn("local-only", text, path)
             self.assertIn("secret", text, path)
+            self.assertIn("recall_skill.py", text, path)
+            self.assertNotIn("memory_manager.py", text, path)
             self.assertNotIn("cloud", text, path)
             self.assertNotIn("remote api", text, path)
 
@@ -86,6 +88,7 @@ class PackageMetadataTests(unittest.TestCase):
                 package.writestr("skills/save_insight/SKILL.md", "# Save")
                 package.writestr("skills/retrieve_memory/SKILL.md", "# Retrieve")
                 package.writestr("skills/define_category/SKILL.md", "# Define")
+                package.writestr("scripts/recall_skill.py", "print('ok')\n")
                 package.writestr("scripts/memory_manager.py", "print('ok')\n")
             completed = subprocess.run(
                 [sys.executable, str(ROOT / "scripts" / "inspect_package.py"), str(archive)],
@@ -105,6 +108,7 @@ class PackageMetadataTests(unittest.TestCase):
                 package.writestr("skills/save_insight/SKILL.md", "# Save")
                 package.writestr("skills/retrieve_memory/SKILL.md", "# Retrieve")
                 package.writestr("skills/define_category/SKILL.md", "# Define")
+                package.writestr("scripts/recall_skill.py", "print('ok')\n")
                 package.writestr("scripts/memory_manager.py", "token=dummy-secret-value\n")
                 package.writestr(".codex_memory/memory.sqlite", "")
             completed = subprocess.run(

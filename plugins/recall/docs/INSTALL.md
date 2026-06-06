@@ -29,11 +29,7 @@ Install `RECALL` from the `RECALL Local` marketplace and start a new thread.
 
 ## Hook Trust
 
-RECALL bundles lifecycle hooks in `hooks/hooks.json`. Codex requires non-managed hooks to be reviewed and trusted before they run. In the CLI, use:
-
-```text
-/hooks
-```
+RECALL bundles lifecycle hooks in `hooks/hooks.json`. Codex requires non-managed hooks to be reviewed and trusted before they run. In the Codex app, open Settings > Coding > Hooks.
 
 Review the RECALL hook definitions and trust them when you are ready. After hook definitions change, Codex may ask you to review them again.
 
@@ -41,10 +37,10 @@ Review the RECALL hook definitions and trust them when you are ready. After hook
 
 Project memories are written to `.codex_memory/` in the active project, not to the plugin folder. This directory is ignored by git in this repo.
 
-If retrieval ever looks stale, rebuild and inspect the local index:
+If retrieval ever looks stale, first verify through the same bundled skill adapter the installed plugin uses:
 
 ```bash
-python ./scripts/memory_manager.py rebuild-index
-python ./scripts/memory_manager.py doctor
-python ./scripts/memory_manager.py repair
+python ./scripts/recall_skill.py retrieve-memory "current project context" --summary
 ```
+
+For developer/support diagnostics, the internal backend script also exposes maintenance commands such as `doctor`, `repair`, and `rebuild-index`. Those commands are not the normal end-user workflow.

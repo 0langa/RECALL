@@ -15,6 +15,7 @@
 - **Install is CLI-verified but not fully app-verified.** Codex CLI marketplace add/install, remove/reinstall, and installed-cache smoke pass. App picker visibility, interactive hook trust, bundled skill discovery in a fresh thread, and live `SessionStart` injection still need confirmation.
 - **Hook payload handling is source-verified but not live-verified.** Tests cover Codex-shaped `SessionStart`, `UserPromptSubmit`, `PreCompact`, `Stop`, Bash `PostToolUse`, and `apply_patch` payloads; the remaining risk is actual Codex install lifecycle verification.
 - **One-click install is not truly sealed.** The plugin still assumes `python`/`py -3` is available. Codex hook trust is also mandatory for non-managed hooks, so the practical V1 target is “one install plus one hook trust review,” unless Codex adds managed trust for public plugins.
+- **The public action surface is skills and hooks, not the backend CLI.** The package still includes internal Python backend scripts because hooks and local diagnostics need them. Bundled skills should use the narrow `recall_skill.py` adapter and should not steer Codex toward `memory_manager.py` unless the user explicitly asks for maintenance diagnostics.
 - **Retrieval is schema-first, not model-grade semantic search.** Current V1 should rely on structured memory cards, categories, tags, status, and lexical/hash fallback scoring. This is intentional for local-first reliability; FAISS/Chroma or sentence-transformers remain optional after install/runtime behavior is proven.
 - **Zip install is not release-tested.** `dist/recall.zip` builds and package-inspects cleanly; Codex CLI install from the repo marketplace is verified, including installed-cache smoke. A release workflow still needs built-archive extraction/install verification.
 - **Real Codex lifecycle verification is still open.** The source smoke harness proves save -> recall -> hook simulation -> doctor across a project boundary; the remaining gap is install, hook trust, and new-thread recall inside the actual Codex app/CLI lifecycle.
@@ -33,9 +34,9 @@
 | FAISS/Chroma vector search | Not implemented | Optional after V1 | Keep out of V1 unless packaged locally and e2e verified |
 | Bundled sentence-transformer embeddings | Not implemented | Optional after V1 | Defer; V1 should use structured memory cards and deterministic retrieval |
 | Structured memory-card schema | Not implemented as first-class schema | Missing | Add summary/details/tags/source/status/importance fields and write policy |
-| `save_insight` skill | Installed-plugin-first guidance with structured memory-card examples | Done | Keep examples aligned with CLI |
-| `retrieve_memory` skill | Installed-plugin-first guidance with schema-first retrieval and repair advice | Done | Keep recovery guidance current |
-| `define_category` skill | Installed-plugin-first guidance with auto-created category refinement advice | Done | Add deeper category-weight behavior tests if ranking changes |
+| `save_insight` skill | Installed-plugin-first guidance with structured memory-card examples through `recall_skill.py` | Done | Keep examples aligned with the skill adapter |
+| `retrieve_memory` skill | Installed-plugin-first guidance with schema-first retrieval through `recall_skill.py` | Done | Keep recovery guidance current |
+| `define_category` skill | Installed-plugin-first guidance with auto-created category refinement through `recall_skill.py` | Done | Add deeper category-weight behavior tests if ranking changes |
 | `SessionStart` hook | Simulated and works with project_state categories | Partial | Live Codex install verification required |
 | `PreCompact` hook | Parses useful event text and metadata; avoids raw envelope storage | Mostly done | Live Codex install verification required |
 | `PostToolUse` hook | Compact command/error capture implemented | Mostly done | Verify live Bash/apply_patch payloads and failure behavior |
@@ -121,10 +122,11 @@
 - Modify: `examples/workflows.md`
 - Test: `tests/test_package_metadata.py`
 
-- [x] Update skill docs so they describe installed-plugin behavior first and direct CLI fallback second.
+- [x] Update skill docs so they describe installed-plugin behavior first and use the bundled `recall_skill.py` adapter instead of advertising the backend maintenance CLI.
 - [x] Make unknown category behavior explicit: auto-create, warn in metadata, then recommend `define_category` refinement.
 - [x] Add examples for saving requirements, risks, commands, and session summaries.
 - [x] Add test assertions that every skill mentions local-only storage and no secrets.
+- [x] Add test assertions that bundled skills reference `recall_skill.py` and do not reference `memory_manager.py`.
 - [x] Remove any wording that implies cloud, hosted services, or remote APIs are needed.
 
 ### Task 5: Make Packaging Truly Release-Checkable
@@ -150,8 +152,8 @@
 - [x] Install from `.agents/plugins/marketplace.json` in Codex CLI.
 - [ ] Confirm RECALL appears in the Codex App plugin picker and can be enabled there.
 - [ ] Confirm bundled skills are discoverable after a new thread starts.
-- [ ] Review and trust bundled hooks via `/hooks`.
-- [ ] Run a real project lifecycle: “remember this,” command capture, new thread, `SessionStart` recall, manual `retrieve_memory`, `doctor`, and `repair`.
+- [ ] Review and trust bundled hooks in Codex Settings > Coding > Hooks.
+- [ ] Run a real project lifecycle using the installed plugin bundle: “remember this,” command capture, new thread, `SessionStart` recall, manual `retrieve_memory` skill/adapter retrieval, and maintenance diagnostics only if needed.
 - [x] Record the exact environment, commands, observed outputs, and any Codex limitations in `docs/E2E_VERIFICATION_LOG.md`.
 
 ### Task 7: Polish Public Manifest And One-Click Surface
@@ -180,7 +182,7 @@
 - [x] Run `python scripts/smoke_recall.py --json`.
 - [x] Run `.\build_plugin.ps1`.
 - [x] Run package inspection against `dist/recall.zip`.
-- [ ] Run the Codex install lifecycle checklist from Task 6.
+- [ ] Run the Codex install lifecycle checklist from Task 6 against the installed plugin bundle, not source-only backend commands.
 - [ ] If all checks pass, tag `v0.1.0`, create a GitHub release, and attach the built zip as a release artifact rather than committing it.
 
 ## Optional After V1

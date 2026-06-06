@@ -98,6 +98,16 @@ def memory_command(plugin_root: Path, project_root: Path, *args: str) -> list[st
     ]
 
 
+def skill_command(plugin_root: Path, project_root: Path, *args: str) -> list[str]:
+    return [
+        sys.executable,
+        str(plugin_root / "scripts" / "recall_skill.py"),
+        "--root",
+        str(project_root),
+        *args,
+    ]
+
+
 def hook_command(plugin_root: Path, hook_name: str) -> list[str]:
     return [sys.executable, str(plugin_root / "hooks" / "scripts" / hook_name)]
 
@@ -107,6 +117,7 @@ def assert_plugin_shape(plugin_root: Path) -> None:
         plugin_root / ".codex-plugin" / "plugin.json",
         plugin_root / "hooks" / "hooks.json",
         plugin_root / "hooks" / "scripts" / "session_start.py",
+        plugin_root / "scripts" / "recall_skill.py",
         plugin_root / "scripts" / "memory_manager.py",
         plugin_root / "skills" / "save_insight" / "SKILL.md",
         plugin_root / "skills" / "retrieve_memory" / "SKILL.md",
@@ -148,6 +159,34 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
     require(len(query["results"]) >= 3, "query did not return enough smoke records")
     require("summary" in query and "RECALL" in query["summary"], "query summary did not contain expected context")
     checks.append("manual retrieval returns summarized context")
+
+    skill_save = run_json(
+        skill_command(
+            plugin_root,
+            project_root,
+            "save-insight",
+            "requirements",
+            "Skill adapter smoke path must work from the installed plugin bundle.",
+            "--summary",
+            "Skill adapter smoke path works.",
+            "--details",
+            "The smoke harness verifies recall_skill.py against the same plugin root used by hooks.",
+            "--tag",
+            "skill-adapter",
+            "--source",
+            "skill",
+            "--status",
+            "active",
+        ),
+        cwd=plugin_root,
+    )
+    require(skill_save["category"] == "requirements", "skill adapter save used the wrong category")
+    skill_query = run_json(
+        skill_command(plugin_root, project_root, "retrieve-memory", "skill adapter smoke path", "--summary"),
+        cwd=plugin_root,
+    )
+    require("Skill adapter smoke path" in skill_query.get("summary", ""), "skill adapter retrieval failed")
+    checks.append("skill adapter save and retrieval pass")
 
     rebuild = run_json(memory_command(plugin_root, project_root, "rebuild-index"), cwd=plugin_root)
     require(rebuild["indexed_records"] >= 4, "rebuild-index did not index seeded records")

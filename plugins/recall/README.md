@@ -23,40 +23,34 @@ codex plugin marketplace add .
 codex plugin add recall@recall-local
 ```
 
-Then start a Codex thread in a project and review RECALL's hooks through `/hooks`. Plugin installation is one command once the marketplace is configured; hook execution still requires Codex's normal trust review for non-managed hooks.
+Then start a Codex thread in a project and review RECALL's hooks in Codex Settings > Coding > Hooks. Plugin installation is one command once the marketplace is configured; hook execution still requires Codex's normal trust review for non-managed hooks.
 
-For direct CLI use from this plugin folder:
+For direct skill-adapter checks from this plugin folder:
 
 Initialize memory for the current project:
 
 ```bash
-python ./scripts/memory_manager.py init
+python ./scripts/recall_skill.py retrieve-memory "current project context" --summary
 ```
 
 Save a memory:
 
 ```bash
-python ./scripts/memory_manager.py add decisions "Use SQLite as the default backend because it is local and requires no service."
+python ./scripts/recall_skill.py save-insight decisions "Use SQLite as the default backend because it is local and requires no service." --summary "SQLite is the default backend." --source skill
 ```
 
 Retrieve memories:
 
 ```bash
-python ./scripts/memory_manager.py query "local backend choice" --summary
+python ./scripts/recall_skill.py retrieve-memory "local backend choice" --summary
 ```
 
-Repair or inspect the backend:
-
-```bash
-python ./scripts/memory_manager.py rebuild-index
-python ./scripts/memory_manager.py doctor
-python ./scripts/memory_manager.py repair
-```
+Developer/support maintenance commands are available through the internal backend script, but they are not the public plugin workflow.
 
 Define a custom category:
 
 ```bash
-python ./scripts/memory_manager.py define-category api_contracts --description "Stable API shapes and compatibility promises." --weight 1.4
+python ./scripts/recall_skill.py define-category api_contracts --description "Stable API shapes and compatibility promises." --weight 1.4
 ```
 
 Run tests:
@@ -107,11 +101,12 @@ If `codex plugin add recall@recall-local` cannot find RECALL, confirm the market
 If retrieval looks stale, run:
 
 ```bash
-python ./scripts/memory_manager.py doctor
-python ./scripts/memory_manager.py repair
+python ./scripts/recall_skill.py retrieve-memory "current project context" --summary
 ```
 
-If hooks do not run, open `/hooks` and review the RECALL hook definitions. Codex skips untrusted plugin hooks until the user trusts them.
+If that still looks wrong, use the internal backend maintenance commands as support diagnostics.
+
+If hooks do not run, open Codex Settings > Coding > Hooks and review the RECALL hook definitions. Codex skips untrusted plugin hooks until the user trusts them.
 
 If commands work in the source checkout but not after install, run the smoke harness against the installed plugin root:
 

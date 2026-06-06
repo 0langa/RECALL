@@ -22,6 +22,7 @@ REQUIRED_PATHS = {
     "skills/save_insight/SKILL.md",
     "skills/retrieve_memory/SKILL.md",
     "skills/define_category/SKILL.md",
+    "scripts/recall_skill.py",
     "scripts/memory_manager.py",
 }
 SECRET_PATTERNS = [

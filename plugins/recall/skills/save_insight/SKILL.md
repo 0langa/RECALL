@@ -9,9 +9,9 @@ Use this skill when the user asks Codex to remember a decision, constraint, comm
 
 RECALL is local-only project memory. Store data under the active project's `.codex_memory/` directory and never require hosted services or external APIs. Do not store secrets, credentials, tokens, private keys, passwords, or sensitive personal data.
 
-## Installed Plugin Path
+## Execution Path
 
-When RECALL is installed as a Codex plugin, use this skill as the primary interface and run the bundled CLI from the plugin/project root. If the installed plugin path is not available in the current shell, use the source checkout fallback command shown below.
+Use this skill as the public RECALL interface. When shell execution is needed, run the bundled skill adapter from the installed plugin root or source plugin root. Treat lower-level backend scripts as internal support code, not as the user-facing RECALL workflow.
 
 ## Categories
 
@@ -53,10 +53,10 @@ Prefer structured, scannable memory cards. Keep `content` human-readable and put
 1. Choose the most specific category.
 2. Rewrite the memory as a concise, future-useful card with summary, details, tags, source, status, importance, and confidence when available.
 3. Do not store secrets, credentials, tokens, private keys, passwords, or sensitive personal data.
-4. Run:
+4. Run the skill adapter:
 
 ```bash
-python ./scripts/memory_manager.py add <category> "<memory text>" --summary "<short summary>" --details "<supporting detail>" --tag <tag> --source manual --status active --importance 0.8 --confidence 0.9
+python ./scripts/recall_skill.py save-insight <category> "<memory text>" --summary "<short summary>" --details "<supporting detail>" --tag <tag> --source skill --status active --importance 0.8 --confidence 0.9
 ```
 
 Use `--metadata` with a JSON object when file paths, command names, or issue IDs matter.
@@ -64,6 +64,6 @@ Use `--metadata` with a JSON object when file paths, command names, or issue IDs
 ## Examples
 
 ```bash
-python ./scripts/memory_manager.py add decisions "Use SQLite as RECALL's default backend." --summary "SQLite is the default backend." --details "It is local, embedded, and requires no service." --tag sqlite --tag local-first --source manual --status active --importance 0.8 --confidence 0.9
-python ./scripts/memory_manager.py add commands "Verified test command: python -m unittest discover -s tests" --summary "Use unittest discovery for validation." --tag tests --tag command --source manual --status active --importance 0.7 --confidence 1.0
+python ./scripts/recall_skill.py save-insight decisions "Use SQLite as RECALL's default backend." --summary "SQLite is the default backend." --details "It is local, embedded, and requires no service." --tag sqlite --tag local-first --source skill --status active --importance 0.8 --confidence 0.9
+python ./scripts/recall_skill.py save-insight commands "Verified test command: python -m unittest discover -s tests" --summary "Use unittest discovery for validation." --tag tests --tag command --source skill --status active --importance 0.7 --confidence 1.0
 ```

@@ -9,9 +9,9 @@ Use this skill when the user wants a new memory category or wants to tune how st
 
 RECALL is local-only project memory. Category definitions are stored in the active project's `.codex_memory/memory_config.json` file and never require hosted services or external APIs. Do not put secrets, credentials, tokens, private keys, passwords, or sensitive personal data in category names or descriptions.
 
-## Installed Plugin Path
+## Execution Path
 
-When RECALL is installed as a Codex plugin, use this skill as the primary category-management interface and run the bundled CLI from the plugin/project root. If the installed plugin path is not available in the current shell, use the source checkout fallback command shown below.
+Use this skill as the public RECALL category-management interface. When shell execution is needed, run the bundled skill adapter from the installed plugin root or source plugin root. Treat lower-level backend scripts as internal support code, not as the user-facing RECALL workflow.
 
 ## Workflow
 
@@ -22,11 +22,11 @@ When RECALL is installed as a Codex plugin, use this skill as the primary catego
 5. Run:
 
 ```bash
-python ./scripts/memory_manager.py define-category <category> --description "<description>" --weight <weight>
+python ./scripts/recall_skill.py define-category <category> --description "<description>" --weight <weight>
 ```
 
 ## Example
 
 ```bash
-python ./scripts/memory_manager.py define-category api_contracts --description "Stable API shapes and compatibility promises." --weight 1.4
+python ./scripts/recall_skill.py define-category api_contracts --description "Stable API shapes and compatibility promises." --weight 1.4
 ```
