@@ -24,6 +24,8 @@ SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
 ]
 
+CARD_STATUSES = {"active", "open", "resolved", "superseded", "archived"}
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -50,6 +52,57 @@ def vector_index_path(root: str | Path | None = None) -> Path:
 
 def init_store(root: str | Path | None = None) -> None:
     storage.init_store(root)
+
+
+def clamp_unit_interval(value: float, field_name: str) -> float:
+    if value < 0 or value > 1:
+        raise ValueError(f"{field_name} must be between 0.0 and 1.0.")
+    return value
+
+
+def normalize_tags(tags: list[str] | None) -> list[str]:
+    normalized: list[str] = []
+    for tag in tags or []:
+        cleaned = re.sub(r"[^a-zA-Z0-9_.-]+", "-", tag.strip().lower()).strip("-")
+        if cleaned and cleaned not in normalized:
+            normalized.append(cleaned)
+    return normalized
+
+
+def build_card_metadata(
+    *,
+    summary: str | None = None,
+    details: str | None = None,
+    tags: list[str] | None = None,
+    source: str | None = None,
+    status: str | None = None,
+    importance: float | None = None,
+    confidence: float | None = None,
+    base: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    metadata = dict(base or {})
+    if summary is not None:
+        metadata["summary"] = summary.strip()
+    if details is not None:
+        metadata["details"] = details.strip()
+    normalized_tags = normalize_tags(tags)
+    if normalized_tags:
+        existing = metadata.get("tags", [])
+        if not isinstance(existing, list):
+            existing = [str(existing)]
+        metadata["tags"] = normalize_tags([*existing, *normalized_tags])
+    if source is not None:
+        metadata["source"] = source.strip()
+    if status is not None:
+        normalized_status = status.strip().lower()
+        if normalized_status not in CARD_STATUSES:
+            raise ValueError(f"status must be one of: {', '.join(sorted(CARD_STATUSES))}.")
+        metadata["status"] = normalized_status
+    if importance is not None:
+        metadata["importance"] = clamp_unit_interval(float(importance), "importance")
+    if confidence is not None:
+        metadata["confidence"] = clamp_unit_interval(float(confidence), "confidence")
+    return {key: value for key, value in metadata.items() if value not in ("", [], None)}
 
 
 def add_record(
@@ -116,8 +169,9 @@ def query(
     limit: int = 8,
     root: str | Path | None = None,
     summarize: bool = False,
+    statuses: list[str] | None = None,
 ) -> dict[str, Any]:
-    return retrieval.query(query_text, categories, exclude_categories, limit, root, summarize)
+    return retrieval.query(query_text, categories, exclude_categories, limit, root, summarize, statuses)
 
 
 def rebuild_index(root: str | Path | None = None) -> dict[str, Any]:
@@ -165,8 +219,15 @@ def main() -> None:
 
     add = subparsers.add_parser("add")
     add.add_argument("category")
-    add.add_argument("content")
+    add.add_argument("content", nargs="?")
     add.add_argument("--metadata", help="JSON metadata object.")
+    add.add_argument("--summary", dest="card_summary", help="Concise memory-card summary.")
+    add.add_argument("--details", help="Additional memory-card details.")
+    add.add_argument("--tag", action="append", dest="tags", help="Memory-card tag. May be repeated.")
+    add.add_argument("--source", help="Memory source, such as user, pre_compact, post_tool_use, or manual.")
+    add.add_argument("--status", choices=sorted(CARD_STATUSES), help="Memory-card lifecycle status.")
+    add.add_argument("--importance", type=float, help="Memory importance from 0.0 to 1.0.")
+    add.add_argument("--confidence", type=float, help="Memory confidence from 0.0 to 1.0.")
 
     search = subparsers.add_parser("query")
     search.add_argument("query_text")
@@ -174,6 +235,7 @@ def main() -> None:
     search.add_argument("--exclude-category", action="append", dest="exclude_categories")
     search.add_argument("--limit", type=int, default=8)
     search.add_argument("--summary", action="store_true")
+    search.add_argument("--status", action="append", dest="statuses")
 
     define = subparsers.add_parser("define-category")
     define.add_argument("name")
@@ -188,7 +250,20 @@ def main() -> None:
         init_store(args.root)
         print(recall_config.config_path(args.root))
     elif args.command == "add":
-        record = add_record(args.category, args.content, parse_metadata(args.metadata), args.root)
+        metadata = build_card_metadata(
+            summary=args.card_summary,
+            details=args.details,
+            tags=args.tags,
+            source=args.source,
+            status=args.status,
+            importance=args.importance,
+            confidence=args.confidence,
+            base=parse_metadata(args.metadata),
+        )
+        content = args.content or args.card_summary or args.details
+        if content is None:
+            raise SystemExit("add requires content or --summary/--details.")
+        record = add_record(args.category, content, metadata, args.root)
         print(json.dumps(record.__dict__, indent=2, sort_keys=True))
     elif args.command == "query":
         print(
@@ -200,6 +275,7 @@ def main() -> None:
                     args.limit,
                     args.root,
                     args.summary,
+                    args.statuses,
                 ),
                 indent=2,
                 sort_keys=True,

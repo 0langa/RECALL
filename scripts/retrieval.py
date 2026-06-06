@@ -23,6 +23,7 @@ def passes_filters(
     categories: set[str] | None,
     exclude_categories: set[str] | None,
     since: datetime | None,
+    statuses: set[str] | None = None,
 ) -> bool:
     if categories is not None and record.category not in categories:
         return False
@@ -30,7 +31,24 @@ def passes_filters(
         return False
     if since is not None and parse_timestamp(record.timestamp) < since:
         return False
+    if statuses is not None and str(record.metadata.get("status", "")).lower() not in statuses:
+        return False
     return True
+
+
+def searchable_text(record: storage.MemoryRecord) -> str:
+    metadata = record.metadata or {}
+    parts = [record.content]
+    for key in ("summary", "details", "source", "status"):
+        value = metadata.get(key)
+        if isinstance(value, str):
+            parts.append(value)
+    tags = metadata.get("tags")
+    if isinstance(tags, list):
+        parts.extend(str(tag) for tag in tags)
+    elif isinstance(tags, str):
+        parts.append(tags)
+    return "\n".join(part for part in parts if part)
 
 
 def lexical_overlap_score(query_text: str, content: str) -> float:
@@ -51,7 +69,11 @@ def score_record(
     indexed_embedding = index.get(record.id, {}).get("embedding")
     embedding = indexed_embedding if isinstance(indexed_embedding, list) else record.embedding or embed(record.content)
     score = cosine(query_vector, embedding)
-    score += 0.25 * lexical_overlap_score(query_text, record.content)
+    score += 0.45 * lexical_overlap_score(query_text, searchable_text(record))
+    try:
+        score += 0.15 * float(record.metadata.get("importance", 0.0))
+    except (TypeError, ValueError):
+        pass
     score *= recall_config.category_weight(cfg, record.category)
     age_days = max(0.0, (datetime.now(timezone.utc) - parse_timestamp(record.timestamp)).total_seconds() / 86400)
     score += 0.03 / (1.0 + age_days)
@@ -65,10 +87,12 @@ def query(
     limit: int = 8,
     root: str | Path | None = None,
     summarize: bool = False,
+    statuses: list[str] | None = None,
 ) -> dict[str, Any]:
     cfg = recall_config.load_config(root)
     include_set = {recall_config.normalize_category(value) for value in categories} if categories else None
     exclude_set = {recall_config.normalize_category(value) for value in exclude_categories} if exclude_categories else None
+    status_set = {value.strip().lower() for value in statuses} if statuses else None
     since = None
     if cfg.get("recency_days") is not None:
         since = datetime.now(timezone.utc) - timedelta(days=int(cfg["recency_days"]))
@@ -77,7 +101,7 @@ def query(
     query_vector = embed(query_text)
     ranked: list[storage.MemoryRecord] = []
     for record in storage.iter_records(root):
-        if not passes_filters(record, include_set, exclude_set, since):
+        if not passes_filters(record, include_set, exclude_set, since, status_set):
             continue
         record.score = score_record(record, query_text, query_vector, index, cfg)
         ranked.append(record)

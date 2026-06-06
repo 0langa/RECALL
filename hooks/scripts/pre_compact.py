@@ -27,7 +27,16 @@ def main() -> None:
     record = memory_manager.add_record(
         "session_summaries",
         summary,
-        {"source": "pre_compact", "hook_event": payload.get("hook_event_name"), **json.loads(args.metadata)},
+        memory_manager.build_card_metadata(
+            summary="Session compaction checkpoint.",
+            details=summary,
+            tags=["session-summary", "compaction"],
+            source="pre_compact",
+            status="active",
+            importance=0.7,
+            confidence=0.8,
+            base={"hook_event": payload.get("hook_event_name"), **json.loads(args.metadata)},
+        ),
         root,
     )
     print(json.dumps({"continue": True, "systemMessage": f"RECALL saved compaction checkpoint #{record.id}."}))

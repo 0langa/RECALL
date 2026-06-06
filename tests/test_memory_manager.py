@@ -107,6 +107,51 @@ class MemoryManagerTests(unittest.TestCase):
             self.assertEqual(payload["dimensions"], 64)
             self.assertIn("embedding", payload)
 
+    def test_structured_card_tags_beat_plain_keyword_note(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            memory_manager.add_record(
+                "tasks",
+                "Parser cleanup mentioned the release checklist.",
+                {"status": "open"},
+                root=tmp,
+            )
+            memory_manager.add_record(
+                "requirements",
+                "Stable contract memory.",
+                memory_manager.build_card_metadata(
+                    summary="CLI payload contract must not change.",
+                    details="The release checklist depends on stable command output for automated verification.",
+                    tags=["cli-contract", "release-checklist", "payload-shape"],
+                    source="unit-test",
+                    status="active",
+                    importance=1.0,
+                    confidence=0.9,
+                ),
+                root=tmp,
+            )
+            result = memory_manager.query("release checklist payload shape", root=tmp)
+            self.assertEqual(result["results"][0]["category"], "requirements")
+            self.assertEqual(result["results"][0]["metadata"]["status"], "active")
+            self.assertIn("cli-contract", result["results"][0]["metadata"]["tags"])
+
+    def test_status_filter_limits_structured_cards_before_scoring(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            memory_manager.add_record(
+                "requirements",
+                "Old requirement about CLI output.",
+                memory_manager.build_card_metadata(status="superseded", tags=["cli-output"]),
+                root=tmp,
+            )
+            memory_manager.add_record(
+                "requirements",
+                "Current requirement about CLI output.",
+                memory_manager.build_card_metadata(status="active", tags=["cli-output"]),
+                root=tmp,
+            )
+            result = memory_manager.query("CLI output", statuses=["active"], root=tmp)
+            self.assertEqual(len(result["results"]), 1)
+            self.assertEqual(result["results"][0]["content"], "Current requirement about CLI output.")
+
 
 if __name__ == "__main__":
     unittest.main()

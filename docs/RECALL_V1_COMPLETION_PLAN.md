@@ -72,11 +72,11 @@
 - Modify: `hooks/scripts/pre_compact.py`
 - Test: `tests/test_memory_manager.py`
 
-- [ ] Add a memory-card payload convention stored in `metadata`: `summary`, `details`, `tags`, `source`, `status`, `importance`, and `confidence`.
-- [ ] Add CLI support for `--summary`, `--details`, `--tag`, `--status`, `--importance`, and `--confidence` while preserving the existing positional `content` path.
-- [ ] Make retrieval search `content`, `metadata.summary`, `metadata.details`, and `metadata.tags`, with category and status filters before scoring.
-- [ ] Update `save_insight` and hook compaction guidance so Codex writes concise, scannable memory cards instead of arbitrary transcripts.
-- [ ] Add tests proving a tagged structured card is retrieved without model embeddings and beats an untagged keyword-only note.
+- [x] Add a memory-card payload convention stored in `metadata`: `summary`, `details`, `tags`, `source`, `status`, `importance`, and `confidence`.
+- [x] Add CLI support for `--summary`, `--details`, `--tag`, `--status`, `--importance`, and `--confidence` while preserving the existing positional `content` path.
+- [x] Make retrieval search `content`, `metadata.summary`, `metadata.details`, and `metadata.tags`, with category and status filters before scoring.
+- [x] Update `save_insight` and hook compaction guidance so Codex writes concise, scannable memory cards instead of arbitrary transcripts.
+- [x] Add tests proving a tagged structured card is retrieved without model embeddings and beats an untagged keyword-only note.
 
 ### Task 2: Make Hook Payload Handling Release-Grade
 
