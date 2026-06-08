@@ -41,7 +41,7 @@ def main() -> None:
         ),
         root,
     )
-    if save_result["action"] == "duplicate_suppressed":
+    if save_result["action"] in {"ignored", "updated_existing"}:
         print(json.dumps({"continue": True}))
         return
     record = save_result["record"]

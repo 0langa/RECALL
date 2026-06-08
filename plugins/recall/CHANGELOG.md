@@ -8,6 +8,9 @@
 - Added automatic hook memory hygiene for duplicate suppression and near-duplicate linking.
 - Added curated grouped `SessionStart` context injection.
 - Exposed safe `doctor`, `repair`, and `list-categories` actions through `recall_skill.py`.
+- Added lifecycle operations for confirming, resolving, marking stale, superseding, merging, and non-destructively pruning memories.
+- Added hook write policy classification for ignored, refreshed, new, related, and superseding automatic memories.
+- Added CLI-first memory review summaries through `recall_skill.py review-memory`.
 
 ## 0.1.0 - 2026-06-06
 
@@ -21,7 +24,7 @@
 - Added deterministic local retrieval scoring, lexical boosts, status filters, and heuristic summarization.
 - Added rebuildable `vector_index.bin` support with `rebuild-index`, `doctor`, and `repair` commands.
 - Added malformed JSONL row tolerance and index integrity diagnostics.
-- Added `save_insight`, `retrieve_memory`, and `define_category` skills.
+- Added `save-insight`, `retrieve-memory`, and `define-category` skills.
 - Added a narrow `recall_skill.py` adapter so bundled skills use a public plugin action surface instead of the backend maintenance CLI.
 - Added lifecycle hooks for session start, compaction, tool use, prompt inspection, and stop.
 - Added compact hook payload parsing for Codex-shaped events.

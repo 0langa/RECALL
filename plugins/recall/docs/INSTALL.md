@@ -52,10 +52,23 @@ python ./scripts/recall_skill.py repair
 
 For developer/support diagnostics, the internal backend script still exposes lower-level maintenance commands such as `rebuild-index`. Those commands are not the normal end-user workflow.
 
+To review and clean up project memory from the same public adapter used by bundled skills:
+
+```bash
+python ./scripts/recall_skill.py review-memory --limit 20
+python ./scripts/recall_skill.py confirm-memory <id>
+python ./scripts/recall_skill.py resolve-memory <id> --note "<why this is resolved>"
+python ./scripts/recall_skill.py supersede-memory <old-id> <new-id>
+python ./scripts/recall_skill.py merge-memories <primary-id> <secondary-id> [<secondary-id>...]
+python ./scripts/recall_skill.py prune-memory <id> --note "<why this was archived>"
+```
+
+Pruning is non-destructive; it archives the memory rather than deleting project data.
+
 If a support session needs to normalize category names after manual config edits, run:
 
 ```bash
 python ./scripts/update_categories.py --root <project-root>
 ```
 
-RECALL does not register an `UpdateCategories` hook event; category maintenance is an explicit support command, while normal category refinement uses the bundled `define_category` skill.
+RECALL does not register an `UpdateCategories` hook event; category maintenance is an explicit support command, while normal category refinement uses the bundled `define-category` skill.

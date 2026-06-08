@@ -274,7 +274,7 @@ class HookTests(unittest.TestCase):
             self.assertEqual(len(result["results"]), 2)
             self.assertIn("related_memory_id", result["results"][0]["metadata"])
 
-    def test_post_tool_use_successful_listing_avoids_raw_output_dump(self) -> None:
+    def test_post_tool_use_successful_listing_is_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             output = run_hook(
                 "post_tool_use.py",
@@ -290,14 +290,9 @@ class HookTests(unittest.TestCase):
                     },
                 },
             )
-            self.assertTrue(output["continue"])
+            self.assertEqual(output, {"continue": True})
             result = query_memory(tmp, "Get-ChildItem", "commands")
-            stored = result["results"][0]["content"]
-            self.assertIn("Get-ChildItem -Force", stored)
-            self.assertIn("exit_code: 0", stored)
-            self.assertNotIn("README.md", stored)
-            self.assertNotIn("\x1b", stored)
-            self.assertLess(len(stored), 220)
+            self.assertEqual(result["results"], [])
 
     def test_pre_compact_uses_event_fields_not_raw_envelope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -119,8 +119,8 @@ def assert_plugin_shape(plugin_root: Path) -> None:
         plugin_root / "hooks" / "scripts" / "session_start.py",
         plugin_root / "scripts" / "recall_skill.py",
         plugin_root / "scripts" / "memory_manager.py",
-        plugin_root / "skills" / "save_insight" / "SKILL.md",
-        plugin_root / "skills" / "retrieve_memory" / "SKILL.md",
+        plugin_root / "skills" / "save-insight" / "SKILL.md",
+        plugin_root / "skills" / "retrieve-memory" / "SKILL.md",
     ]
     missing = [str(path) for path in required_paths if not path.exists()]
     require(not missing, f"Plugin root is missing required files: {missing}")
@@ -187,6 +187,23 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
     )
     require("Skill adapter smoke path" in skill_query.get("summary", ""), "skill adapter retrieval failed")
     checks.append("skill adapter save and retrieval pass")
+
+    review = run_json(
+        skill_command(plugin_root, project_root, "review-memory", "--category", "requirements", "--limit", "5"),
+        cwd=plugin_root,
+    )
+    require(review["review"]["shown"] >= 1, "review-memory did not show seeded requirements")
+    confirmed = run_json(
+        skill_command(plugin_root, project_root, "confirm-memory", str(skill_save["id"]), "--source-session", "smoke"),
+        cwd=plugin_root,
+    )
+    require(confirmed["metadata"].get("source_session") == "smoke", "confirm-memory did not mark source_session")
+    resolved = run_json(
+        skill_command(plugin_root, project_root, "resolve-memory", str(skill_save["id"]), "--note", "smoke lifecycle check"),
+        cwd=plugin_root,
+    )
+    require(resolved["metadata"].get("status") == "resolved", "resolve-memory did not resolve the memory")
+    checks.append("review and lifecycle adapter actions pass")
 
     rebuild = run_json(memory_command(plugin_root, project_root, "rebuild-index"), cwd=plugin_root)
     require(rebuild["indexed_records"] >= 4, "rebuild-index did not index seeded records")

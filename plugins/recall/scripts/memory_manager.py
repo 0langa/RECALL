@@ -14,8 +14,10 @@ import config as recall_config
 from embedder import embed
 import index_store
 import memory_hygiene
+import memory_lifecycle
 import retrieval
 import storage
+import write_policy
 
 
 MemoryRecord = storage.MemoryRecord
@@ -25,7 +27,7 @@ SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
 ]
 
-CARD_STATUSES = {"active", "open", "resolved", "superseded", "archived"}
+CARD_STATUSES = {"active", "open", "resolved", "superseded", "stale", "archived"}
 
 
 def utc_now() -> str:
@@ -106,6 +108,18 @@ def build_card_metadata(
     return {key: value for key, value in metadata.items() if value not in ("", [], None)}
 
 
+def get_record(record_id: int, root: str | Path | None = None) -> MemoryRecord | None:
+    return storage.get_record(record_id, root)
+
+
+def update_record_metadata(
+    record_id: int,
+    metadata: dict[str, Any],
+    root: str | Path | None = None,
+) -> MemoryRecord:
+    return storage.update_record_metadata(record_id, metadata, root)
+
+
 def add_record(
     category: str,
     content: str,
@@ -150,21 +164,39 @@ def add_record_if_useful(
     safe_content = redact_secrets(content.strip())
     if not safe_content:
         raise ValueError("Cannot store an empty RECALL memory.")
-    related = memory_hygiene.find_related_record(category, safe_content, metadata, root)
-    fingerprint = memory_hygiene.content_fingerprint(category, safe_content, metadata)
-    if related and related.kind == "exact":
+    decision = write_policy.classify_write(category, safe_content, metadata, str(root) if root is not None else None)
+    if decision.action == "ignore":
         return {
-            "action": "duplicate_suppressed",
+            "action": "ignored",
             "record": None,
-            "duplicate_id": related.record.id,
+            "duplicate_id": None,
+            "reason": decision.reason,
         }
+    if decision.action == "update_existing" and decision.related_id is not None:
+        confirmed = confirm_record(
+            decision.related_id,
+            root,
+            source_session=str(metadata.get("turn_id") or metadata.get("source_session") or "") or None,
+        )
+        return {
+            "action": "updated_existing",
+            "record": confirmed,
+            "duplicate_id": decision.related_id,
+            "reason": decision.reason,
+        }
+    fingerprint = memory_hygiene.content_fingerprint(category, safe_content, metadata)
     metadata["recall_fingerprint"] = fingerprint
+    if decision.supersedes_id is not None:
+        metadata["supersedes"] = memory_lifecycle.add_ids(metadata.get("supersedes"), decision.supersedes_id)
     action = "saved"
-    if related and related.kind == "near":
-        metadata["related_memory_id"] = related.record.id
-        metadata["related_similarity"] = round(related.similarity, 4)
+    if decision.related_id is not None and decision.similarity is not None:
+        metadata["related_memory_id"] = decision.related_id
+        metadata["related_to"] = memory_lifecycle.add_ids(metadata.get("related_to"), decision.related_id)
+        metadata["related_similarity"] = round(decision.similarity, 4)
         action = "saved_related"
     record = add_record(category, safe_content, metadata, root)
+    if decision.supersedes_id is not None:
+        memory_lifecycle.supersede(decision.supersedes_id, record.id, root, "Automatic write policy supersession cue.")
     return {"action": action, "record": record, "duplicate_id": None}
 
 
@@ -251,6 +283,40 @@ def repair(root: str | Path | None = None) -> dict[str, Any]:
     storage.init_store(root)
     rebuild_report = rebuild_index(root)
     return {"repair": rebuild_report, "doctor": doctor(root)}
+
+
+def confirm_record(record_id: int, root: str | Path | None = None, source_session: str | None = None) -> MemoryRecord:
+    return memory_lifecycle.confirm(record_id, root, source_session)
+
+
+def resolve_record(record_id: int, root: str | Path | None = None, note: str | None = None) -> MemoryRecord:
+    return memory_lifecycle.resolve(record_id, root, note)
+
+
+def mark_record_stale(record_id: int, root: str | Path | None = None, note: str | None = None) -> MemoryRecord:
+    return memory_lifecycle.mark_stale(record_id, root, note)
+
+
+def prune_record(record_id: int, root: str | Path | None = None, note: str | None = None) -> MemoryRecord:
+    return memory_lifecycle.prune(record_id, root, note)
+
+
+def supersede_record(
+    old_record_id: int,
+    new_record_id: int,
+    root: str | Path | None = None,
+    note: str | None = None,
+) -> dict[str, MemoryRecord]:
+    return memory_lifecycle.supersede(old_record_id, new_record_id, root, note)
+
+
+def merge_records(
+    primary_id: int,
+    secondary_ids: list[int | str],
+    root: str | Path | None = None,
+    note: str | None = None,
+) -> dict[str, Any]:
+    return memory_lifecycle.merge(primary_id, secondary_ids, root, note)
 
 
 def define_category(

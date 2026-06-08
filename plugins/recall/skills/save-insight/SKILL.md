@@ -1,6 +1,6 @@
 ---
-name: save_insight
-description: Save a project-specific memory into RECALL using a structured category and optional metadata.
+name: save-insight
+description: Use when the user asks Codex to remember durable project context in local-only RECALL memory.
 ---
 
 # Save Insight
@@ -30,7 +30,7 @@ Prefer one of RECALL's built-in categories:
 - `requirements`
 - `risks`
 
-Custom categories are allowed. If a category does not exist, RECALL auto-creates it with a default weight and records a warning in metadata. After auto-creation, recommend refining the category with `define_category` when the category will be reused.
+Custom categories are allowed. If a category does not exist, RECALL auto-creates it with a default weight and records a warning in metadata. After auto-creation, recommend refining the category with `define-category` when the category will be reused.
 
 ## Memory Card Shape
 
@@ -42,11 +42,13 @@ Prefer structured, scannable memory cards. Keep `content` human-readable and put
   "details": "Short supporting context, cause, decision, or acceptance rule.",
   "tags": ["lowercase-tag", "project-area"],
   "source": "user|pre_compact|post_tool_use|manual",
-  "status": "active|open|resolved|superseded|archived",
+  "status": "active|open|resolved|superseded|stale|archived",
   "importance": 0.0,
   "confidence": 0.0
 }
 ```
+
+Lifecycle fields may also be present when a memory was confirmed, merged, superseded, or reviewed: `related_to`, `supersedes`, `superseded_by`, `source_session`, and `last_confirmed`. Prefer using the public review/lifecycle adapter commands to manage those fields instead of editing metadata by hand.
 
 ## Workflow
 
@@ -66,4 +68,5 @@ Use `--metadata` with a JSON object when file paths, command names, or issue IDs
 ```bash
 python ./scripts/recall_skill.py save-insight decisions "Use SQLite as RECALL's default backend." --summary "SQLite is the default backend." --details "It is local, embedded, and requires no service." --tag sqlite --tag local-first --source skill --status active --importance 0.8 --confidence 0.9
 python ./scripts/recall_skill.py save-insight commands "Verified test command: python -m unittest discover -s tests" --summary "Use unittest discovery for validation." --tag tests --tag command --source skill --status active --importance 0.7 --confidence 1.0
+python ./scripts/recall_skill.py supersede-memory 12 18 --note "Memory #18 corrects the older decision."
 ```

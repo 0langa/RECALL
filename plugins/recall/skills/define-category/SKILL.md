@@ -1,6 +1,6 @@
 ---
-name: define_category
-description: Create or update a custom RECALL memory category with a description and retrieval weight.
+name: define-category
+description: Use when the user wants to create, refine, or inspect a local-only RECALL memory category.
 ---
 
 # Define Category

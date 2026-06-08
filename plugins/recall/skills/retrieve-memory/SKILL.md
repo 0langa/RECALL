@@ -1,6 +1,6 @@
 ---
-name: retrieve_memory
-description: Retrieve relevant local project memories from RECALL, optionally filtered by category.
+name: retrieve-memory
+description: Use when prior local RECALL project memory may help with the current Codex task or review.
 ---
 
 # Retrieve Memory
@@ -41,6 +41,13 @@ If `doctor` reports an incomplete index or available repairs, ask before running
 
 ```bash
 python ./scripts/recall_skill.py repair
+```
+
+When the task is to inspect what RECALL currently believes, use the review surface instead of broad retrieval:
+
+```bash
+python ./scripts/recall_skill.py review-memory --limit 20
+python ./scripts/recall_skill.py review-memory --status active --category requirements
 ```
 
 ## Result Handling
