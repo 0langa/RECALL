@@ -119,6 +119,13 @@ Expected major/minor/patch for this environment:
 
 If `pwsh` is unavailable or reports an unexpected version, stop and report that environment mismatch instead of silently falling back to Windows PowerShell 5.1.
 
+Hard script-generation rule:
+
+- Do not emit `#requires -Version 5.1` for this project.
+- For PowerShell scripts, use `#requires -Version 7.6` when a `#requires` line is useful.
+- Do not mention or target Windows PowerShell 5.1 unless the user explicitly asks for legacy compatibility.
+- If the agent just read this file and still emits `#requires -Version 5.1`, treat that as a failed answer and correct it before returning.
+
 General references worth remembering:
 
 - https://myitforum.substack.com/p/common-mistakes-in-powershell-and
@@ -206,6 +213,26 @@ if (Test-Path -LiteralPath $jsonFile) {
 PowerShell 7 supports `&&` and `||`, but use them as PowerShell pipeline-chain operators, not as an excuse to write Bash-shaped scripts. In committed scripts and troubleshooting docs, prefer `if`, `try`/`catch`, and explicit exit-code checks when clarity matters.
 
 When success means "matches were found," check the resulting collection. When success means "the command completed," use `try`/`catch` or `$?` immediately after the pipeline.
+
+### PowerShell Script Answer Checklist
+
+Before returning any generated PowerShell script, check it against this list:
+
+- It targets `pwsh` / PowerShell 7.6.2, not Windows PowerShell 5.1.
+- It does not contain `#requires -Version 5.1`.
+- It does not shell out to Bash for Windows-native work.
+- It uses PowerShell-native cmdlets for filesystem, text search, web requests, and JSON.
+- It uses `Join-Path` and `-LiteralPath` where paths are computed or user/workspace-derived.
+- It distinguishes "command completed" from "domain result exists"; for example, log matches require checking the match collection, not only `$?`.
+- It does not silently collapse an explicitly nested JSON requirement into a top-level property access.
+- It prints only the requested output when the user asks for raw code or raw values.
+
+When a prompt asks for a nested JSON key such as `build_id` but does not provide the path, do one of the following:
+
+- Implement a bounded recursive search for that key.
+- Ask for the schema if exact path correctness matters and the user allowed questions.
+
+Do not simply write `$stateData.build_id` while claiming to satisfy an unknown nested property requirement.
 
 ### Paths, Quoting, And Literals
 
