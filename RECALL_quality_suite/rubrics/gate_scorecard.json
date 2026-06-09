@@ -1,0 +1,30 @@
+{
+  "scale": {
+    "min": 0,
+    "max": 5
+  },
+  "dimensions": [
+    "factual_accuracy",
+    "specificity",
+    "completeness",
+    "historical_awareness",
+    "current_state_awareness",
+    "actionability",
+    "hallucination_safety",
+    "regression_prevention"
+  ],
+  "passing_standard": {
+    "minimum_dimension_score": 4,
+    "minimum_average_per_question": 4.5,
+    "required_five": [
+      "hallucination_safety",
+      "current_state_awareness"
+    ],
+    "automatic_failure": [
+      "confident_false_source_code_claim",
+      "confident_false_architecture_claim",
+      "stale_memory_treated_as_current",
+      "missing_information_fabricated"
+    ]
+  }
+}

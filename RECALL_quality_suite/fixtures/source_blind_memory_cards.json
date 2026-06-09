@@ -1,0 +1,230 @@
+[
+  {
+    "category": "architecture",
+    "content": "RECALL is a local-first Codex plugin. Runtime project memory is stored inside the active project's .codex_memory directory and is retrieved across fresh sessions.",
+    "summary": "RECALL stores project-local memory in .codex_memory.",
+    "details": "The architecture uses a public skill adapter, an internal memory manager, storage backends, deterministic local embedding/index files, retrieval ranking, and lifecycle hooks.",
+    "tags": [
+      "architecture",
+      "local-first",
+      "codex-memory",
+      "synthetic-baseline"
+    ],
+    "source": "source-blind-fixture",
+    "status": "active",
+    "importance": 1.0,
+    "confidence": 0.98
+  },
+  {
+    "category": "architecture",
+    "content": "Lifecycle hooks cover SessionStart, UserPromptSubmit, PostToolUse, PreCompact, and Stop. SessionStart injects recalled context; prompt inspection catches explicit memory cues; tool and compact/stop hooks save compact checkpoints.",
+    "summary": "RECALL lifecycle hooks maintain and inject memory.",
+    "details": "Hook payload drift remains a compatibility risk because live Codex payloads may change.",
+    "tags": [
+      "hooks",
+      "sessionstart",
+      "posttooluse",
+      "precompact",
+      "stop",
+      "synthetic-baseline"
+    ],
+    "source": "source-blind-fixture",
+    "status": "active",
+    "importance": 0.95,
+    "confidence": 0.95
+  },
+  {
+    "category": "architecture",
+    "content": "The repository root acts as the marketplace wrapper and the installable plugin lives at plugins/recall. Source-blind memory should distinguish repo wrapper concerns from plugin runtime concerns.",
+    "summary": "Repo root is wrapper; installable plugin lives at plugins/recall.",
+    "details": "This layout matters for install, build, marketplace smoke, and release verification.",
+    "tags": [
+      "architecture",
+      "marketplace-layout",
+      "plugins-recall",
+      "project-history"
+    ],
+    "source": "plugins/recall/docs/E2E_VERIFICATION_LOG.md",
+    "status": "active",
+    "importance": 0.96,
+    "confidence": 0.97
+  },
+  {
+    "category": "decisions",
+    "content": "SQLite is the default storage backend because it is local, durable, and requires no external service. JSONL remains supported through configuration for simpler inspection and compatibility scenarios.",
+    "summary": "SQLite default, JSONL optional.",
+    "details": "Future agents must not replace local storage with a network dependency for the core V1 path.",
+    "tags": [
+      "storage",
+      "sqlite",
+      "jsonl",
+      "local-first",
+      "synthetic-baseline"
+    ],
+    "source": "source-blind-fixture",
+    "status": "active",
+    "importance": 0.95,
+    "confidence": 0.95
+  },
+  {
+    "category": "decisions",
+    "content": "Network or hosted embeddings were deferred. V1 retrieval uses deterministic local embeddings and weighted lexical scoring so smoke tests are repeatable and no network calls are required.",
+    "summary": "Use deterministic local retrieval for V1.",
+    "details": "Bundled local model embeddings may be reconsidered after V1 only if packaging and smoke testing remain local and repeatable.",
+    "tags": [
+      "retrieval",
+      "embeddings",
+      "no-network",
+      "v1",
+      "synthetic-baseline"
+    ],
+    "source": "source-blind-fixture",
+    "status": "active",
+    "importance": 0.9,
+    "confidence": 0.95
+  },
+  {
+    "category": "decisions",
+    "content": "Public RECALL usage should go through skills, hooks, and scripts/recall_skill.py. scripts/memory_manager.py remains internal backend and support plumbing rather than the normal user-facing surface.",
+    "summary": "Public surface is skills, hooks, and recall_skill.py.",
+    "details": "Future agents should not push normal Codex users toward memory_manager.py unless maintenance diagnostics are explicitly requested.",
+    "tags": [
+      "public-surface",
+      "recall-skill",
+      "memory-manager",
+      "project-history"
+    ],
+    "source": "plugins/recall/docs/RECALL_V1_COMPLETION_PLAN.md",
+    "status": "active",
+    "importance": 0.99,
+    "confidence": 0.98
+  },
+  {
+    "category": "decisions",
+    "content": "Earlier idea: transformer-grade semantic retrieval should be the default V1 implementation.",
+    "summary": "Deprecated V1 transformer default idea.",
+    "details": "This is superseded by deterministic local retrieval for V1 because package reliability and offline repeatability are higher priority.",
+    "tags": [
+      "retrieval",
+      "superseded",
+      "synthetic-baseline"
+    ],
+    "source": "source-blind-fixture",
+    "status": "superseded",
+    "importance": 0.5,
+    "confidence": 0.9
+  },
+  {
+    "category": "requirements",
+    "content": "RECALL must not store credentials, private keys, tokens, passwords, or sensitive personal data. Secret-like patterns must be redacted before storage.",
+    "summary": "Redact secret-like memory content.",
+    "details": "Package and runtime checks should fail if obvious token, password, or api-key-like values are stored unredacted.",
+    "tags": [
+      "security",
+      "redaction",
+      "privacy",
+      "synthetic-baseline"
+    ],
+    "source": "source-blind-fixture",
+    "status": "active",
+    "importance": 1.0,
+    "confidence": 0.98
+  },
+  {
+    "category": "requirements",
+    "content": "The practical one-click install story is limited: RECALL can be installed from Codex marketplace flow, but hook execution still requires Codex hook trust review and the environment still assumes a local Python runtime is available.",
+    "summary": "Install is easy, but hook trust review and Python are still required.",
+    "details": "Do not describe RECALL as fully frictionless or managed-trust until those dependencies are removed or product-managed.",
+    "tags": [
+      "install",
+      "hook-trust",
+      "python-runtime",
+      "project-history"
+    ],
+    "source": "plugins/recall/README.md",
+    "status": "active",
+    "importance": 0.96,
+    "confidence": 0.97
+  },
+  {
+    "category": "risks",
+    "content": "Hook payload drift can break live Codex context capture or injection even when unit tests pass. Live install verification is required before release.",
+    "summary": "Hook payload drift is a release risk.",
+    "details": "Automated tests simulate payloads, but final release still needs Codex plugin install and hook trust verification.",
+    "tags": [
+      "hooks",
+      "payload-drift",
+      "release-risk",
+      "synthetic-baseline"
+    ],
+    "source": "source-blind-fixture",
+    "status": "open",
+    "importance": 0.9,
+    "confidence": 0.95
+  },
+  {
+    "category": "project_state",
+    "content": "Release v0.1.0 exists, and recall.zip was built, package-inspected, attached to the GitHub release, and verified again through built-zip marketplace smoke from a temporary marketplace extraction.",
+    "summary": "v0.1.0 release and recall.zip artifact were verified.",
+    "details": "This is historical release evidence, not proof that future releases inherit the same status without rerunning the gates.",
+    "tags": [
+      "release",
+      "recall.zip",
+      "built-zip",
+      "project-history"
+    ],
+    "source": "plugins/recall/docs/E2E_VERIFICATION_LOG.md",
+    "status": "active",
+    "importance": 0.94,
+    "confidence": 0.97
+  },
+  {
+    "category": "commands",
+    "content": "Verified commands: python -m unittest discover -s tests; python ./scripts/smoke_recall.py --json; python ./scripts/recall_skill.py retrieve-memory \"current project context\" --summary.",
+    "summary": "Core local validation commands.",
+    "details": "Run from plugins/recall unless using repo-root build wrappers.",
+    "tags": [
+      "commands",
+      "tests",
+      "smoke",
+      "synthetic-baseline"
+    ],
+    "source": "source-blind-fixture",
+    "status": "active",
+    "importance": 0.85,
+    "confidence": 0.95
+  },
+  {
+    "category": "commands",
+    "content": "Release verification evidence includes build_plugin.ps1 from repo root, inspect_package.py against dist/recall.zip, installed-cache smoke, and built-archive marketplace smoke for extracted recall.zip installs.",
+    "summary": "Release command history includes build, inspect, installed-cache smoke, and built-zip smoke.",
+    "details": "These commands prove packaging and install lifecycle history, but they still need reruns for future releases.",
+    "tags": [
+      "commands",
+      "build-plugin",
+      "installed-cache-smoke",
+      "built-zip",
+      "project-history"
+    ],
+    "source": "plugins/recall/docs/E2E_VERIFICATION_LOG.md",
+    "status": "active",
+    "importance": 0.91,
+    "confidence": 0.96
+  },
+  {
+    "category": "tasks",
+    "content": "Next high-priority release work: improve source-blind memory realism with project-history-backed fixtures, strengthen contradiction and staleness handling, and keep install-lifecycle evidence repeatable for future releases.",
+    "summary": "Next priority is stronger source-blind realism and repeatable release evidence.",
+    "details": "Do not bypass memory updates during implementation; new behavior must update project state, decisions, risks, commands, and source-blind fixtures.",
+    "tags": [
+      "roadmap",
+      "source-blind",
+      "release",
+      "project-history"
+    ],
+    "source": "RECALL_quality_suite/docs/MEMORY_QUALITY_EVOLUTION_PLAN.md",
+    "status": "open",
+    "importance": 0.92,
+    "confidence": 0.94
+  }
+]

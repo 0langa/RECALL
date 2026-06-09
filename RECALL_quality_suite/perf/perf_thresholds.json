@@ -1,0 +1,12 @@
+{
+  "records": 500,
+  "queries": 30,
+  "quick_records": 120,
+  "quick_queries": 10,
+  "max_seed_seconds": 90.0,
+  "quick_max_seed_seconds": 20.0,
+  "max_rebuild_seconds": 5.0,
+  "max_doctor_seconds": 2.0,
+  "max_query_p95_ms": 750.0,
+  "max_query_average_ms": 500.0
+}

@@ -1,0 +1,18 @@
+{
+  "name": "RECALL Quality Suite",
+  "version": "1.0.0",
+  "target_repo": "0langa/RECALL",
+  "target_plugin_root": "plugins/recall",
+  "requires": [
+    "Python 3.11+"
+  ],
+  "third_party_dependencies": [],
+  "gates": [
+    "existing_unit_tests",
+    "quality_suite_contract_tests",
+    "existing_smoke_harness",
+    "performance_benchmark",
+    "package_hygiene",
+    "human_source_blind_evaluation"
+  ]
+}
