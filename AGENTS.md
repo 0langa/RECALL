@@ -101,6 +101,157 @@ cd .\plugins\recall
 python .\scripts\smoke_zip_marketplace.py --json
 ```
 
+## PowerShell On Windows
+
+This repository is actively developed on Windows with PowerShell as the shell. Treat PowerShell as its own runtime, not as `bash` with different path separators.
+
+General references worth remembering:
+
+- https://myitforum.substack.com/p/common-mistakes-in-powershell-and
+- https://powershell.howtos.io/troubleshooting-common-powershell-errors/
+
+### First Rule: Check Real Status, Not Color
+
+Codex may show red text for stderr or PowerShell error streams even when the command ultimately succeeds. Do not infer failure from color alone.
+
+For native executables such as `python`, `git`, `node`, `codex`, or `gh`, check `$LASTEXITCODE` immediately after the command:
+
+```powershell
+python -m unittest discover -s tests
+if ($LASTEXITCODE -ne 0) { throw "tests failed with exit code $LASTEXITCODE" }
+```
+
+For PowerShell cmdlets, check errors with terminating behavior when correctness matters:
+
+```powershell
+$ErrorActionPreference = 'Stop'
+try {
+    Get-Content -LiteralPath '.\plugins\recall\README.md'
+} catch {
+    throw "Failed to read README: $_"
+}
+```
+
+Know the difference:
+
+- `$LASTEXITCODE` is for the most recent native executable.
+- `$?` is PowerShell's success flag for the last pipeline, and can be reset by later commands.
+- `$ErrorActionPreference = 'Stop'` helps cmdlets throw terminating errors, but it does not make native executables throw.
+- Red stderr can be diagnostic output, not failure. Pair it with exit code and expected artifacts.
+
+### RECALL-Specific PowerShell Pitfalls Already Seen
+
+- Do not use `%PLUGIN_ROOT%` in PowerShell hook commands. That is `cmd.exe` syntax and caused earlier Codex hook exits with code `1`.
+- In `hooks/hooks.json`, keep Windows hook commands in the Python-launcher shape that reads `PLUGIN_ROOT` through `os.environ`, adds the hook script directory to `sys.path`, and runs the script with `runpy`.
+- Direct hook scripts may pass when manifest hook commands fail. If hook UI is red, test both the direct script and the exact `commandWindows` form.
+- PowerShell red text in the Codex chat can come from stderr or error-like output even when the process completed. Verify with exit code, hook output JSON, and `.codex_memory` health.
+- The current noisy-memory issue is not the same as hook failure. Hooks can succeed while writing too many low-value `post_tool_use` records.
+
+### Paths, Quoting, And Literals
+
+Prefer `-LiteralPath` for paths from git, file listings, plugin cache directories, or user-provided strings:
+
+```powershell
+Get-Content -LiteralPath 'C:\Users\juliu\source\repos\RECALL\AGENTS.md'
+```
+
+Use single quotes for literal strings and double quotes only when variable interpolation is required:
+
+```powershell
+$root = 'C:\Users\juliu\source\repos\RECALL'
+Write-Output "Repo root: $root"
+```
+
+Avoid mixing slash styles in the same command when a tool is path-sensitive. Python usually accepts `/`, PowerShell-native paths are clearer with `\`.
+
+Use `Join-Path` for computed paths:
+
+```powershell
+$pluginRoot = Join-Path (Get-Location) 'plugins\recall'
+```
+
+### Pipelines Pass Objects
+
+PowerShell pipelines pass objects, not plain text. Do not write filters as if this were `grep`/`awk`.
+
+Use comparison operators such as `-eq`, `-ne`, `-like`, and `-match`:
+
+```powershell
+Get-ChildItem -Force | Where-Object { $_.Name -eq 'plugins' }
+```
+
+Inspect object shape with:
+
+```powershell
+Get-ChildItem | Get-Member
+```
+
+Avoid formatting before data processing. `Format-Table` is for humans at the end of a pipeline, not for data that another command must parse.
+
+### Avoid Aliases In Scripts And Docs
+
+Interactive aliases are fine for quick exploration, but committed scripts and documented commands should use full cmdlet names:
+
+- Use `Get-ChildItem`, not `dir` or `ls`.
+- Use `ForEach-Object`, not `%`.
+- Use `Where-Object`, not `?`.
+- Use `Select-Object`, not `select`.
+
+This keeps commands readable for agents and portable across PowerShell versions.
+
+### Safer File Operations
+
+For recursive delete or move operations, resolve and verify the absolute path first. Never delete a computed path unless it is exactly under the intended workspace or explicitly named target.
+
+```powershell
+$target = Resolve-Path -LiteralPath '.\quality_results'
+if ($target.Path -ne 'C:\Users\juliu\source\repos\RECALL\quality_results') {
+    throw "Unexpected target: $($target.Path)"
+}
+Remove-Item -LiteralPath $target.Path -Recurse -Force
+```
+
+Do not pipe paths from PowerShell into `cmd /c del`, `bash rm`, or another shell for destructive work. Use one shell end to end, preferably native PowerShell cmdlets with `-LiteralPath`.
+
+### Command Composition
+
+Prefer one clear command per tool call when the result matters. If multiple steps must run together, fail explicitly after each native executable:
+
+```powershell
+git add -- AGENTS.md
+if ($LASTEXITCODE -ne 0) { throw "git add failed" }
+git diff --cached --stat
+if ($LASTEXITCODE -ne 0) { throw "git diff failed" }
+```
+
+Avoid long semicolon chains for validation because they can hide which step failed and can create noisy RECALL hook records.
+
+### Execution Policy And Scripts
+
+If a `.ps1` script will not run, check execution policy before changing code:
+
+```powershell
+Get-ExecutionPolicy -List
+```
+
+Prefer fixing the invocation or trust issue over weakening system policy. If a one-off bypass is needed for local validation, keep it scoped to that process:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build_plugin.ps1
+```
+
+### Troubleshooting Checklist
+
+When PowerShell output looks like a failure:
+
+1. Check the command's actual exit code or returned JSON.
+2. Distinguish cmdlet errors from native executable stderr.
+3. Re-run the smallest failing command without unrelated pipeline steps.
+4. Verify paths with `Test-Path` or `Resolve-Path -LiteralPath`.
+5. Check dependencies with explicit version commands such as `python --version`, `py -3 --version`, `node --version`, or `codex --version`.
+6. For hooks, test direct script execution and then the manifest `commandWindows` shape.
+7. Record the real failure mode in docs or tests once fixed.
+
 ## Performance Checks
 
 Performance matters because hooks may run frequently and memory stores can grow quickly.
