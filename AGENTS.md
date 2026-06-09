@@ -147,6 +147,52 @@ Know the difference:
 - PowerShell red text in the Codex chat can come from stderr or error-like output even when the process completed. Verify with exit code, hook output JSON, and `.codex_memory` health.
 - The current noisy-memory issue is not the same as hook failure. Hooks can succeed while writing too many low-value `post_tool_use` records.
 
+### Do Not Translate Windows Tasks Into Bash
+
+If the user gives Windows paths, PowerShell variables, or PowerShell cmdlets, answer and run the task in PowerShell unless the user explicitly asks for Bash.
+
+Bad signs:
+
+- Rewriting `C:\app\logs` as `/c/app/logs`.
+- Using `grep`, `cat`, `awk`, or `curl` when PowerShell has a native cmdlet.
+- Parsing JSON with Python when `ConvertFrom-Json` is enough.
+- Saving a `.sh` file for a task that was clearly Windows-native.
+- Treating a throwaway prompt as permission to change shell/runtime.
+
+For a Windows log-check task, prefer this shape:
+
+```powershell
+$ErrorActionPreference = 'Stop'
+
+$backupDir = Join-Path $env:USERPROFILE 'logs_backup'
+if (-not (Test-Path -LiteralPath $backupDir)) {
+    New-Item -ItemType Directory -Path $backupDir | Out-Null
+}
+
+$logFiles = @(
+    Get-ChildItem -Path 'C:\app\logs' -Filter '*.log' -File -ErrorAction SilentlyContinue |
+        Select-String -Pattern 'FATAL' -SimpleMatch
+)
+
+if ($logFiles.Count -gt 0) {
+    Add-Content -Path (Join-Path $backupDir 'status.txt') -Value "$([DateTime]::Now) - Logs checked successfully"
+} else {
+    Write-Output 'Check failed'
+}
+
+$jsonFile = Join-Path $backupDir 'status.json'
+Invoke-RestMethod -Uri 'https://internal.local' -OutFile $jsonFile -ErrorAction SilentlyContinue
+
+if (Test-Path -LiteralPath $jsonFile) {
+    $version = (Get-Content -LiteralPath $jsonFile | ConvertFrom-Json).version
+    Write-Output $version
+}
+```
+
+PowerShell 7 supports `&&` and `||`, but use them as PowerShell pipeline-chain operators, not as an excuse to write Bash-shaped scripts. In committed scripts and troubleshooting docs, prefer `if`, `try`/`catch`, and explicit exit-code checks when clarity matters.
+
+When success means "matches were found," check the resulting collection. When success means "the command completed," use `try`/`catch` or `$?` immediately after the pipeline.
+
 ### Paths, Quoting, And Literals
 
 Prefer `-LiteralPath` for paths from git, file listings, plugin cache directories, or user-provided strings:
