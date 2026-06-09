@@ -103,7 +103,21 @@ python .\scripts\smoke_zip_marketplace.py --json
 
 ## PowerShell On Windows
 
-This repository is actively developed on Windows with PowerShell as the shell. Treat PowerShell as its own runtime, not as `bash` with different path separators.
+This repository is actively developed on Windows with PowerShell 7.6.2 as the shell. Use `pwsh` for PowerShell work. Do not use Windows PowerShell 5.1 (`powershell` / `powershell.exe`) unless the user explicitly asks for legacy compatibility testing. Treat PowerShell as its own runtime, not as `bash` with different path separators.
+
+Verify the shell before PowerShell-sensitive work:
+
+```powershell
+$PSVersionTable.PSVersion
+```
+
+Expected major/minor/patch for this environment:
+
+```text
+7.6.2
+```
+
+If `pwsh` is unavailable or reports an unexpected version, stop and report that environment mismatch instead of silently falling back to Windows PowerShell 5.1.
 
 General references worth remembering:
 
@@ -243,7 +257,7 @@ Interactive aliases are fine for quick exploration, but committed scripts and do
 - Use `Where-Object`, not `?`.
 - Use `Select-Object`, not `select`.
 
-This keeps commands readable for agents and portable across PowerShell versions.
+This keeps commands readable for agents and clear in PowerShell 7.6.2.
 
 ### Safer File Operations
 
@@ -274,7 +288,7 @@ Avoid long semicolon chains for validation because they can hide which step fail
 
 ### Execution Policy And Scripts
 
-If a `.ps1` script will not run, check execution policy before changing code:
+If a `.ps1` script will not run under `pwsh`, check execution policy before changing code:
 
 ```powershell
 Get-ExecutionPolicy -List
@@ -283,7 +297,7 @@ Get-ExecutionPolicy -List
 Prefer fixing the invocation or trust issue over weakening system policy. If a one-off bypass is needed for local validation, keep it scoped to that process:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\build_plugin.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\build_plugin.ps1
 ```
 
 ### Troubleshooting Checklist
