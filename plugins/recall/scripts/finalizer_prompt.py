@@ -18,10 +18,12 @@ def build_finalizer_prompt(packet_path: str) -> str:
             "- Only write RECALL memory through the adapter path listed in the packet.",
             "- Use `save-turn-card` for new durable memory cards.",
             "- Store nothing if no durable memory is justified.",
-            "- Prefer updating, confirming, superseding, merging, resolving, or pruning existing memories over creating duplicates.",
+            "- Prefer updating, confirming, superseding, merging, resolving, or pruning existing memories "
+            "over creating duplicates.",
             "- Store at most 5 new memory cards.",
             "- Do not store secrets, credentials, tokens, private keys, passwords, or sensitive personal data.",
-            "- Keep cards future-useful: decision, requirement, risk, command, architecture, lesson learned, or project state.",
+            "- Keep cards future-useful: decision, requirement, risk, command, architecture, "
+            "lesson learned, or project state.",
             "- End after the memory pass; do not continue normal implementation work.",
             "",
             "Required workflow:",

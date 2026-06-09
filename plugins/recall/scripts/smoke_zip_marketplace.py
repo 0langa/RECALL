@@ -26,7 +26,9 @@ def run(args: list[str], *, cwd: Path = ROOT, check: bool = True) -> subprocess.
     completed = subprocess.run(args, cwd=cwd, text=True, capture_output=True, check=False)
     if check and completed.returncode != 0:
         raise ZipMarketplaceSmokeFailure(
-            f"Command failed ({completed.returncode}): {' '.join(args)}\nSTDOUT: {completed.stdout}\nSTDERR: {completed.stderr}"
+            f"Command failed ({completed.returncode}): {' '.join(args)}\n"
+            f"STDOUT: {completed.stdout}\n"
+            f"STDERR: {completed.stderr}"
         )
     return completed
 

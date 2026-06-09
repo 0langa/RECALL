@@ -25,7 +25,11 @@ class MemoryReviewTests(unittest.TestCase):
             second = memory_manager.add_record(
                 "requirements",
                 "Older memory cards were verbose.",
-                memory_manager.build_card_metadata(status="superseded", summary="Verbose older cards.", tags=["review"]),
+                memory_manager.build_card_metadata(
+                    status="superseded",
+                    summary="Verbose older cards.",
+                    tags=["review"],
+                ),
                 root=tmp,
             )
             memory_manager.merge_records(first.id, [second.id], tmp)

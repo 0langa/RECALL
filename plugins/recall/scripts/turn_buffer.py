@@ -39,7 +39,8 @@ def turn_events_path(root: str | Path | None, session_id: str | None, turn_id: s
 
 
 def finalizer_request_path(root: str | Path | None, session_id: str | None, turn_id: str | None) -> Path:
-    return runtime_dir(root) / "finalizer_requests" / f"{safe_name(session_id, 'session')}-{safe_name(turn_id, 'turn')}.json"
+    request_name = f"{safe_name(session_id, 'session')}-{safe_name(turn_id, 'turn')}.json"
+    return runtime_dir(root) / "finalizer_requests" / request_name
 
 
 def truncate(text: str, limit: int) -> str:

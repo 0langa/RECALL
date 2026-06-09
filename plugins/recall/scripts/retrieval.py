@@ -145,7 +145,11 @@ def query(
 ) -> dict[str, Any]:
     cfg = recall_config.load_config(root)
     include_set = {recall_config.normalize_category(value) for value in categories} if categories else None
-    exclude_set = {recall_config.normalize_category(value) for value in exclude_categories} if exclude_categories else None
+    exclude_set = (
+        {recall_config.normalize_category(value) for value in exclude_categories}
+        if exclude_categories
+        else None
+    )
     status_set = {value.strip().lower() for value in statuses} if statuses else None
     since = None
     if cfg.get("recency_days") is not None:

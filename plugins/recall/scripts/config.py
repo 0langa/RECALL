@@ -38,7 +38,10 @@ DEFAULT_CATEGORIES: dict[str, dict[str, Any]] = {
         "weight": 0.9,
     },
     "project_state": {
-        "description": "Current repository status, active branch, pending refactors, known broken areas, and checkpoints.",
+        "description": (
+            "Current repository status, active branch, pending refactors, known broken areas, "
+            "and checkpoints."
+        ),
         "weight": 1.3,
     },
     "architecture": {

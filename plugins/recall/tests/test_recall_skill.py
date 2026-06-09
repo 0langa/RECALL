@@ -23,7 +23,12 @@ def run_skill(root: str, *args: str) -> dict:
     return json.loads(completed.stdout)
 
 
-def run_skill_with_input(root: str, input_text: str, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def run_skill_with_input(
+    root: str,
+    input_text: str,
+    *args: str,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(ADAPTER), "--root", root, *args],
         input=input_text,

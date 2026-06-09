@@ -78,6 +78,26 @@ class PackageMetadataTests(unittest.TestCase):
             self.assertNotIn("cloud", text, path)
             self.assertNotIn("remote api", text, path)
 
+    def test_memory_management_skill_surface_is_discoverable(self) -> None:
+        skill_names = {path.parent.name for path in (ROOT / "skills").glob("*/SKILL.md")}
+        expected = {
+            "confirm-memory",
+            "define-category",
+            "doctor-memory",
+            "merge-memories",
+            "prune-memory",
+            "repair-memory",
+            "retrieve-memory",
+            "review-memory",
+            "resolve-memory",
+            "save-insight",
+            "save-turn-card",
+            "stale-memory",
+            "supersede-memory",
+        }
+        self.assertGreaterEqual(len(skill_names), 10)
+        self.assertEqual(skill_names, expected)
+
     def test_workflow_examples_cover_core_memory_cards(self) -> None:
         text = (ROOT / "examples" / "workflows.md").read_text(encoding="utf-8").lower()
         for category in ("requirements", "risks", "commands", "session_summaries"):

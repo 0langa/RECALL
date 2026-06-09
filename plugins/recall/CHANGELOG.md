@@ -11,6 +11,7 @@
 - Added lifecycle operations for confirming, resolving, marking stale, superseding, merging, and non-destructively pruning memories.
 - Added hook write policy classification for ignored, refreshed, new, related, and superseding automatic memories.
 - Added CLI-first memory review summaries through `recall_skill.py review-memory`.
+- Added discoverable memory-control skills for finalizer cards, review, confirm, resolve, stale, supersede, merge, prune, doctor, and repair workflows.
 
 ## 0.1.0 - 2026-06-06
 

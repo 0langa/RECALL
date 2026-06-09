@@ -36,7 +36,13 @@ def load_json_card(*, file_path: str | None, use_stdin: bool) -> dict[str, Any]:
     return payload
 
 
-def string_value(payload: dict[str, Any], name: str, *, required: bool = False, default: str | None = None) -> str | None:
+def string_value(
+    payload: dict[str, Any],
+    name: str,
+    *,
+    required: bool = False,
+    default: str | None = None,
+) -> str | None:
     value = payload.get(name, default)
     if value is None:
         if required:

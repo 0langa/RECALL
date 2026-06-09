@@ -84,7 +84,11 @@ class MemoryManagerTests(unittest.TestCase):
 
     def test_query_auto_repairs_incomplete_index(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            memory_manager.add_record("requirements", "RECALL must repair a missing vector index automatically.", root=tmp)
+            memory_manager.add_record(
+                "requirements",
+                "RECALL must repair a missing vector index automatically.",
+                root=tmp,
+            )
             index_path = Path(tmp) / ".codex_memory" / "vector_index.bin"
             index_path.write_text("", encoding="utf-8")
             result = memory_manager.query("missing vector index", root=tmp)

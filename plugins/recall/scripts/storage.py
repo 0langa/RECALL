@@ -218,7 +218,14 @@ def update_record_metadata(record_id: int, metadata: dict[str, Any], root: str |
     with path.open("w", encoding="utf-8") as handle:
         for payload in rewritten:
             handle.write(json.dumps(payload, sort_keys=True) + "\n")
-    return MemoryRecord(record.id, record.category, record.timestamp, record.content, metadata, embedding=record.embedding)
+    return MemoryRecord(
+        record.id,
+        record.category,
+        record.timestamp,
+        record.content,
+        metadata,
+        embedding=record.embedding,
+    )
 
 
 def iter_jsonl_records(root: str | Path | None = None) -> Iterable[MemoryRecord]:

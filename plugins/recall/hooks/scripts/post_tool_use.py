@@ -8,7 +8,14 @@ import json
 import re
 
 import _recall_path  # noqa: F401
-from hook_io import event_name, patch_targets, read_hook_input, root_from_payload, tool_command, tool_response_text
+from hook_io import (
+    event_name,
+    patch_targets,
+    read_hook_input,
+    root_from_payload,
+    tool_command,
+    tool_response_text,
+)
 import memory_manager
 import turn_buffer
 
@@ -18,7 +25,8 @@ SUCCESS_RE = re.compile(r"(?i)\b(passed|success|succeeded|done|0 failures|exit[_
 MAX_CAPTURE_CHARS = 700
 ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 READ_ONLY_COMMAND_RE = re.compile(
-    r"(?i)^\s*(?:Get-Content|Get-ChildItem|Select-String|Select-Object|Get-Location|rg\b|git\s+status\b|git\s+log\b|git\s+show\b|dir\b|ls\b|pwd\b|cat\b|type\b)"
+    r"(?i)^\s*(?:Get-Content|Get-ChildItem|Select-String|Select-Object|Get-Location|"
+    r"rg\b|git\s+status\b|git\s+log\b|git\s+show\b|dir\b|ls\b|pwd\b|cat\b|type\b)"
 )
 TEST_COMMAND_RE = re.compile(r"(?i)\b(pytest|unittest|npm\s+test|pnpm\s+test|yarn\s+test|go\s+test|cargo\s+test)\b")
 BUILD_COMMAND_RE = re.compile(r"(?i)\b(build|build_plugin|package|inspect_package|smoke_recall)\b")
@@ -58,7 +66,8 @@ def compact_tool_response(tool_name: str, command: str | None, output: str) -> s
     body = "\n".join(selected)
     if len(body) > MAX_CAPTURE_CHARS:
         body = body[:MAX_CAPTURE_CHARS].rstrip() + "\n[truncated]"
-    return "\n".join(part for part in [f"Tool: {tool_name}" if tool_name else "", f"Command: {command}" if command else "", body] if part)
+    parts = [f"Tool: {tool_name}" if tool_name else "", f"Command: {command}" if command else "", body]
+    return "\n".join(part for part in parts if part)
 
 
 def classify_signal(tool_name: str, command: str | None, content: str) -> tuple[str, bool, float, list[str]]:

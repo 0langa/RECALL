@@ -199,7 +199,14 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
     )
     require(confirmed["metadata"].get("source_session") == "smoke", "confirm-memory did not mark source_session")
     resolved = run_json(
-        skill_command(plugin_root, project_root, "resolve-memory", str(skill_save["id"]), "--note", "smoke lifecycle check"),
+        skill_command(
+            plugin_root,
+            project_root,
+            "resolve-memory",
+            str(skill_save["id"]),
+            "--note",
+            "smoke lifecycle check",
+        ),
         cwd=plugin_root,
     )
     require(resolved["metadata"].get("status") == "resolved", "resolve-memory did not resolve the memory")
@@ -272,7 +279,10 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
     )
     require(session_start["continue"] is True, "SessionStart hook did not continue")
     context = session_start.get("hookSpecificOutput", {}).get("additionalContext", "")
-    require("RECALL project memory" in context and "smoke" in context.lower(), "SessionStart did not inject smoke context")
+    require(
+        "RECALL project memory" in context and "smoke" in context.lower(),
+        "SessionStart did not inject smoke context",
+    )
     checks.append("SessionStart injects recalled project context")
 
     final_doctor = run_json(memory_command(plugin_root, project_root, "doctor"), cwd=plugin_root)

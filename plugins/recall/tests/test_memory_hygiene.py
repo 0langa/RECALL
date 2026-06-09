@@ -56,7 +56,10 @@ class MemoryHygieneTests(unittest.TestCase):
 
             self.assertEqual(second["action"], "saved_related")
             self.assertEqual(second["record"].metadata["related_memory_id"], first["record"].id)
-            self.assertGreaterEqual(second["record"].metadata["related_similarity"], memory_hygiene.NEAR_DUPLICATE_THRESHOLD)
+            self.assertGreaterEqual(
+                second["record"].metadata["related_similarity"],
+                memory_hygiene.NEAR_DUPLICATE_THRESHOLD,
+            )
 
     def test_explicit_add_record_keeps_duplicate_user_memories(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
