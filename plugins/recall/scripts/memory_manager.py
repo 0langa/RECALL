@@ -120,6 +120,67 @@ def update_record_metadata(
     return storage.update_record_metadata(record_id, metadata, root)
 
 
+def edit_record(
+    record_id: int,
+    root: str | Path | None = None,
+    *,
+    category: str | None = None,
+    content: str | None = None,
+    summary: str | None = None,
+    details: str | None = None,
+    tags: list[str] | None = None,
+    source: str | None = None,
+    status: str | None = None,
+    importance: float | None = None,
+    confidence: float | None = None,
+) -> MemoryRecord:
+    record = storage.get_record(record_id, root)
+    if record is None:
+        raise KeyError(f"RECALL memory #{record_id} was not found.")
+    normalized_category = (
+        recall_config.normalize_category(category)
+        if category is not None
+        else record.category
+    )
+    if normalized_category not in recall_config.load_config(root)["categories"]:
+        recall_config.add_category(
+            normalized_category,
+            f"Auto-created custom category `{normalized_category}`.",
+            1.0,
+            root,
+        )
+    safe_content = redact_secrets((content if content is not None else record.content).strip())
+    if not safe_content:
+        raise ValueError("Cannot store an empty RECALL memory.")
+    metadata = build_card_metadata(
+        summary=summary,
+        details=details,
+        tags=tags,
+        source=source,
+        status=status,
+        importance=importance,
+        confidence=confidence,
+        base=dict(record.metadata or {}),
+    )
+    metadata["edited_at"] = utc_now()
+    edited = storage.update_record(
+        record.id,
+        category=normalized_category,
+        content=safe_content,
+        metadata=metadata,
+        embedding=embed(safe_content),
+        root=root,
+    )
+    index_store.rebuild(root)
+    return edited
+
+
+def delete_record(record_id: int, root: str | Path | None = None) -> MemoryRecord:
+    deleted = storage.delete_record(record_id, root)
+    index_store.rebuild(root)
+    return deleted
+
+
 def add_record(
     category: str,
     content: str,

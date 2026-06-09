@@ -162,6 +162,59 @@ class RecallSkillAdapterTests(unittest.TestCase):
             self.assertEqual(review["review"]["category_counts"]["decisions"], 2)
             self.assertEqual(prune["metadata"]["status"], "archived")
 
+    def test_edit_and_delete_memory_use_public_adapter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            saved = run_skill(
+                tmp,
+                "save-insight",
+                "requirements",
+                "Recall should keep raw transcript logs forever.",
+                "--summary",
+                "Raw logs are required.",
+                "--status",
+                "active",
+            )
+
+            edited = run_skill(
+                tmp,
+                "edit-memory",
+                str(saved["id"]),
+                "--category",
+                "decisions",
+                "--content",
+                "RECALL should prefer structured memory cards over raw transcript logs.",
+                "--summary",
+                "Structured cards are preferred.",
+                "--tag",
+                "memory-quality",
+            )
+            old_query = run_skill(tmp, "retrieve-memory", "raw transcript logs forever", "--category", "requirements")
+            new_query = run_skill(tmp, "retrieve-memory", "structured memory cards", "--category", "decisions")
+
+            self.assertEqual(edited["action"], "edit-memory")
+            self.assertEqual(edited["category"], "decisions")
+            self.assertIn("edited_at", edited["metadata"])
+            self.assertEqual(old_query["results"], [])
+            self.assertEqual(new_query["results"][0]["id"], saved["id"])
+
+            rejected = run_skill_with_input(
+                tmp,
+                "",
+                "delete-memory",
+                str(saved["id"]),
+                "--confirm",
+                "DELETE",
+                check=False,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+
+            deleted = run_skill(tmp, "delete-memory", str(saved["id"]), "--confirm", f"DELETE-{saved['id']}")
+            after_delete = run_skill(tmp, "retrieve-memory", "structured memory cards", "--category", "decisions")
+
+            self.assertEqual(deleted["action"], "delete-memory")
+            self.assertEqual(deleted["id"], saved["id"])
+            self.assertEqual(after_delete["results"], [])
+
     def test_save_turn_card_validates_and_stores_finalizer_card(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             card_path = Path(tmp) / "turn-card.json"

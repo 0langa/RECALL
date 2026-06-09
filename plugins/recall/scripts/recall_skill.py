@@ -125,6 +125,157 @@ def save_turn_card(card: dict[str, Any], root: Path | None) -> dict[str, Any]:
     return payload
 
 
+def handle_save_insight(args: argparse.Namespace, root: Path | None) -> None:
+    record = memory_manager.add_record(
+        args.category,
+        args.content,
+        memory_manager.build_card_metadata(
+            summary=args.summary,
+            details=args.details,
+            tags=args.tag,
+            source=args.source,
+            status=args.status,
+            importance=args.importance,
+            confidence=args.confidence,
+        ),
+        root,
+    )
+    print_json({"action": "save-insight", "id": record.id, "category": record.category})
+
+
+def handle_save_turn_card(args: argparse.Namespace, root: Path | None) -> None:
+    print_json(save_turn_card(load_json_card(file_path=args.file, use_stdin=args.stdin), root))
+
+
+def handle_retrieve_memory(args: argparse.Namespace, root: Path | None) -> None:
+    print_json(
+        memory_manager.query(
+            args.query_text,
+            categories=args.category,
+            exclude_categories=args.exclude_category,
+            statuses=args.status,
+            limit=args.limit,
+            root=root,
+            summarize=args.summary,
+        )
+    )
+
+
+def handle_define_category(args: argparse.Namespace, root: Path | None) -> None:
+    details = memory_manager.define_category(args.category, args.description, args.weight, root)
+    print_json({"action": "define-category", "category": args.category, "details": details})
+
+
+def handle_doctor(args: argparse.Namespace, root: Path | None) -> None:
+    print_json({"action": "doctor", "report": memory_manager.doctor(root)})
+
+
+def handle_repair(args: argparse.Namespace, root: Path | None) -> None:
+    print_json({"action": "repair", "report": memory_manager.repair(root)})
+
+
+def handle_list_categories(args: argparse.Namespace, root: Path | None) -> None:
+    cfg = recall_config.load_config(root)
+    categories = [
+        {
+            "name": name,
+            "description": details["description"],
+            "weight": details["weight"],
+        }
+        for name, details in sorted(cfg["categories"].items())
+    ]
+    print_json({"action": "list-categories", "categories": categories})
+
+
+def handle_review_memory(args: argparse.Namespace, root: Path | None) -> None:
+    print_json(
+        {
+            "action": "review-memory",
+            "review": memory_review.review_memory(
+                root,
+                statuses=args.status,
+                categories=args.category,
+                source=args.source,
+                limit=args.limit,
+            ),
+        }
+    )
+
+
+def handle_confirm_memory(args: argparse.Namespace, root: Path | None) -> None:
+    record = memory_manager.confirm_record(args.id, root, args.source_session)
+    print_json({"action": "confirm-memory", "id": record.id, "metadata": record.metadata})
+
+
+def handle_resolve_memory(args: argparse.Namespace, root: Path | None) -> None:
+    record = memory_manager.resolve_record(args.id, root, args.note)
+    print_json({"action": "resolve-memory", "id": record.id, "metadata": record.metadata})
+
+
+def handle_stale_memory(args: argparse.Namespace, root: Path | None) -> None:
+    record = memory_manager.mark_record_stale(args.id, root, args.note)
+    print_json({"action": "stale-memory", "id": record.id, "metadata": record.metadata})
+
+
+def handle_supersede_memory(args: argparse.Namespace, root: Path | None) -> None:
+    result = memory_manager.supersede_record(args.old_id, args.new_id, root, args.note)
+    print_json(
+        {
+            "action": "supersede-memory",
+            "old": {"id": result["old"].id, "metadata": result["old"].metadata},
+            "new": {"id": result["new"].id, "metadata": result["new"].metadata},
+        }
+    )
+
+
+def handle_merge_memories(args: argparse.Namespace, root: Path | None) -> None:
+    result = memory_manager.merge_records(args.primary_id, args.secondary_id, root, args.note)
+    print_json(
+        {
+            "action": "merge-memories",
+            "primary": {"id": result["primary"].id, "metadata": result["primary"].metadata},
+            "merged": [{"id": record.id, "metadata": record.metadata} for record in result["merged"]],
+        }
+    )
+
+
+def handle_prune_memory(args: argparse.Namespace, root: Path | None) -> None:
+    record = memory_manager.prune_record(args.id, root, args.note)
+    print_json({"action": "prune-memory", "id": record.id, "metadata": record.metadata})
+
+
+def handle_edit_memory(args: argparse.Namespace, root: Path | None) -> None:
+    record = memory_manager.edit_record(
+        args.id,
+        root,
+        category=args.category,
+        content=args.content,
+        summary=args.summary,
+        details=args.details,
+        tags=args.tag,
+        source=args.source,
+        status=args.status,
+        importance=args.importance,
+        confidence=args.confidence,
+    )
+    print_json(
+        {
+            "action": "edit-memory",
+            "id": record.id,
+            "category": record.category,
+            "content": record.content,
+            "metadata": record.metadata,
+        }
+    )
+
+
+def handle_delete_memory(args: argparse.Namespace, root: Path | None) -> None:
+    if args.confirm != f"DELETE-{args.id}":
+        raise SystemExit(f"delete-memory requires --confirm DELETE-{args.id}")
+    record = memory_manager.delete_record(args.id, root)
+    print_json({"action": "delete-memory", "id": record.id, "category": record.category})
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run RECALL skill actions against project-local memory.")
     parser.add_argument("--root", help="Project root. Defaults to the current working directory.")
@@ -140,11 +291,13 @@ def main() -> None:
     save.add_argument("--status", default="active")
     save.add_argument("--importance", type=float)
     save.add_argument("--confidence", type=float)
+    save.set_defaults(handler=handle_save_insight)
 
     turn_card = subparsers.add_parser("save-turn-card")
     source = turn_card.add_mutually_exclusive_group(required=True)
     source.add_argument("--file")
     source.add_argument("--stdin", action="store_true")
+    turn_card.set_defaults(handler=handle_save_turn_card)
 
     retrieve = subparsers.add_parser("retrieve-memory")
     retrieve.add_argument("query_text")
@@ -153,142 +306,78 @@ def main() -> None:
     retrieve.add_argument("--status", action="append", default=[])
     retrieve.add_argument("--limit", type=int, default=8)
     retrieve.add_argument("--summary", action="store_true")
+    retrieve.set_defaults(handler=handle_retrieve_memory)
 
     define = subparsers.add_parser("define-category")
     define.add_argument("category")
     define.add_argument("--description", required=True)
     define.add_argument("--weight", type=float, default=1.0)
+    define.set_defaults(handler=handle_define_category)
 
-    subparsers.add_parser("doctor")
-    subparsers.add_parser("repair")
-    subparsers.add_parser("list-categories")
+    subparsers.add_parser("doctor").set_defaults(handler=handle_doctor)
+    subparsers.add_parser("repair").set_defaults(handler=handle_repair)
+    subparsers.add_parser("list-categories").set_defaults(handler=handle_list_categories)
 
     review = subparsers.add_parser("review-memory")
     review.add_argument("--status", action="append", default=[])
     review.add_argument("--category", action="append", default=[])
     review.add_argument("--source")
     review.add_argument("--limit", type=int, default=20)
+    review.set_defaults(handler=handle_review_memory)
 
     confirm = subparsers.add_parser("confirm-memory")
     confirm.add_argument("id", type=int)
     confirm.add_argument("--source-session")
+    confirm.set_defaults(handler=handle_confirm_memory)
 
     resolve = subparsers.add_parser("resolve-memory")
     resolve.add_argument("id", type=int)
     resolve.add_argument("--note")
+    resolve.set_defaults(handler=handle_resolve_memory)
 
     stale = subparsers.add_parser("stale-memory")
     stale.add_argument("id", type=int)
     stale.add_argument("--note")
+    stale.set_defaults(handler=handle_stale_memory)
 
     supersede = subparsers.add_parser("supersede-memory")
     supersede.add_argument("old_id", type=int)
     supersede.add_argument("new_id", type=int)
     supersede.add_argument("--note")
+    supersede.set_defaults(handler=handle_supersede_memory)
 
     merge = subparsers.add_parser("merge-memories")
     merge.add_argument("primary_id", type=int)
     merge.add_argument("secondary_id", nargs="+")
     merge.add_argument("--note")
+    merge.set_defaults(handler=handle_merge_memories)
 
     prune = subparsers.add_parser("prune-memory")
     prune.add_argument("id", type=int)
     prune.add_argument("--note")
+    prune.set_defaults(handler=handle_prune_memory)
+
+    edit = subparsers.add_parser("edit-memory")
+    edit.add_argument("id", type=int)
+    edit.add_argument("--category")
+    edit.add_argument("--content")
+    edit.add_argument("--summary")
+    edit.add_argument("--details")
+    edit.add_argument("--tag", action="append", default=[])
+    edit.add_argument("--source")
+    edit.add_argument("--status")
+    edit.add_argument("--importance", type=float)
+    edit.add_argument("--confidence", type=float)
+    edit.set_defaults(handler=handle_edit_memory)
+
+    delete = subparsers.add_parser("delete-memory")
+    delete.add_argument("id", type=int)
+    delete.add_argument("--confirm", required=True)
+    delete.set_defaults(handler=handle_delete_memory)
 
     args = parser.parse_args()
     root = Path(args.root).resolve() if args.root else None
-
-    if args.command == "save-insight":
-        record = memory_manager.add_record(
-            args.category,
-            args.content,
-            memory_manager.build_card_metadata(
-                summary=args.summary,
-                details=args.details,
-                tags=args.tag,
-                source=args.source,
-                status=args.status,
-                importance=args.importance,
-                confidence=args.confidence,
-            ),
-            root,
-        )
-        print_json({"action": "save-insight", "id": record.id, "category": record.category})
-    elif args.command == "save-turn-card":
-        print_json(save_turn_card(load_json_card(file_path=args.file, use_stdin=args.stdin), root))
-    elif args.command == "retrieve-memory":
-        print_json(
-            memory_manager.query(
-                args.query_text,
-                categories=args.category,
-                exclude_categories=args.exclude_category,
-                statuses=args.status,
-                limit=args.limit,
-                root=root,
-                summarize=args.summary,
-            )
-        )
-    elif args.command == "define-category":
-        details = memory_manager.define_category(args.category, args.description, args.weight, root)
-        print_json({"action": "define-category", "category": args.category, "details": details})
-    elif args.command == "doctor":
-        print_json({"action": "doctor", "report": memory_manager.doctor(root)})
-    elif args.command == "repair":
-        print_json({"action": "repair", "report": memory_manager.repair(root)})
-    elif args.command == "list-categories":
-        cfg = recall_config.load_config(root)
-        categories = [
-            {
-                "name": name,
-                "description": details["description"],
-                "weight": details["weight"],
-            }
-            for name, details in sorted(cfg["categories"].items())
-        ]
-        print_json({"action": "list-categories", "categories": categories})
-    elif args.command == "review-memory":
-        print_json(
-            {
-                "action": "review-memory",
-                "review": memory_review.review_memory(
-                    root,
-                    statuses=args.status,
-                    categories=args.category,
-                    source=args.source,
-                    limit=args.limit,
-                ),
-            }
-        )
-    elif args.command == "confirm-memory":
-        record = memory_manager.confirm_record(args.id, root, args.source_session)
-        print_json({"action": "confirm-memory", "id": record.id, "metadata": record.metadata})
-    elif args.command == "resolve-memory":
-        record = memory_manager.resolve_record(args.id, root, args.note)
-        print_json({"action": "resolve-memory", "id": record.id, "metadata": record.metadata})
-    elif args.command == "stale-memory":
-        record = memory_manager.mark_record_stale(args.id, root, args.note)
-        print_json({"action": "stale-memory", "id": record.id, "metadata": record.metadata})
-    elif args.command == "supersede-memory":
-        result = memory_manager.supersede_record(args.old_id, args.new_id, root, args.note)
-        print_json(
-            {
-                "action": "supersede-memory",
-                "old": {"id": result["old"].id, "metadata": result["old"].metadata},
-                "new": {"id": result["new"].id, "metadata": result["new"].metadata},
-            }
-        )
-    elif args.command == "merge-memories":
-        result = memory_manager.merge_records(args.primary_id, args.secondary_id, root, args.note)
-        print_json(
-            {
-                "action": "merge-memories",
-                "primary": {"id": result["primary"].id, "metadata": result["primary"].metadata},
-                "merged": [{"id": record.id, "metadata": record.metadata} for record in result["merged"]],
-            }
-        )
-    elif args.command == "prune-memory":
-        record = memory_manager.prune_record(args.id, root, args.note)
-        print_json({"action": "prune-memory", "id": record.id, "metadata": record.metadata})
+    args.handler(args, root)
 
 
 if __name__ == "__main__":

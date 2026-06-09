@@ -83,7 +83,9 @@ class PackageMetadataTests(unittest.TestCase):
         expected = {
             "confirm-memory",
             "define-category",
+            "delete-memory",
             "doctor-memory",
+            "edit-memory",
             "merge-memories",
             "prune-memory",
             "repair-memory",

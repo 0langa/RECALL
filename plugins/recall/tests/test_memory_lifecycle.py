@@ -37,6 +37,51 @@ class MemoryLifecycleTests(unittest.TestCase):
             self.assertEqual(updated.id, record.id)
             self.assertEqual(fetched.metadata["status"], "resolved")
 
+    def test_edit_record_updates_content_category_and_index(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            record = memory_manager.add_record("requirements", "Use raw transcript logs.", root=tmp)
+            edited = memory_manager.edit_record(
+                record.id,
+                tmp,
+                category="decisions",
+                content="Use structured memory cards.",
+                summary="Structured cards are preferred.",
+                tags=["memory-quality"],
+                status="active",
+            )
+            old_query = memory_manager.query("raw transcript logs", categories=["requirements"], root=tmp)
+            new_query = memory_manager.query("structured memory cards", categories=["decisions"], root=tmp)
+            doctor = memory_manager.doctor(tmp)
+
+            self.assertEqual(edited.id, record.id)
+            self.assertEqual(edited.category, "decisions")
+            self.assertIn("edited_at", edited.metadata)
+            self.assertEqual(old_query["results"], [])
+            self.assertEqual(new_query["results"][0]["id"], record.id)
+            self.assertTrue(doctor["index_complete"])
+
+    def test_edit_and_delete_record_work_for_jsonl(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.ensure_config(tmp)
+            cfg = recall_config.load_config(tmp)
+            cfg["backend"] = "jsonl"
+            recall_config.save_config(cfg, tmp)
+            record = memory_manager.add_record("requirements", "Use raw transcript logs.", root=tmp)
+
+            edited = memory_manager.edit_record(
+                record.id,
+                tmp,
+                category="decisions",
+                content="Use structured memory cards.",
+                summary="Structured cards are preferred.",
+            )
+            deleted = memory_manager.delete_record(record.id, tmp)
+
+            self.assertEqual(edited.category, "decisions")
+            self.assertEqual(deleted.id, record.id)
+            self.assertIsNone(memory_manager.get_record(record.id, tmp))
+            self.assertTrue(memory_manager.doctor(tmp)["index_complete"])
+
     def test_confirm_resolve_stale_and_prune_lifecycle(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             record = memory_manager.add_record("decisions", "Use schema-first memory cards.", root=tmp)

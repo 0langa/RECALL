@@ -228,6 +228,120 @@ def update_record_metadata(record_id: int, metadata: dict[str, Any], root: str |
     )
 
 
+def update_record(
+    record_id: int,
+    *,
+    category: str,
+    content: str,
+    metadata: dict[str, Any],
+    embedding: list[float],
+    root: str | Path | None = None,
+) -> MemoryRecord:
+    init_store(root)
+    existing = get_record(record_id, root)
+    if existing is None:
+        raise KeyError(f"RECALL memory #{record_id} was not found.")
+    cfg = recall_config.load_config(root)
+    if cfg["backend"] == "sqlite":
+        with closing(sqlite3.connect(db_path(root))) as connection:
+            connection.execute(
+                """
+                UPDATE memories
+                SET category = ?, content = ?, metadata = ?, embedding = ?
+                WHERE id = ?
+                """,
+                (category, content, json.dumps(metadata, sort_keys=True), json.dumps(embedding), record_id),
+            )
+            connection.commit()
+        return MemoryRecord(
+            existing.id,
+            category,
+            existing.timestamp,
+            content,
+            metadata,
+            embedding=embedding,
+        )
+
+    payloads_by_path: dict[Path, list[dict[str, Any]]] = {}
+    found = False
+    for path in sorted(jsonl_dir(root).glob("*.jsonl")):
+        payloads: list[dict[str, Any]] = []
+        with path.open(encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if int(payload.get("id", -1)) == record_id:
+                    found = True
+                    if path.stem == category:
+                        payload.update(
+                            {
+                                "category": category,
+                                "content": content,
+                                "metadata": metadata,
+                                "embedding": embedding,
+                            }
+                        )
+                        payloads.append(payload)
+                    continue
+                payloads.append(payload)
+        payloads_by_path[path] = payloads
+    if not found:
+        raise KeyError(f"RECALL memory #{record_id} was not found.")
+    target_path = jsonl_dir(root) / f"{category}.jsonl"
+    if existing.category != category:
+        payloads_by_path.setdefault(target_path, []).append(
+            {
+                "id": existing.id,
+                "category": category,
+                "timestamp": existing.timestamp,
+                "content": content,
+                "metadata": metadata,
+                "embedding": embedding,
+            }
+        )
+    for path, payloads in payloads_by_path.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as handle:
+            for payload in payloads:
+                handle.write(json.dumps(payload, sort_keys=True) + "\n")
+    return MemoryRecord(existing.id, category, existing.timestamp, content, metadata, embedding=embedding)
+
+
+def delete_record(record_id: int, root: str | Path | None = None) -> MemoryRecord:
+    init_store(root)
+    existing = get_record(record_id, root)
+    if existing is None:
+        raise KeyError(f"RECALL memory #{record_id} was not found.")
+    cfg = recall_config.load_config(root)
+    if cfg["backend"] == "sqlite":
+        with closing(sqlite3.connect(db_path(root))) as connection:
+            connection.execute("DELETE FROM memories WHERE id = ?", (record_id,))
+            connection.commit()
+        return existing
+
+    path = jsonl_dir(root) / f"{existing.category}.jsonl"
+    payloads: list[dict[str, Any]] = []
+    if path.exists():
+        with path.open(encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if int(payload.get("id", -1)) != record_id:
+                    payloads.append(payload)
+        with path.open("w", encoding="utf-8") as handle:
+            for payload in payloads:
+                handle.write(json.dumps(payload, sort_keys=True) + "\n")
+    return existing
+
+
 def iter_jsonl_records(root: str | Path | None = None) -> Iterable[MemoryRecord]:
     base = jsonl_dir(root)
     if not base.exists():

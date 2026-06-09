@@ -12,6 +12,7 @@
 - Added hook write policy classification for ignored, refreshed, new, related, and superseding automatic memories.
 - Added CLI-first memory review summaries through `recall_skill.py review-memory`.
 - Added discoverable memory-control skills for finalizer cards, review, confirm, resolve, stale, supersede, merge, prune, doctor, and repair workflows.
+- Added explicit `edit-memory` and confirmation-gated `delete-memory` public adapter commands and skills.
 
 ## 0.1.0 - 2026-06-06
 
