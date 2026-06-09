@@ -35,7 +35,7 @@
             "type": "command",
             "command": "python \"${PLUGIN_ROOT}/hooks/scripts/post_tool_use.py\"",
             "commandWindows": "py -3 -c \"import os,runpy,sys; p=os.path.join(os.environ['PLUGIN_ROOT'],'hooks','scripts','post_tool_use.py'); sys.path.insert(0, os.path.dirname(p)); runpy.run_path(p, run_name='__main__')\"",
-            "statusMessage": "Capturing useful RECALL context",
+            "statusMessage": "Observing RECALL memory candidates",
             "timeout": 30
           }
         ]
@@ -62,7 +62,7 @@
             "type": "command",
             "command": "python \"${PLUGIN_ROOT}/hooks/scripts/stop.py\"",
             "commandWindows": "py -3 -c \"import os,runpy,sys; p=os.path.join(os.environ['PLUGIN_ROOT'],'hooks','scripts','stop.py'); sys.path.insert(0, os.path.dirname(p)); runpy.run_path(p, run_name='__main__')\"",
-            "statusMessage": "Saving RECALL session checkpoint",
+            "statusMessage": "Checking RECALL finalization",
             "timeout": 30
           }
         ]

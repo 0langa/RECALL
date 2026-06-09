@@ -23,6 +23,17 @@ def run_skill(root: str, *args: str) -> dict:
     return json.loads(completed.stdout)
 
 
+def run_skill_with_input(root: str, input_text: str, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(ADAPTER), "--root", root, *args],
+        input=input_text,
+        text=True,
+        capture_output=True,
+        check=check,
+        cwd=ROOT,
+    )
+
+
 class RecallSkillAdapterTests(unittest.TestCase):
     def test_save_retrieve_and_define_use_public_skill_adapter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -145,6 +156,70 @@ class RecallSkillAdapterTests(unittest.TestCase):
             self.assertEqual(confirm["metadata"]["source_session"], "session-1")
             self.assertEqual(review["review"]["category_counts"]["decisions"], 2)
             self.assertEqual(prune["metadata"]["status"], "archived")
+
+    def test_save_turn_card_validates_and_stores_finalizer_card(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            card_path = Path(tmp) / "turn-card.json"
+            card_path.write_text(
+                json.dumps(
+                    {
+                        "category": "decisions",
+                        "content": "Use Stop finalizer continuation for RECALL turn memory.",
+                        "summary": "Stop finalizer continuation is the memory write boundary.",
+                        "details": "PostToolUse buffers evidence; Stop creates one finalizer request.",
+                        "tags": ["finalizer", "hooks"],
+                        "source": "finalizer",
+                        "status": "active",
+                        "importance": 0.9,
+                        "confidence": 0.85,
+                        "capture_reason": "durable_project_state",
+                        "session_id": "session-1",
+                        "turn_id": "turn-1",
+                        "evidence_ids": ["event-1"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            saved = run_skill(tmp, "save-turn-card", "--file", str(card_path))
+            result = run_skill(tmp, "retrieve-memory", "Stop finalizer continuation", "--category", "decisions")
+
+            self.assertEqual(saved["action"], "save-turn-card")
+            self.assertEqual(saved["result"], "saved")
+            self.assertEqual(saved["category"], "decisions")
+            metadata = result["results"][0]["metadata"]
+            self.assertEqual(metadata["source"], "finalizer")
+            self.assertEqual(metadata["schema"], "recall.turn_card.v1")
+            self.assertEqual(metadata["turn_id"], "turn-1")
+            self.assertIn("finalizer", metadata["tags"])
+
+    def test_save_turn_card_accepts_stdin(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            card = {
+                "category": "requirements",
+                "content": "Finalizer cards must be schema validated.",
+                "summary": "Finalizer cards are validated.",
+                "tags": ["finalizer"],
+            }
+            completed = run_skill_with_input(tmp, json.dumps(card), "save-turn-card", "--stdin")
+            saved = json.loads(completed.stdout)
+
+            self.assertEqual(saved["action"], "save-turn-card")
+            self.assertEqual(saved["result"], "saved")
+
+    def test_save_turn_card_rejects_secret_like_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            card = {
+                "category": "risks",
+                "content": "Do not store token=dummy-secret-value in memory.",
+                "summary": "Secret-like content rejected.",
+            }
+            completed = run_skill_with_input(tmp, json.dumps(card), "save-turn-card", "--stdin", check=False)
+            result = run_skill(tmp, "retrieve-memory", "dummy-secret-value", "--category", "risks")
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("secret-like", completed.stderr)
+            self.assertEqual(result["results"], [])
 
 
 if __name__ == "__main__":

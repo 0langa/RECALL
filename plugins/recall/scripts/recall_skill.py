@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,102 @@ import memory_manager
 
 def print_json(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def load_json_card(*, file_path: str | None, use_stdin: bool) -> dict[str, Any]:
+    if bool(file_path) == use_stdin:
+        raise ValueError("save-turn-card requires exactly one of --file or --stdin.")
+    raw = sys.stdin.read() if use_stdin else Path(str(file_path)).read_text(encoding="utf-8")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"turn card JSON is invalid: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("turn card JSON must be an object.")
+    return payload
+
+
+def string_value(payload: dict[str, Any], name: str, *, required: bool = False, default: str | None = None) -> str | None:
+    value = payload.get(name, default)
+    if value is None:
+        if required:
+            raise ValueError(f"turn card is missing required field: {name}")
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"turn card field {name} must be a string.")
+    cleaned = value.strip()
+    if required and not cleaned:
+        raise ValueError(f"turn card field {name} must not be empty.")
+    return cleaned or None
+
+
+def float_value(payload: dict[str, Any], name: str) -> float | None:
+    value = payload.get(name)
+    if value is None:
+        return None
+    if not isinstance(value, (int, float)):
+        raise ValueError(f"turn card field {name} must be a number.")
+    return float(value)
+
+
+def list_value(payload: dict[str, Any], name: str) -> list[str]:
+    value = payload.get(name, [])
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"turn card field {name} must be a list of strings.")
+    return [item for item in value if item.strip()]
+
+
+def reject_secret_like_text(*values: str | None) -> None:
+    for value in values:
+        if value and memory_manager.redact_secrets(value) != value:
+            raise ValueError("turn card contains secret-like text and was not stored.")
+
+
+def save_turn_card(card: dict[str, Any], root: Path | None) -> dict[str, Any]:
+    category = string_value(card, "category", required=True)
+    content = string_value(card, "content", required=True)
+    summary = string_value(card, "summary", required=True)
+    details = string_value(card, "details")
+    status = string_value(card, "status", default="active")
+    source = string_value(card, "source", default="finalizer")
+    tags = list_value(card, "tags")
+    importance = float_value(card, "importance")
+    confidence = float_value(card, "confidence")
+    reject_secret_like_text(content, summary, details)
+
+    metadata_base: dict[str, Any] = {
+        "schema": "recall.turn_card.v1",
+        "capture_reason": string_value(card, "capture_reason"),
+        "session_id": string_value(card, "session_id"),
+        "turn_id": string_value(card, "turn_id"),
+        "evidence_ids": list_value(card, "evidence_ids"),
+    }
+    metadata = memory_manager.build_card_metadata(
+        summary=summary,
+        details=details,
+        tags=tags,
+        source=source,
+        status=status,
+        importance=importance,
+        confidence=confidence,
+        base={key: value for key, value in metadata_base.items() if value not in (None, [], "")},
+    )
+    result = memory_manager.add_record_if_useful(str(category), str(content), metadata, root)
+    record = result.get("record")
+    payload: dict[str, Any] = {
+        "action": "save-turn-card",
+        "result": result.get("action"),
+        "reason": result.get("reason"),
+    }
+    if record is not None:
+        payload["id"] = record.id
+        payload["category"] = record.category
+        payload["metadata"] = record.metadata
+    if result.get("duplicate_id") is not None:
+        payload["duplicate_id"] = result["duplicate_id"]
+    return payload
 
 
 def main() -> None:
@@ -37,6 +134,11 @@ def main() -> None:
     save.add_argument("--status", default="active")
     save.add_argument("--importance", type=float)
     save.add_argument("--confidence", type=float)
+
+    turn_card = subparsers.add_parser("save-turn-card")
+    source = turn_card.add_mutually_exclusive_group(required=True)
+    source.add_argument("--file")
+    source.add_argument("--stdin", action="store_true")
 
     retrieve = subparsers.add_parser("retrieve-memory")
     retrieve.add_argument("query_text")
@@ -106,6 +208,8 @@ def main() -> None:
             root,
         )
         print_json({"action": "save-insight", "id": record.id, "category": record.category})
+    elif args.command == "save-turn-card":
+        print_json(save_turn_card(load_json_card(file_path=args.file, use_stdin=args.stdin), root))
     elif args.command == "retrieve-memory":
         print_json(
             memory_manager.query(

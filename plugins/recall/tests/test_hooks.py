@@ -47,6 +47,15 @@ def query_memory(root: str, query: str, category: str) -> dict:
     return json.loads(completed.stdout)
 
 
+def runtime_events(root: str, session_id: str, turn_id: str) -> list[dict]:
+    safe_session = session_id or "session"
+    safe_turn = turn_id or "turn"
+    path = Path(root) / ".codex_memory" / "runtime" / "turns" / safe_session / f"{safe_turn}.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
 class HookTests(unittest.TestCase):
     def test_prompt_inspector_saves_remembered_preference(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -199,13 +208,16 @@ class HookTests(unittest.TestCase):
             result = query_memory(tmp, "cwd", "session_summaries")
             self.assertEqual(result["results"], [])
 
-    def test_post_tool_use_stores_compact_successful_command(self) -> None:
+    def test_post_tool_use_buffers_compact_successful_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             output = run_hook(
                 "post_tool_use.py",
                 {
                     "cwd": tmp,
+                    "session_id": "session-test",
+                    "turn_id": "turn-test",
                     "hook_event_name": "PostToolUse",
+                    "tool_name": "Bash",
                     "tool_input": {"command": "python -m unittest discover -s tests"},
                     "tool_response": {
                         "exit_code": 0,
@@ -215,26 +227,11 @@ class HookTests(unittest.TestCase):
                 },
             )
             self.assertTrue(output["continue"])
-            query = subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts" / "memory_manager.py"),
-                    "--root",
-                    tmp,
-                    "query",
-                    "unittest command",
-                    "--category",
-                    "commands",
-                ],
-                text=True,
-                capture_output=True,
-                check=True,
-                cwd=ROOT,
-            )
-            result = json.loads(query.stdout)
-            stored = result["results"][0]["content"]
-            self.assertIn("python -m unittest", stored)
-            self.assertLess(len(stored), 900)
+            self.assertEqual(query_memory(tmp, "unittest command", "commands")["results"], [])
+            events = runtime_events(tmp, "session-test", "turn-test")
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0]["signal"], "test_pass")
+            self.assertIn("python -m unittest", events[0]["command"])
 
     def test_post_tool_use_suppresses_exact_duplicate_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -247,11 +244,12 @@ class HookTests(unittest.TestCase):
             }
             first = run_hook("post_tool_use.py", payload)
             second = run_hook("post_tool_use.py", payload)
-            result = query_memory(tmp, "python unittest", "commands")
+            events = runtime_events(tmp, "", "")
 
             self.assertTrue(first["continue"])
             self.assertEqual(second, {"continue": True})
-            self.assertEqual(len(result["results"]), 1)
+            self.assertEqual(len(events), 2)
+            self.assertEqual(query_memory(tmp, "python unittest", "commands")["results"], [])
 
     def test_post_tool_use_links_near_duplicate_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -269,10 +267,10 @@ class HookTests(unittest.TestCase):
                 "post_tool_use.py",
                 {**base, "tool_response": {"exit_code": 0, "stdout": "2 passed", "stderr": ""}},
             )
-            result = query_memory(tmp, "python unittest", "commands")
+            events = runtime_events(tmp, "", "")
 
-            self.assertEqual(len(result["results"]), 2)
-            self.assertIn("related_memory_id", result["results"][0]["metadata"])
+            self.assertEqual(len(events), 2)
+            self.assertEqual(query_memory(tmp, "python unittest", "commands")["results"], [])
 
     def test_post_tool_use_successful_listing_is_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -324,23 +322,88 @@ class HookTests(unittest.TestCase):
             result = query_memory(tmp, "turn-empty", "session_summaries")
             self.assertEqual(result["results"], [])
 
-    def test_stop_saves_last_assistant_message_only(self) -> None:
+    def test_stop_dirty_buffer_requests_finalizer_once(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            run_hook(
+                "post_tool_use.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-stop",
+                    "turn_id": "turn-stop",
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "python -m unittest discover -s tests"},
+                    "tool_response": {"exit_code": 0, "stdout": "Ran 9 tests in 1.2s\nOK", "stderr": ""},
+                },
+            )
             output = run_hook(
                 "stop.py",
                 {
                     "cwd": tmp,
+                    "session_id": "session-stop",
                     "hook_event_name": "Stop",
                     "turn_id": "turn-stop",
                     "last_assistant_message": "Completed Task 2 hook parsing and left storage healthy.",
                 },
             )
-            self.assertTrue(output["continue"])
-            result = query_memory(tmp, "Task 2 hook parsing", "project_state")
-            stored = result["results"][0]
-            self.assertIn("hook parsing", stored["content"])
-            self.assertNotIn("last_assistant_message", stored["content"])
-            self.assertEqual(stored["metadata"]["turn_id"], "turn-stop")
+            self.assertEqual(output["decision"], "block")
+            self.assertIn("RECALL_FINALIZER_REQUEST", output["reason"])
+            self.assertIn("save-turn-card", output["reason"])
+            self.assertEqual(query_memory(tmp, "Task 2 hook parsing", "project_state")["results"], [])
+            packet = Path(tmp) / ".codex_memory" / "runtime" / "finalizer_requests" / "session-stop-turn-stop.json"
+            packet_json = json.loads(packet.read_text(encoding="utf-8"))
+            self.assertIn("save-turn-card", packet_json["policy"]["allowed_commands"])
+
+            second = run_hook(
+                "stop.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-stop",
+                    "hook_event_name": "Stop",
+                    "turn_id": "turn-stop",
+                    "last_assistant_message": "Completed Task 2 hook parsing and left storage healthy.",
+                },
+            )
+            self.assertEqual(second, {"continue": True})
+
+    def test_stop_active_finalizer_marks_finalized(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_hook(
+                "post_tool_use.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-stop",
+                    "turn_id": "turn-stop",
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "python -m unittest discover -s tests"},
+                    "tool_response": {"exit_code": 0, "stdout": "Ran 9 tests in 1.2s\nOK", "stderr": ""},
+                },
+            )
+            run_hook(
+                "stop.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-stop",
+                    "hook_event_name": "Stop",
+                    "turn_id": "turn-stop",
+                    "last_assistant_message": "Completed tests.",
+                },
+            )
+            output = run_hook(
+                "stop.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-stop",
+                    "hook_event_name": "Stop",
+                    "turn_id": "turn-stop",
+                    "stop_hook_active": True,
+                    "last_assistant_message": "FINALIZER_CONTINUATION_VISIBLE_TEST",
+                },
+            )
+            self.assertEqual(output, {"continue": True})
+            packet = Path(tmp) / ".codex_memory" / "runtime" / "finalizer_requests" / "session-stop-turn-stop.json"
+            self.assertEqual(json.loads(packet.read_text(encoding="utf-8"))["status"], "finalized")
 
     def test_stop_empty_last_message_is_noop(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -370,12 +433,10 @@ class HookTests(unittest.TestCase):
                 },
             )
             self.assertTrue(output["continue"])
-            result = query_memory(tmp, "MissingTest boom", "debug_history")
-            stored = result["results"][0]
-            self.assertIn("python -m unittest tests.test_missing", stored["content"])
-            self.assertIn("AssertionError", stored["content"])
-            self.assertEqual(stored["metadata"]["tool_name"], "Bash")
-            self.assertEqual(stored["metadata"]["turn_id"], "turn-bash-failure")
+            self.assertEqual(query_memory(tmp, "MissingTest boom", "debug_history")["results"], [])
+            events = runtime_events(tmp, "", "turn-bash-failure")
+            self.assertEqual(events[0]["signal"], "test_fail")
+            self.assertIn("AssertionError", events[0]["details"])
 
     def test_post_tool_use_stores_apply_patch_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -391,11 +452,10 @@ class HookTests(unittest.TestCase):
                 },
             )
             self.assertTrue(output["continue"])
-            result = query_memory(tmp, "README apply_patch", "commands")
-            stored = result["results"][0]
-            self.assertIn("apply_patch", stored["content"])
-            self.assertIn("README.md", stored["content"])
-            self.assertLess(len(stored["content"]), 500)
+            self.assertEqual(query_memory(tmp, "README apply_patch", "commands")["results"], [])
+            events = runtime_events(tmp, "", "turn-patch")
+            self.assertEqual(events[0]["signal"], "file_patch")
+            self.assertIn("README.md", events[0]["details"])
 
     def test_post_tool_use_redacts_secret_like_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -425,7 +485,9 @@ class HookTests(unittest.TestCase):
                 cwd=ROOT,
             )
             result = json.loads(query.stdout)
-            self.assertIn("[REDACTED]", result["results"][0]["content"])
+            self.assertEqual(result["results"], [])
+            events = runtime_events(tmp, "", "")
+            self.assertIn("[REDACTED]", events[0]["details"])
 
 
 if __name__ == "__main__":

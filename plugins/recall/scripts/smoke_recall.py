@@ -17,22 +17,22 @@ DEFAULT_RECORDS = [
     (
         "project_state",
         "RECALL smoke project is verifying startup recall across a project boundary.",
-        {"tags": ["smoke", "startup"], "source": "smoke_recall"},
+        {"tags": ["smoke", "startup"], "source": "smoke_recall", "status": "active"},
     ),
     (
         "requirements",
         "RECALL must keep all runtime memory inside the active project .codex_memory directory.",
-        {"tags": ["smoke", "local-first"], "source": "smoke_recall"},
+        {"tags": ["smoke", "local-first"], "source": "smoke_recall", "status": "active"},
     ),
     (
         "commands",
         "Verified smoke command: python scripts/smoke_recall.py --json",
-        {"tags": ["smoke", "command"], "source": "smoke_recall"},
+        {"tags": ["smoke", "command"], "source": "smoke_recall", "status": "active"},
     ),
     (
         "risks",
         "Hook payload drift can break live Codex recall even when unit tests pass.",
-        {"tags": ["smoke", "hooks"], "source": "smoke_recall"},
+        {"tags": ["smoke", "hooks"], "source": "smoke_recall", "status": "active"},
     ),
 ]
 
@@ -236,7 +236,7 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
         },
     )
     require(tool_hook["continue"] is True, "PostToolUse hook did not continue")
-    checks.append("PostToolUse captures compact command memory")
+    checks.append("PostToolUse buffers compact command evidence")
 
     pre_compact = run_json(
         hook_command(plugin_root, "pre_compact.py"),
@@ -261,7 +261,9 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
         },
     )
     require(stop["continue"] is True, "Stop hook did not continue")
-    checks.append("Stop hook exits cleanly")
+    require(stop.get("decision") == "block", "Stop hook did not request finalizer for dirty evidence")
+    require("RECALL_FINALIZER_REQUEST" in stop.get("reason", ""), "Stop hook did not include finalizer prompt")
+    checks.append("Stop hook requests finalizer for dirty evidence")
 
     session_start = run_json(
         hook_command(plugin_root, "session_start.py"),
