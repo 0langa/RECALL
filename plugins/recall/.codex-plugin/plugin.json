@@ -1,6 +1,6 @@
 {
   "name": "recall",
-  "version": "0.1.0",
+  "version": "0.1.0+codex.20260609143326",
   "description": "Local-first project memory for Codex agents.",
   "author": {
     "name": "RECALL contributors"
