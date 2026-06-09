@@ -1,0 +1,14 @@
+{
+  "cwd": "__TEMP_PROJECT__",
+  "hook_event_name": "PostToolUse",
+  "turn_id": "fixture-failure",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "python -m unittest tests.test_missing"
+  },
+  "tool_response": {
+    "exit_code": 1,
+    "stdout": "",
+    "stderr": "FAILED tests/test_missing.py::MissingTest - AssertionError: boom"
+  }
+}

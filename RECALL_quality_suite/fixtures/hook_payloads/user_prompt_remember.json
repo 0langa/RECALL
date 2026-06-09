@@ -1,0 +1,5 @@
+{
+  "cwd": "__TEMP_PROJECT__",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "remember this: RECALL should prefer source-blind evaluations for memory quality gates."
+}
