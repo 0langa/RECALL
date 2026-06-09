@@ -19,9 +19,9 @@ POSIX_USER_MARKER = "/" + "Users" + "/"
 REQUIRED_PATHS = {
     ".codex-plugin/plugin.json",
     "hooks/hooks.json",
-    "skills/save_insight/SKILL.md",
-    "skills/retrieve_memory/SKILL.md",
-    "skills/define_category/SKILL.md",
+    "skills/save-insight/SKILL.md",
+    "skills/retrieve-memory/SKILL.md",
+    "skills/define-category/SKILL.md",
     "scripts/recall_skill.py",
     "scripts/memory_manager.py",
 }

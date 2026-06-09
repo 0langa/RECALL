@@ -113,6 +113,39 @@ class RecallSkillAdapterTests(unittest.TestCase):
             self.assertEqual(repair["action"], "repair")
             self.assertTrue(repair["report"]["doctor"]["index_complete"])
 
+    def test_review_and_lifecycle_actions_use_public_adapter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            old = run_skill(
+                tmp,
+                "save-insight",
+                "decisions",
+                "Use raw transcript memories.",
+                "--summary",
+                "Raw transcript memories.",
+                "--status",
+                "active",
+            )
+            new = run_skill(
+                tmp,
+                "save-insight",
+                "decisions",
+                "Use structured memory cards.",
+                "--summary",
+                "Structured memory cards.",
+                "--status",
+                "active",
+            )
+            supersede = run_skill(tmp, "supersede-memory", str(old["id"]), str(new["id"]), "--note", "Corrected.")
+            confirm = run_skill(tmp, "confirm-memory", str(new["id"]), "--source-session", "session-1")
+            review = run_skill(tmp, "review-memory", "--category", "decisions", "--limit", "5")
+            prune = run_skill(tmp, "prune-memory", str(old["id"]), "--note", "Reviewed as obsolete.")
+
+            self.assertEqual(supersede["old"]["metadata"]["status"], "superseded")
+            self.assertIn(old["id"], supersede["new"]["metadata"]["supersedes"])
+            self.assertEqual(confirm["metadata"]["source_session"], "session-1")
+            self.assertEqual(review["review"]["category_counts"]["decisions"], 2)
+            self.assertEqual(prune["metadata"]["status"], "archived")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -47,6 +47,25 @@ python ./scripts/recall_skill.py retrieve-memory "local backend choice" --summar
 
 Developer/support maintenance commands are available through the internal backend script, but they are not the public plugin workflow.
 
+Review what RECALL thinks matters:
+
+```bash
+python ./scripts/recall_skill.py review-memory --limit 20
+```
+
+Confirm, resolve, supersede, merge, or prune memories through the public adapter:
+
+```bash
+python ./scripts/recall_skill.py confirm-memory 12 --source-session session-2026-06-08
+python ./scripts/recall_skill.py resolve-memory 12 --note "Implemented in the current release."
+python ./scripts/recall_skill.py stale-memory 12 --note "Needs reconfirmation after API changes."
+python ./scripts/recall_skill.py supersede-memory 12 18 --note "Memory #18 corrects #12."
+python ./scripts/recall_skill.py merge-memories 18 19 20 --note "Folded duplicate memories into #18."
+python ./scripts/recall_skill.py prune-memory 12 --note "Reviewed as obsolete."
+```
+
+`prune-memory` is non-destructive: it marks a memory as `archived` and records review metadata.
+
 Define a custom category:
 
 ```bash
@@ -117,7 +136,7 @@ If category names or weights were edited manually in `memory_config.json`, norma
 python ./scripts/update_categories.py --root <project-root>
 ```
 
-This is a developer/support maintenance command, not a Codex hook event. Normal category creation and refinement should use the `define_category` skill.
+This is a developer/support maintenance command, not a Codex hook event. Normal category creation and refinement should use the `define-category` skill.
 
 To inspect available categories through the public adapter:
 
@@ -161,7 +180,9 @@ Built-in categories are:
 - `requirements`
 - `risks`
 
-Unknown categories are accepted, normalized to snake case, and added to the config with a default weight. You can refine them later with the `define_category` skill or the CLI command.
+Unknown categories are accepted, normalized to snake case, and added to the config with a default weight. You can refine them later with the `define-category` skill or the CLI command.
+
+Lifecycle metadata is stored inside each memory card. RECALL understands `related_to`, `supersedes`, `superseded_by`, `source_session`, and `last_confirmed`, and automatic hooks can update or link existing memories instead of creating repetitive notes.
 
 ## Storage
 

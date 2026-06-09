@@ -15,7 +15,7 @@ import memory_manager  # noqa: E402
 
 
 class MemoryHygieneTests(unittest.TestCase):
-    def test_exact_automatic_duplicate_is_suppressed(self) -> None:
+    def test_exact_automatic_duplicate_updates_existing_record(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             metadata = memory_manager.build_card_metadata(
                 source="post_tool_use",
@@ -28,9 +28,10 @@ class MemoryHygieneTests(unittest.TestCase):
             result = memory_manager.query("python unittest", categories=["commands"], root=tmp)
 
             self.assertEqual(first["action"], "saved")
-            self.assertEqual(second["action"], "duplicate_suppressed")
+            self.assertEqual(second["action"], "updated_existing")
             self.assertEqual(second["duplicate_id"], first["record"].id)
             self.assertEqual(len(result["results"]), 1)
+            self.assertIn("last_confirmed", result["results"][0]["metadata"])
 
     def test_near_duplicate_is_saved_with_related_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

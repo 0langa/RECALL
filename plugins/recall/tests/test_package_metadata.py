@@ -91,9 +91,9 @@ class PackageMetadataTests(unittest.TestCase):
             with zipfile.ZipFile(archive, "w") as package:
                 package.writestr(".codex-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
                 package.writestr("hooks/hooks.json", "{}")
-                package.writestr("skills/save_insight/SKILL.md", "# Save")
-                package.writestr("skills/retrieve_memory/SKILL.md", "# Retrieve")
-                package.writestr("skills/define_category/SKILL.md", "# Define")
+                package.writestr("skills/save-insight/SKILL.md", "# Save")
+                package.writestr("skills/retrieve-memory/SKILL.md", "# Retrieve")
+                package.writestr("skills/define-category/SKILL.md", "# Define")
                 package.writestr("scripts/recall_skill.py", "print('ok')\n")
                 package.writestr("scripts/memory_manager.py", "print('ok')\n")
             completed = subprocess.run(
@@ -111,9 +111,9 @@ class PackageMetadataTests(unittest.TestCase):
             with zipfile.ZipFile(archive, "w") as package:
                 package.writestr(".codex-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
                 package.writestr("hooks/hooks.json", "{}")
-                package.writestr("skills/save_insight/SKILL.md", "# Save")
-                package.writestr("skills/retrieve_memory/SKILL.md", "# Retrieve")
-                package.writestr("skills/define_category/SKILL.md", "# Define")
+                package.writestr("skills/save-insight/SKILL.md", "# Save")
+                package.writestr("skills/retrieve-memory/SKILL.md", "# Retrieve")
+                package.writestr("skills/define-category/SKILL.md", "# Define")
                 package.writestr("scripts/recall_skill.py", "print('ok')\n")
                 package.writestr("scripts/memory_manager.py", "token=dummy-secret-value\n")
                 package.writestr(".codex_memory/memory.sqlite", "")

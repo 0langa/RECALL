@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import config as recall_config
+import memory_review
 import memory_manager
 
 
@@ -53,6 +54,38 @@ def main() -> None:
     subparsers.add_parser("doctor")
     subparsers.add_parser("repair")
     subparsers.add_parser("list-categories")
+
+    review = subparsers.add_parser("review-memory")
+    review.add_argument("--status", action="append", default=[])
+    review.add_argument("--category", action="append", default=[])
+    review.add_argument("--source")
+    review.add_argument("--limit", type=int, default=20)
+
+    confirm = subparsers.add_parser("confirm-memory")
+    confirm.add_argument("id", type=int)
+    confirm.add_argument("--source-session")
+
+    resolve = subparsers.add_parser("resolve-memory")
+    resolve.add_argument("id", type=int)
+    resolve.add_argument("--note")
+
+    stale = subparsers.add_parser("stale-memory")
+    stale.add_argument("id", type=int)
+    stale.add_argument("--note")
+
+    supersede = subparsers.add_parser("supersede-memory")
+    supersede.add_argument("old_id", type=int)
+    supersede.add_argument("new_id", type=int)
+    supersede.add_argument("--note")
+
+    merge = subparsers.add_parser("merge-memories")
+    merge.add_argument("primary_id", type=int)
+    merge.add_argument("secondary_id", nargs="+")
+    merge.add_argument("--note")
+
+    prune = subparsers.add_parser("prune-memory")
+    prune.add_argument("id", type=int)
+    prune.add_argument("--note")
 
     args = parser.parse_args()
     root = Path(args.root).resolve() if args.root else None
@@ -103,6 +136,49 @@ def main() -> None:
             for name, details in sorted(cfg["categories"].items())
         ]
         print_json({"action": "list-categories", "categories": categories})
+    elif args.command == "review-memory":
+        print_json(
+            {
+                "action": "review-memory",
+                "review": memory_review.review_memory(
+                    root,
+                    statuses=args.status,
+                    categories=args.category,
+                    source=args.source,
+                    limit=args.limit,
+                ),
+            }
+        )
+    elif args.command == "confirm-memory":
+        record = memory_manager.confirm_record(args.id, root, args.source_session)
+        print_json({"action": "confirm-memory", "id": record.id, "metadata": record.metadata})
+    elif args.command == "resolve-memory":
+        record = memory_manager.resolve_record(args.id, root, args.note)
+        print_json({"action": "resolve-memory", "id": record.id, "metadata": record.metadata})
+    elif args.command == "stale-memory":
+        record = memory_manager.mark_record_stale(args.id, root, args.note)
+        print_json({"action": "stale-memory", "id": record.id, "metadata": record.metadata})
+    elif args.command == "supersede-memory":
+        result = memory_manager.supersede_record(args.old_id, args.new_id, root, args.note)
+        print_json(
+            {
+                "action": "supersede-memory",
+                "old": {"id": result["old"].id, "metadata": result["old"].metadata},
+                "new": {"id": result["new"].id, "metadata": result["new"].metadata},
+            }
+        )
+    elif args.command == "merge-memories":
+        result = memory_manager.merge_records(args.primary_id, args.secondary_id, root, args.note)
+        print_json(
+            {
+                "action": "merge-memories",
+                "primary": {"id": result["primary"].id, "metadata": result["primary"].metadata},
+                "merged": [{"id": record.id, "metadata": record.metadata} for record in result["merged"]],
+            }
+        )
+    elif args.command == "prune-memory":
+        record = memory_manager.prune_record(args.id, root, args.note)
+        print_json({"action": "prune-memory", "id": record.id, "metadata": record.metadata})
 
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@
 | Original plan item | Current code state | Status | Required V1 action |
 |---|---|---:|---|
 | Codex plugin scaffold and manifest | Installable plugin lives at `plugins/recall`; repo root is the marketplace wrapper; public metadata/assets validate | Done | Add screenshots only if useful |
-| Default categories and custom categories | Built into `config.py` and template; bundled `define_category` skill and adapter support category refinement | Done | Keep category guidance aligned with retrieval behavior |
+| Default categories and custom categories | Built into `config.py` and template; bundled `define-category` skill and adapter support category refinement | Done | Keep category guidance aligned with retrieval behavior |
 | `memory_config.json` project root behavior | Root config is copied if present; runtime config lives in `.codex_memory/` | Done | Document precedence in user docs |
 | SQLite backend | Implemented with schema version metadata and additive migration tests | Done | Keep migrations additive |
 | JSONL backend | Implemented with malformed-row recovery tests | Done | Keep corrupt rows visible in `doctor` |
@@ -34,9 +34,9 @@
 | FAISS/Chroma vector search | Not implemented | Optional after V1 | Keep out of V1 unless packaged locally and e2e verified |
 | Bundled sentence-transformer embeddings | Not implemented | Optional after V1 | Defer; V1 should use structured memory cards and deterministic retrieval |
 | Structured memory-card schema | Implemented as metadata convention with adapter/CLI flags, hook write policy, and retrieval scoring over card fields | Done | Keep card policy aligned with bundled skills |
-| `save_insight` skill | Installed-plugin-first guidance with structured memory-card examples through `recall_skill.py` | Done | Keep examples aligned with the skill adapter |
-| `retrieve_memory` skill | Installed-plugin-first guidance with schema-first retrieval through `recall_skill.py` | Done | Keep recovery guidance current |
-| `define_category` skill | Installed-plugin-first guidance with auto-created category refinement through `recall_skill.py` | Done | Add deeper category-weight behavior tests if ranking changes |
+| `save-insight` skill | Installed-plugin-first guidance with structured memory-card examples through `recall_skill.py` | Done | Keep examples aligned with the skill adapter |
+| `retrieve-memory` skill | Installed-plugin-first guidance with schema-first retrieval through `recall_skill.py` | Done | Keep recovery guidance current |
+| `define-category` skill | Installed-plugin-first guidance with auto-created category refinement through `recall_skill.py` | Done | Add deeper category-weight behavior tests if ranking changes |
 | `SessionStart` hook | Installed-cache smoke verifies context injection; live app screenshot verifies activation | Done | Watch for future Codex payload drift |
 | `PreCompact` hook | Parses useful event text and metadata; avoids raw envelope storage | Done | Watch for future Codex payload drift |
 | `PostToolUse` hook | Compact command/error capture implemented, noisy successful output reduced, live runs observed | Done | Watch for future Codex payload drift |
@@ -69,14 +69,14 @@
 - Modify: `scripts/memory_manager.py`
 - Modify: `scripts/storage.py`
 - Modify: `scripts/retrieval.py`
-- Modify: `skills/save_insight/SKILL.md`
+- Modify: `skills/save-insight/SKILL.md`
 - Modify: `hooks/scripts/pre_compact.py`
 - Test: `tests/test_memory_manager.py`
 
 - [x] Add a memory-card payload convention stored in `metadata`: `summary`, `details`, `tags`, `source`, `status`, `importance`, and `confidence`.
 - [x] Add CLI support for `--summary`, `--details`, `--tag`, `--status`, `--importance`, and `--confidence` while preserving the existing positional `content` path.
 - [x] Make retrieval search `content`, `metadata.summary`, `metadata.details`, and `metadata.tags`, with category and status filters before scoring.
-- [x] Update `save_insight` and hook compaction guidance so Codex writes concise, scannable memory cards instead of arbitrary transcripts.
+- [x] Update `save-insight` and hook compaction guidance so Codex writes concise, scannable memory cards instead of arbitrary transcripts.
 - [x] Add tests proving a tagged structured card is retrieved without model embeddings and beats an untagged keyword-only note.
 
 ### Task 2: Make Hook Payload Handling Release-Grade
@@ -116,14 +116,14 @@
 ### Task 4: Close The Skill And User Workflow Gaps
 
 **Files:**
-- Modify: `skills/save_insight/SKILL.md`
-- Modify: `skills/retrieve_memory/SKILL.md`
-- Modify: `skills/define_category/SKILL.md`
+- Modify: `skills/save-insight/SKILL.md`
+- Modify: `skills/retrieve-memory/SKILL.md`
+- Modify: `skills/define-category/SKILL.md`
 - Modify: `examples/workflows.md`
 - Test: `tests/test_package_metadata.py`
 
 - [x] Update skill docs so they describe installed-plugin behavior first and use the bundled `recall_skill.py` adapter instead of advertising the backend maintenance CLI.
-- [x] Make unknown category behavior explicit: auto-create, warn in metadata, then recommend `define_category` refinement.
+- [x] Make unknown category behavior explicit: auto-create, warn in metadata, then recommend `define-category` refinement.
 - [x] Add examples for saving requirements, risks, commands, and session summaries.
 - [x] Add test assertions that every skill mentions local-only storage and no secrets.
 - [x] Add test assertions that bundled skills reference `recall_skill.py` and do not reference `memory_manager.py`.

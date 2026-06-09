@@ -23,12 +23,23 @@ CATEGORY_CAPS = {
 }
 DEFAULT_CATEGORIES = list(CATEGORY_CAPS)
 ACTIVE_STATUSES = ["active", "open"]
-HISTORICAL_STATUSES = ["resolved", "superseded", "archived"]
+HISTORICAL_STATUSES = ["resolved", "stale", "superseded", "archived"]
+GENERIC_SUMMARIES = {
+    "session stop checkpoint.",
+    "session compaction checkpoint.",
+    "bash result captured.",
+    "tool result captured.",
+}
 
 
 def record_text(record: dict[str, Any], max_chars: int = 220) -> str:
     metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
-    text = metadata.get("summary") if isinstance(metadata.get("summary"), str) else record.get("content", "")
+    summary = metadata.get("summary") if isinstance(metadata.get("summary"), str) else ""
+    if summary.strip().lower() and summary.strip().lower() not in GENERIC_SUMMARIES:
+        text = summary
+    else:
+        details = metadata.get("details") if isinstance(metadata.get("details"), str) else ""
+        text = details or record.get("content", "")
     text = " ".join(str(text).split())
     if len(text) > max_chars:
         return text[: max_chars - 14].rstrip() + " [truncated]"

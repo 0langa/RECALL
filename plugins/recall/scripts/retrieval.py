@@ -18,6 +18,7 @@ STATUS_WEIGHTS = {
     "active": 1.0,
     "open": 0.95,
     "resolved": 0.65,
+    "stale": 0.35,
     "superseded": 0.25,
     "archived": 0.15,
 }
@@ -26,6 +27,18 @@ DEFAULT_STATUS_WEIGHT = 0.8
 
 def parse_timestamp(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def recency_timestamp(record: storage.MemoryRecord) -> datetime:
+    metadata = record.metadata or {}
+    for key in ("last_confirmed", "updated_at", "timestamp"):
+        value = metadata.get(key) if key != "timestamp" else record.timestamp
+        if isinstance(value, str) and value.strip():
+            try:
+                return parse_timestamp(value)
+            except ValueError:
+                continue
+    return parse_timestamp(record.timestamp)
 
 
 def passes_filters(
@@ -116,7 +129,7 @@ def score_record(
         pass
     score *= recall_config.category_weight(cfg, record.category)
     score *= status_weight(record)
-    age_days = max(0.0, (datetime.now(timezone.utc) - parse_timestamp(record.timestamp)).total_seconds() / 86400)
+    age_days = max(0.0, (datetime.now(timezone.utc) - recency_timestamp(record)).total_seconds() / 86400)
     score += 0.03 / (1.0 + age_days)
     return score
 
