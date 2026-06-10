@@ -17,9 +17,9 @@
   },
   {
     "category": "architecture",
-    "content": "Lifecycle hooks cover SessionStart, UserPromptSubmit, PostToolUse, PreCompact, and Stop. SessionStart injects recalled context; prompt inspection catches explicit memory cues; tool and compact/stop hooks save compact checkpoints.",
-    "summary": "RECALL lifecycle hooks maintain and inject memory.",
-    "details": "Hook payload drift remains a compatibility risk because live Codex payloads may change.",
+    "content": "Lifecycle hooks cover SessionStart, UserPromptSubmit, PostToolUse, PreCompact, and Stop. SessionStart is a quiet compatibility hook; UserPromptSubmit activates RECALL only on explicit @recall-style invocation; PostToolUse and PreCompact buffer or save only after activation; Stop emits one compact finalizer request instead of directly writing durable memory.",
+    "summary": "RECALL lifecycle hooks are explicit-activation first.",
+    "details": "Hook payload drift remains a compatibility risk because live Codex payloads may change. The current contract is no activation, no automatic memory cycle.",
     "tags": [
       "hooks",
       "sessionstart",

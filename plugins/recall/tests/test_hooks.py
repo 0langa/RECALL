@@ -56,6 +56,19 @@ def runtime_events(root: str, session_id: str, turn_id: str) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def activate_recall(root: str, session_id: str = "", turn_id: str = "") -> dict:
+    return run_hook(
+        "prompt_inspector.py",
+        {
+            "cwd": root,
+            "session_id": session_id,
+            "turn_id": turn_id,
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "[@recall](plugin://recall@recall-local) continue with RECALL active.",
+        },
+    )
+
+
 class HookTests(unittest.TestCase):
     def test_prompt_inspector_saves_remembered_preference(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -64,7 +77,7 @@ class HookTests(unittest.TestCase):
                 {
                     "cwd": tmp,
                     "hook_event_name": "UserPromptSubmit",
-                    "prompt": "remember this: prefer local-only memory storage",
+                    "prompt": "@recall remember this: prefer local-only memory storage",
                 },
             )
             self.assertTrue(output["continue"])
@@ -104,7 +117,7 @@ class HookTests(unittest.TestCase):
             result = query_memory(tmp, "actually remembered", "preferences")
             self.assertEqual(result["results"], [])
 
-    def test_session_start_injects_additional_context(self) -> None:
+    def test_prompt_invocation_injects_additional_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             subprocess.run(
                 [
@@ -126,14 +139,20 @@ class HookTests(unittest.TestCase):
                 text=True,
             )
             output = run_hook(
-                "session_start.py",
-                {"cwd": tmp, "hook_event_name": "SessionStart", "source": "startup"},
+                "prompt_inspector.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-context",
+                    "turn_id": "turn-context",
+                    "hook_event_name": "UserPromptSubmit",
+                    "prompt": "@recall what is the current project state?",
+                },
             )
             self.assertTrue(output["continue"])
-            self.assertEqual(output["hookSpecificOutput"]["hookEventName"], "SessionStart")
+            self.assertEqual(output["hookSpecificOutput"]["hookEventName"], "UserPromptSubmit")
             self.assertIn("RECALL hook tests", output["hookSpecificOutput"]["additionalContext"])
 
-    def test_session_start_excludes_superseded_when_active_context_exists(self) -> None:
+    def test_prompt_invocation_excludes_superseded_when_active_context_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             subprocess.run(
                 [
@@ -179,12 +198,13 @@ class HookTests(unittest.TestCase):
             )
 
             output = run_hook(
-                "session_start.py",
+                "prompt_inspector.py",
                 {
                     "cwd": tmp,
-                    "hook_event_name": "SessionStart",
-                    "source": "startup",
-                    "query": "startup requirement",
+                    "session_id": "session-startup",
+                    "turn_id": "turn-startup",
+                    "hook_event_name": "UserPromptSubmit",
+                    "prompt": "@recall startup requirement",
                 },
             )
             context = output["hookSpecificOutput"]["additionalContext"]
@@ -193,13 +213,57 @@ class HookTests(unittest.TestCase):
             self.assertIn("Current startup requirement", context)
             self.assertNotIn("Old startup requirement", context)
 
-    def test_session_start_without_memories_is_quiet(self) -> None:
+    def test_session_start_is_quiet_even_with_memories(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "memory_manager.py"),
+                    "--root",
+                    tmp,
+                    "add",
+                    "project_state",
+                    "SessionStart should not inject this automatically.",
+                    "--summary",
+                    "SessionStart should not inject this automatically.",
+                ],
+                check=True,
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
             output = run_hook(
                 "session_start.py",
                 {"cwd": tmp, "hook_event_name": "SessionStart", "source": "startup"},
             )
             self.assertEqual(output, {"continue": True})
+
+    def test_recall_invocation_is_required_for_hook_cycle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_hook(
+                "post_tool_use.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-off",
+                    "turn_id": "turn-off",
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "python -m unittest discover -s tests"},
+                    "tool_response": {"exit_code": 0, "stdout": "Ran 9 tests in 1.2s\nOK", "stderr": ""},
+                },
+            )
+            stop = run_hook(
+                "stop.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-off",
+                    "turn_id": "turn-off",
+                    "hook_event_name": "Stop",
+                    "last_assistant_message": "Completed tests and changed memory policy.",
+                },
+            )
+            self.assertEqual(stop, {"continue": True})
+            self.assertEqual(runtime_events(tmp, "session-off", "turn-off"), [])
 
     def test_malformed_hook_json_is_noop(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -210,6 +274,7 @@ class HookTests(unittest.TestCase):
 
     def test_post_tool_use_buffers_compact_successful_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            activate_recall(tmp, "session-test", "turn-test")
             output = run_hook(
                 "post_tool_use.py",
                 {
@@ -235,6 +300,7 @@ class HookTests(unittest.TestCase):
 
     def test_post_tool_use_suppresses_exact_duplicate_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            activate_recall(tmp)
             payload = {
                 "cwd": tmp,
                 "hook_event_name": "PostToolUse",
@@ -253,6 +319,7 @@ class HookTests(unittest.TestCase):
 
     def test_post_tool_use_links_near_duplicate_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            activate_recall(tmp)
             base = {
                 "cwd": tmp,
                 "hook_event_name": "PostToolUse",
@@ -274,6 +341,7 @@ class HookTests(unittest.TestCase):
 
     def test_post_tool_use_successful_listing_is_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            activate_recall(tmp)
             output = run_hook(
                 "post_tool_use.py",
                 {
@@ -294,6 +362,7 @@ class HookTests(unittest.TestCase):
 
     def test_pre_compact_uses_event_fields_not_raw_envelope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            activate_recall(tmp, "", "turn-123")
             output = run_hook(
                 "pre_compact.py",
                 {
@@ -314,6 +383,7 @@ class HookTests(unittest.TestCase):
 
     def test_pre_compact_empty_payload_is_noop(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            activate_recall(tmp, "", "turn-empty")
             output = run_hook(
                 "pre_compact.py",
                 {"cwd": tmp, "hook_event_name": "PreCompact", "turn_id": "turn-empty", "trigger": "manual"},
@@ -324,6 +394,7 @@ class HookTests(unittest.TestCase):
 
     def test_stop_dirty_buffer_requests_finalizer_once(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            activate_recall(tmp, "session-stop", "turn-stop")
             run_hook(
                 "post_tool_use.py",
                 {
@@ -368,6 +439,7 @@ class HookTests(unittest.TestCase):
 
     def test_stop_active_finalizer_marks_finalized(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            activate_recall(tmp, "session-stop", "turn-stop")
             run_hook(
                 "post_tool_use.py",
                 {
@@ -417,6 +489,7 @@ class HookTests(unittest.TestCase):
 
     def test_post_tool_use_stores_compact_bash_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            activate_recall(tmp, "", "turn-bash-failure")
             output = run_hook(
                 "post_tool_use.py",
                 {
@@ -440,6 +513,7 @@ class HookTests(unittest.TestCase):
 
     def test_post_tool_use_stores_apply_patch_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            activate_recall(tmp, "", "turn-patch")
             output = run_hook(
                 "post_tool_use.py",
                 {
@@ -459,6 +533,7 @@ class HookTests(unittest.TestCase):
 
     def test_post_tool_use_redacts_secret_like_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            activate_recall(tmp)
             run_hook(
                 "post_tool_use.py",
                 {

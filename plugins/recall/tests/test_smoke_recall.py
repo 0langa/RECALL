@@ -22,7 +22,7 @@ class SmokeRecallTests(unittest.TestCase):
         result = json.loads(completed.stdout)
         self.assertEqual(result["status"], "pass")
         self.assertGreaterEqual(result["records"], 4)
-        self.assertIn("SessionStart injects recalled project context", result["checks"])
+        self.assertIn("SessionStart stays quiet until explicit RECALL invocation", result["checks"])
 
 
 if __name__ == "__main__":

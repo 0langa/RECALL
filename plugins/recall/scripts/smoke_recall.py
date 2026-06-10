@@ -224,18 +224,22 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
         cwd=plugin_root,
         input_payload={
             "cwd": str(project_root),
+            "session_id": "smoke-session",
+            "turn_id": "smoke-turn",
             "hook_event_name": "UserPromptSubmit",
-            "prompt": "remember this: RECALL smoke prefers structured memory cards.",
+            "prompt": "@recall remember this: RECALL smoke prefers structured memory cards.",
         },
     )
     require(prompt_hook["continue"] is True, "UserPromptSubmit hook did not continue")
-    checks.append("UserPromptSubmit saves explicit memory cue")
+    checks.append("UserPromptSubmit activates RECALL and saves explicit memory cue")
 
     tool_hook = run_json(
         hook_command(plugin_root, "post_tool_use.py"),
         cwd=plugin_root,
         input_payload={
             "cwd": str(project_root),
+            "session_id": "smoke-session",
+            "turn_id": "smoke-turn",
             "hook_event_name": "PostToolUse",
             "tool_name": "Bash",
             "tool_input": {"command": "python scripts/smoke_recall.py --json"},
@@ -250,6 +254,8 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
         cwd=plugin_root,
         input_payload={
             "cwd": str(project_root),
+            "session_id": "smoke-session",
+            "turn_id": "smoke-turn",
             "hook_event_name": "PreCompact",
             "trigger": "manual",
             "transcript": "RECALL smoke compaction should preserve project state, requirements, and risks.",
@@ -263,6 +269,8 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
         cwd=plugin_root,
         input_payload={
             "cwd": str(project_root),
+            "session_id": "smoke-session",
+            "turn_id": "smoke-turn",
             "hook_event_name": "Stop",
             "last_assistant_message": "RECALL smoke stop checkpoint should be available next session.",
         },
@@ -278,12 +286,8 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
         input_payload={"cwd": str(project_root), "hook_event_name": "SessionStart", "source": "startup"},
     )
     require(session_start["continue"] is True, "SessionStart hook did not continue")
-    context = session_start.get("hookSpecificOutput", {}).get("additionalContext", "")
-    require(
-        "RECALL project memory" in context and "smoke" in context.lower(),
-        "SessionStart did not inject smoke context",
-    )
-    checks.append("SessionStart injects recalled project context")
+    require("hookSpecificOutput" not in session_start, "SessionStart should stay quiet until @recall")
+    checks.append("SessionStart stays quiet until explicit RECALL invocation")
 
     final_doctor = run_json(memory_command(plugin_root, project_root, "doctor"), cwd=plugin_root)
     require(final_doctor["index_complete"] is True, "final doctor reports incomplete index")

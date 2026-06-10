@@ -12,6 +12,7 @@ from typing import Any
 
 SCHEMA_EVENT = "recall.turn_event.v1"
 SCHEMA_FINALIZER = "recall.finalizer_request.v1"
+SCHEMA_ACTIVATION = "recall.turn_activation.v1"
 MAX_EVENT_DETAILS = 1200
 MAX_LAST_MESSAGE = 1600
 
@@ -41,6 +42,11 @@ def turn_events_path(root: str | Path | None, session_id: str | None, turn_id: s
 def finalizer_request_path(root: str | Path | None, session_id: str | None, turn_id: str | None) -> Path:
     request_name = f"{safe_name(session_id, 'session')}-{safe_name(turn_id, 'turn')}.json"
     return runtime_dir(root) / "finalizer_requests" / request_name
+
+
+def activation_path(root: str | Path | None, session_id: str | None, turn_id: str | None) -> Path:
+    activation_name = f"{safe_name(session_id, 'session')}-{safe_name(turn_id, 'turn')}.json"
+    return runtime_dir(root) / "activations" / activation_name
 
 
 def truncate(text: str, limit: int) -> str:
@@ -93,6 +99,32 @@ def load_events(root: str | Path | None, session_id: str | None, turn_id: str | 
     return events
 
 
+def mark_active(root: str | Path | None, session_id: str | None, turn_id: str | None, prompt: str) -> Path:
+    path = activation_path(root, session_id, turn_id)
+    payload = {
+        "schema": SCHEMA_ACTIVATION,
+        "status": "active",
+        "created_at": utc_now(),
+        "session_id": session_id,
+        "turn_id": turn_id,
+        "reason": "explicit-recall-mention",
+        "prompt_excerpt": truncate(prompt, 500),
+    }
+    atomic_write_json(path, payload)
+    return path
+
+
+def is_active(root: str | Path | None, session_id: str | None, turn_id: str | None) -> bool:
+    path = activation_path(root, session_id, turn_id)
+    if not path.exists():
+        return False
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return False
+    return isinstance(payload, dict) and payload.get("status") == "active"
+
+
 def is_dirty(events: list[dict[str, Any]]) -> bool:
     for event in events:
         if event.get("durable_candidate") is True and event.get("signal") != "generic_low_signal":
@@ -109,6 +141,9 @@ def summarize_events(events: list[dict[str, Any]], limit: int = 12) -> list[dict
             {
                 "signal": event.get("signal"),
                 "summary": event.get("summary"),
+                "command": event.get("command"),
+                "details_excerpt": truncate(str(event.get("details") or ""), 260) if event.get("details") else None,
+                "category_hint": event.get("category_hint"),
                 "tags": event.get("tags", []),
             }
         )

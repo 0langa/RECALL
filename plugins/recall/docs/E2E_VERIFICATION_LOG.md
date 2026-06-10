@@ -28,7 +28,7 @@ Date: 2026-06-06
 
 ## Residual Verification Note
 
-- Direct visual inspection of the exact `SessionStart` injected context in the Codex transcript remains limited by the app UI. Installed-cache smoke verifies the `SessionStart` `additionalContext` payload, and user screenshots verify the live hook activation.
+- Direct visual inspection of exact hook-injected text in the Codex transcript remains limited by the app UI. Current installed-cache smoke verifies that `SessionStart` stays quiet and explicit `@recall` prompt invocation retrieves relevant local context.
 
 ## Notes
 
@@ -62,4 +62,17 @@ Findings:
 - New-session test matched hook UI: `SessionStart`, `UserPromptSubmit`, `15` `PostToolUse` runs, and `Stop` produced records `#11` through `#27`, with Stop saving checkpoint `#27`.
 - `SessionStart` injection ran without writing a record, which is expected.
 - `UserPromptSubmit` created one false-positive memory from incidental text containing `remembered`; prompt cue detection was tightened to explicit `remember:` / `remember this:` / `remember that:` forms.
-- `PostToolUse` was functionally working but still captured noisy successful command output in some cases; command compaction now strips ANSI sequences and stores command/status summaries instead of raw directory or file-list dumps.
+- Historical finding: `PostToolUse` was functionally working but captured noisy successful command output in some cases. Current behavior buffers compact evidence only after explicit RECALL activation and relies on the Stop finalizer for durable writes.
+
+## Opt-In Hook Retest And Cleanup
+
+Date: 2026-06-10
+
+Current behavior is explicit-activation first:
+
+- A prompt without `@recall`, `plugin://recall`, or `$recall:` leaves `PostToolUse`, `PreCompact`, and `Stop` idle.
+- `UserPromptSubmit` activates the turn only after explicit RECALL invocation.
+- `PostToolUse` buffers compact evidence for activated turns and does not directly write durable command memory.
+- `Stop` emits one compact inline finalizer request with `PACKET=` JSON when buffered evidence deserves review.
+- `SessionStart` stays quiet; explicit `@recall` prompt retrieval injects curated context.
+- Live cleanup used `archive-noise` non-destructively. After cleanup, `archive-noise` dry-run matched `0` remaining records, and review showed `217` active memories and `579` archived memories.

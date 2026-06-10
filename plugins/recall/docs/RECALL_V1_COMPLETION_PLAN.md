@@ -13,12 +13,14 @@
 ## Current Known Limitations
 
 - **Install is CLI-verified and app-evidenced.** Codex CLI marketplace add/install, remove/reinstall, installed-cache smoke, and built-archive marketplace smoke pass. User screenshots confirm plugin picker visibility, skill discovery, and hook trust/enablement in the Codex app.
-- **Hook payload handling is test-verified and live-evidenced.** Tests cover Codex-shaped `SessionStart`, `UserPromptSubmit`, `PreCompact`, `Stop`, Bash `PostToolUse`, and `apply_patch` payloads. User retests confirmed live hook activation without exit-code failures; future Codex payload drift remains a normal compatibility risk.
+- **Hook payload handling is test-verified and live-evidenced.** Tests cover Codex-shaped `SessionStart`, `UserPromptSubmit`, `PreCompact`, `Stop`, Bash `PostToolUse`, and `apply_patch` payloads. RECALL hooks now stay idle until a user explicitly invokes `@recall`, `plugin://recall`, or `$recall:` in the prompt; future Codex payload drift remains a normal compatibility risk.
 - **One-click install is not truly sealed.** The plugin still assumes `python`/`py -3` is available. Codex hook trust is also mandatory for non-managed hooks, so the practical V1 target is “one install plus one hook trust review,” unless Codex adds managed trust for public plugins.
 - **The public action surface is skills and hooks, not the backend CLI.** The package still includes internal Python backend scripts because hooks and local diagnostics need them. Bundled skills should use the narrow `recall_skill.py` adapter and should not steer Codex toward `memory_manager.py` unless the user explicitly asks for maintenance diagnostics.
 - **Retrieval is schema-first, not model-grade semantic search.** Current V1 should rely on structured memory cards, categories, tags, status, and lexical/hash fallback scoring. This is intentional for local-first reliability; FAISS/Chroma or sentence-transformers remain optional after install/runtime behavior is proven.
 - **Zip install is release-tested through extraction.** `dist/recall.zip` builds, package-inspects cleanly, extracts into a temporary marketplace wrapper, installs through Codex CLI, and passes installed-cache smoke.
-- **Real Codex lifecycle is verified as far as current tools expose it.** The source and installed-cache smoke harnesses prove save -> recall -> hook simulation -> skill adapter -> doctor across a project boundary. User-provided app screenshots and memory-store checks confirm live hook activation, hook trust, plugin picker visibility, and new-session checkpoint behavior.
+- **Real Codex lifecycle is verified as far as current tools expose it.** The source and installed-cache smoke harnesses prove save -> recall -> explicit hook activation -> buffered evidence -> Stop finalizer request -> skill adapter -> doctor across a project boundary. User-provided app screenshots and memory-store checks confirm live hook trust and plugin picker visibility.
+- **Automatic memory is opt-in.** `SessionStart` is a quiet compatibility hook, `PostToolUse` and `PreCompact` no-op until explicit RECALL activation, and `Stop` creates one compact inline finalizer request instead of directly saving durable memory.
+- **Existing noise has a safe cleanup path.** `archive-noise` dry-runs by default and marks low-value automatic `post_tool_use` command records as `archived` only when `--apply` is provided.
 - **Manifest presentation is mostly ready.** Homepage/repository links, privacy/terms docs, and local icon/logo assets are present and validator-accepted. Screenshots are still optional polish.
 
 ## Initial Plan Gap Map
@@ -37,11 +39,11 @@
 | `save-insight` skill | Installed-plugin-first guidance with structured memory-card examples through `recall_skill.py` | Done | Keep examples aligned with the skill adapter |
 | `retrieve-memory` skill | Installed-plugin-first guidance with schema-first retrieval through `recall_skill.py` | Done | Keep recovery guidance current |
 | `define-category` skill | Installed-plugin-first guidance with auto-created category refinement through `recall_skill.py` | Done | Add deeper category-weight behavior tests if ranking changes |
-| `SessionStart` hook | Installed-cache smoke verifies context injection; live app screenshot verifies activation | Done | Watch for future Codex payload drift |
-| `PreCompact` hook | Parses useful event text and metadata; avoids raw envelope storage | Done | Watch for future Codex payload drift |
-| `PostToolUse` hook | Compact command/error capture implemented, noisy successful output reduced, live runs observed | Done | Watch for future Codex payload drift |
-| `UserPromptSubmit` hook | Explicit memory cues work and false-positive `remembered` regression is covered | Done | Watch for future Codex payload drift |
-| `Stop` hook | Parses `last_assistant_message`, avoids noisy JSON memory, live checkpoints observed | Done | Watch for future Codex payload drift |
+| `SessionStart` hook | Quiet compatibility hook; explicit `@recall` prompt retrieval provides context instead | Done | Watch for future Codex payload drift |
+| `PreCompact` hook | Parses useful event text and metadata only after explicit RECALL activation; avoids raw envelope storage | Done | Watch for future Codex payload drift |
+| `PostToolUse` hook | Buffers compact command/error evidence only after explicit RECALL activation; no direct durable command writes | Done | Watch for future Codex payload drift |
+| `UserPromptSubmit` hook | Explicit RECALL invocation activates the turn; memory cues work and false-positive `remembered` regression is covered | Done | Watch for future Codex payload drift |
+| `Stop` hook | Builds a compact inline finalizer request from buffered evidence and avoids direct durable writes | Done | Watch for future Codex payload drift |
 | `UpdateCategories` hook | Unsupported hook wrapper removed; category normalization is an explicit support CLI command documented in README/INSTALL | Done | Do not invent unsupported hook events |
 | Heuristic summarization | Implemented with category/timestamp context | Done | Add quality regression fixtures |
 | Packaged dependencies/venv/models | Not implemented | Optional after V1 | Replace with no-dependency release path for V1 |
@@ -92,8 +94,8 @@
 - [x] Parse hook JSON into event-specific fields instead of summarizing raw JSON wrappers.
 - [x] For `PreCompact`, store a `session_summaries` record only when useful text is present; include `trigger`, `turn_id`, and source metadata.
 - [x] For `Stop`, store `last_assistant_message` as `project_state` only when non-empty; never store the whole hook envelope as memory content.
-- [x] For `SessionStart`, return `hookSpecificOutput.additionalContext` only when relevant memories exist; otherwise exit cleanly with no noisy UI message.
-- [x] For `PostToolUse`, verify live-shaped Bash and `apply_patch` payloads, keep command/error summaries compact, and redact secrets before storage.
+- [x] For `SessionStart`, exit quietly; use explicit `@recall` prompt invocation for context retrieval.
+- [x] For `PostToolUse`, verify live-shaped Bash and `apply_patch` payloads, keep command/error evidence compact, redact secrets, and buffer only after explicit RECALL activation.
 - [x] Add regression tests for empty payloads, malformed JSON, missing fields, real-shaped `PreCompact`, real-shaped `Stop`, Bash success, Bash failure, and `apply_patch`.
 
 ### Task 3: Harden Storage, Config, And Index Recovery
@@ -153,7 +155,7 @@
 - [x] Confirm RECALL appears in the Codex App plugin picker and can be enabled there.
 - [x] Confirm bundled skills are discoverable after a new thread starts.
 - [x] Review and trust bundled hooks in Codex Settings > Coding > Hooks.
-- [x] Run a real project lifecycle using the installed plugin bundle: “remember this,” command capture, new thread, `SessionStart` activation, manual retrieval via the skill/adapter path, and maintenance diagnostics only if needed.
+- [x] Run a real project lifecycle using the installed plugin bundle: explicit `@recall` activation, “remember this,” command evidence buffering, Stop finalizer request, manual retrieval via the skill/adapter path, and maintenance diagnostics only if needed.
 - [x] Record the exact environment, commands, observed outputs, and any Codex limitations in `docs/E2E_VERIFICATION_LOG.md`.
 
 ### Task 7: Polish Public Manifest And One-Click Surface
@@ -198,4 +200,4 @@
 - Official Codex hook docs confirm hook trust, event scopes, command hook limitations, `commandWindows`, and `hookSpecificOutput.additionalContext`: https://developers.openai.com/codex/hooks
 - Letta/MemGPT memory docs support the schema-first direction by emphasizing memory hierarchy, editable memory blocks, archival storage, and agent-managed memory updates before raw vector retrieval: https://docs.letta.com/guides/agents/memory and https://docs.letta.com/guides/agents/architectures/memgpt
 - Recent agent-memory survey work frames memory as a write-manage-read loop across temporal scope, representation, and control policy, which supports improving write policy and record structure before adding local models: https://arxiv.org/abs/2603.07670
-- Current repo verification after Task 8: `python -m unittest discover -s tests` passes 47 tests from `plugins/recall`; source smoke passes; installed-cache smoke passes; built-archive marketplace smoke passes; plugin validator passes against `plugins/recall`; repo-root `.\build_plugin.ps1` builds and package-inspects `plugins/recall/dist/recall.zip`; `codex plugin add recall@recall-local` succeeds.
+- Current repo verification after opt-in hook hardening: `python -m unittest discover -s tests` passes 85 tests from `plugins/recall`; source smoke passes; quality hook lifecycle contracts pass with explicit activation; package hygiene passes; plugin validator passes against `plugins/recall`; repo-root `.\build_plugin.ps1` builds and package-inspects `plugins/recall/dist/recall.zip`.

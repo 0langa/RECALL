@@ -162,6 +162,33 @@ class RecallSkillAdapterTests(unittest.TestCase):
             self.assertEqual(review["review"]["category_counts"]["decisions"], 2)
             self.assertEqual(prune["metadata"]["status"], "archived")
 
+    def test_archive_noise_is_dry_run_until_apply(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            noisy = run_skill(
+                tmp,
+                "save-insight",
+                "commands",
+                "Tool: Bash Command: git status --short Result: completed",
+                "--summary",
+                "Bash result captured.",
+                "--source",
+                "post_tool_use",
+                "--status",
+                "active",
+            )
+
+            dry_run = run_skill(tmp, "archive-noise")
+            still_active = run_skill(tmp, "review-memory", "--category", "commands", "--status", "active")
+            applied = run_skill(tmp, "archive-noise", "--apply")
+            archived = run_skill(tmp, "review-memory", "--category", "commands", "--status", "archived")
+
+            self.assertEqual(dry_run["mode"], "dry-run")
+            self.assertEqual(dry_run["matched"], 1)
+            self.assertEqual(still_active["review"]["memories"][0]["id"], noisy["id"])
+            self.assertEqual(applied["mode"], "apply")
+            self.assertEqual(applied["archived"], 1)
+            self.assertEqual(archived["review"]["memories"][0]["id"], noisy["id"])
+
     def test_edit_and_delete_memory_use_public_adapter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             saved = run_skill(

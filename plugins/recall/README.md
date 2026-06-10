@@ -53,6 +53,15 @@ Review what RECALL thinks matters:
 python ./scripts/recall_skill.py review-memory --limit 20
 ```
 
+Preview and archive old automatic hook noise:
+
+```bash
+python ./scripts/recall_skill.py archive-noise
+python ./scripts/recall_skill.py archive-noise --apply --limit 50
+```
+
+`archive-noise` is non-destructive and dry-runs by default. With `--apply`, it marks low-value automatic `post_tool_use` command records as `archived`; it does not delete memory.
+
 Confirm, resolve, supersede, merge, or prune memories through the public adapter:
 
 ```bash
@@ -156,10 +165,12 @@ python ./scripts/smoke_recall.py --installed-plugin-root <installed-plugin-root>
 
 Codex auto-discovers plugin hooks from `hooks/hooks.json`. RECALL currently wires:
 
-- `SessionStart` to load high-signal project memory.
-- `UserPromptSubmit` to catch explicit "remember this" and "define category" cues.
-- `PostToolUse` to capture useful command and debugging context.
-- `PreCompact` and `Stop` to save lightweight checkpoints.
+- `SessionStart` as a quiet compatibility hook; it does not inject memory by default.
+- `UserPromptSubmit` to activate RECALL only when the prompt explicitly includes `@recall`, `plugin://recall`, or `$recall:`.
+- `UserPromptSubmit` to catch explicit "remember this" and "define category" cues after RECALL is activated.
+- `PostToolUse` to buffer useful command and debugging context only for activated RECALL turns.
+- `PreCompact` to save compaction checkpoints only for activated RECALL turns.
+- `Stop` to request one compact inline finalizer pass for activated RECALL turns with buffered durable evidence.
 
 Plugin-bundled hooks are reviewed through Codex's normal hook trust flow before they run.
 

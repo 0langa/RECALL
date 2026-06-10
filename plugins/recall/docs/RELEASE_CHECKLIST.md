@@ -20,10 +20,14 @@ Run local plugin commands from `<repo-root>/plugins/recall` unless a step explic
 - [x] Confirm `RECALL` appears in the plugin picker and can be enabled.
 - [x] Confirm bundled skills are discoverable in a new thread.
 - [x] Review and trust bundled hooks in Codex Settings > Coding > Hooks.
-- [x] In a temp project, simulate “remember this” and verify `UserPromptSubmit` stores a preference.
-- [x] Simulate a successful command and verify `PostToolUse` stores a compact command memory.
-- [x] Start a new thread in the same project and verify `SessionStart` hook activation; installed-cache smoke verifies relevant local context injection.
+- [x] In a temp project, submit a prompt without `@recall` and verify hooks stay idle with no durable memory write.
+- [x] In a temp project, simulate `@recall remember this:` and verify `UserPromptSubmit` stores a preference.
+- [x] Simulate a successful command after explicit `@recall` activation and verify `PostToolUse` buffers compact evidence without writing durable command memory.
+- [x] Trigger `Stop` after buffered evidence and verify it emits one compact inline finalizer request.
+- [x] Start a new thread in the same project and verify `SessionStart` stays quiet; explicit `@recall` prompt retrieval injects relevant local context.
 - [x] Run installed-bundle skill adapter retrieval rather than source-only backend commands.
+- [x] Run `python .\scripts\recall_skill.py archive-noise` as a dry run before any live cleanup.
+- [x] Run `python .\scripts\recall_skill.py archive-noise --apply --limit <n>` only after reviewing dry-run matches.
 - [x] Run `python .\scripts\memory_manager.py doctor` only as a developer/support diagnostic.
 - [x] Corrupt or delete `vector_index.bin`, run `python .\scripts\memory_manager.py repair`, and verify final health as a maintenance diagnostic.
 - [x] Uninstall and reinstall the plugin, then repeat a minimal save/query check through the installed bundle.

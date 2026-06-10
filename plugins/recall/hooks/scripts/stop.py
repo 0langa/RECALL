@@ -46,6 +46,9 @@ def main() -> None:
         root = root_from_payload(payload, args.root)
         session_id = str(payload.get("session_id") or "")
         turn_id = str(payload.get("turn_id") or "")
+        if not turn_buffer.is_active(root, session_id, turn_id):
+            output({"continue": True})
+            return
 
         if payload.get("stop_hook_active") is True:
             turn_buffer.mark_finalized(root, session_id, turn_id)
@@ -93,7 +96,8 @@ def main() -> None:
             last_assistant_message=notes,
             events=events,
         )
-        output({"continue": True, "decision": "block", "reason": build_finalizer_prompt(str(packet))})
+        packet_payload = json.loads(packet.read_text(encoding="utf-8"))
+        output({"continue": True, "decision": "block", "reason": build_finalizer_prompt(str(packet), packet_payload)})
     except Exception as exc:  # Hooks must not break the user turn.
         output({"continue": True, "systemMessage": f"RECALL finalizer skipped: {type(exc).__name__}."})
 

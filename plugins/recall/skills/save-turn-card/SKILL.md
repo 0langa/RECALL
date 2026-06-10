@@ -5,7 +5,7 @@ description: Use when a RECALL Stop-hook finalizer pass must save schema-validat
 
 # Save Turn Card
 
-Use this skill only when a RECALL finalizer packet asks for a memory-finalization pass. It is the structured write path for end-of-turn memory created from buffered evidence.
+Use this skill only when a RECALL finalizer request asks for a memory-finalization pass. It is the structured write path for end-of-turn memory created from buffered evidence.
 
 RECALL is local-only project memory. Store data under the active project's `.codex_memory/` directory and never require hosted services or external APIs. Do not store secrets, credentials, tokens, private keys, passwords, or sensitive personal data.
 
@@ -22,7 +22,7 @@ Use `recall_skill.py` only. Treat lower-level backend scripts as internal suppor
 
 ## Workflow
 
-1. Read the finalizer packet path from the `RECALL_FINALIZER_REQUEST`.
+1. Read the inline `PACKET=` JSON from the `RECALL_FINALIZER_REQUEST`; use its `packet_path` only as fallback evidence.
 2. Review the packet's `candidate_summary`, `policy`, and adapter path.
 3. Retrieve or review existing memory before writing a new card when duplicates are plausible.
 4. Create at most the packet's `max_new_cards`.

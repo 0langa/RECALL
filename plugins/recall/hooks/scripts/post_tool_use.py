@@ -95,6 +95,12 @@ def main() -> None:
     args = parser.parse_args()
     payload, raw = read_hook_input()
     root = root_from_payload(payload, args.root)
+    session_id = str(payload.get("session_id") or "")
+    turn_id = str(payload.get("turn_id") or "")
+    if not turn_buffer.is_active(root, session_id, turn_id):
+        print(json.dumps({"continue": True}))
+        return
+
     tool_name = str(payload.get("tool_name") or "").strip()
     command = args.command or tool_command(payload)
     output = tool_response_text(payload, raw)
@@ -116,8 +122,8 @@ def main() -> None:
 
     turn_buffer.append_event(
         root,
-        str(payload.get("session_id") or ""),
-        str(payload.get("turn_id") or ""),
+        session_id,
+        turn_id,
         {
             "event": "post_tool_use",
             "source": "PostToolUse",

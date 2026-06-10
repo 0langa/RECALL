@@ -10,8 +10,11 @@ import re
 import _recall_path  # noqa: F401
 from hook_io import additional_context, read_hook_input, root_from_payload
 import memory_manager
+import session_context
+import turn_buffer
 
 
+RECALL_INVOKE_RE = re.compile(r"(?i)(@recall\b|plugin://recall\b|\$recall:)")
 REMEMBER_RE = re.compile(
     r"(?is)(?:^|\n)\s*(?:please\s+)?remember(?:\s+(?:this|that|the following))?\s*[:\-]\s*(?P<content>.+)"
 )
@@ -31,8 +34,19 @@ def main() -> None:
     if not prompt:
         print(json.dumps({"continue": True}))
         return
+    if not RECALL_INVOKE_RE.search(prompt):
+        print(json.dumps({"continue": True}))
+        return
 
-    category_match = CATEGORY_RE.search(prompt)
+    turn_buffer.mark_active(
+        root,
+        str(payload.get("session_id") or ""),
+        str(payload.get("turn_id") or ""),
+        prompt,
+    )
+    cue_text = RECALL_INVOKE_RE.sub("", prompt).strip()
+
+    category_match = CATEGORY_RE.search(cue_text)
     if category_match:
         details = memory_manager.define_category(
             category_match.group("name"),
@@ -50,7 +64,7 @@ def main() -> None:
         )
         return
 
-    remember_match = REMEMBER_RE.search(prompt)
+    remember_match = REMEMBER_RE.search(cue_text)
     if remember_match:
         record = memory_manager.add_record(
             args.category,
@@ -66,6 +80,11 @@ def main() -> None:
                 )
             )
         )
+        return
+
+    context = session_context.build_session_context(root, cue_text or prompt, 8)
+    if context:
+        print(json.dumps(additional_context("UserPromptSubmit", context)))
         return
 
     print(json.dumps({"continue": True}))

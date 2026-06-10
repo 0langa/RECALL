@@ -9,7 +9,20 @@ Reduce RECALL's memory noise at the ingestion layer while making stored memory m
 
 ## Executive Summary
 
-The core issue is ingestion policy. RECALL's hook integration is reliable enough to expose the problem: hooks fire for every Codex turn and every matched tool use, whether the user explicitly invoked RECALL or not. Current `PostToolUse` behavior captures too many successful commands, and `Stop` stores too many generic final messages as `project_state`.
+The core issue is ingestion policy. RECALL's hook integration is reliable enough to expose the problem: always-on hooks used to fire for every Codex turn and every matched tool use, whether the user explicitly invoked RECALL or not. That behavior produced too many successful command memories and too many generic final messages.
+
+## Current Status: 2026-06-10
+
+The required direction changed from always-on capture modes to explicit activation:
+
+- `UserPromptSubmit` activates RECALL only when the prompt contains `@recall`, `plugin://recall`, or `$recall:`.
+- `PostToolUse`, `PreCompact`, and `Stop` no-op until that activation exists for the current turn.
+- `PostToolUse` buffers compact evidence in runtime files instead of directly writing durable command memory.
+- `Stop` emits one compact inline finalizer request with `PACKET=` JSON; the packet file remains runtime evidence and fallback data, not the primary instruction.
+- `SessionStart` is a quiet compatibility hook; context injection happens through explicit `@recall` prompt retrieval.
+- `archive-noise` now exists as a safe cleanup command. It dry-runs by default and only marks matched records `archived` when `--apply` is provided.
+
+Live cleanup on 2026-06-10 archived old low-value automatic command records non-destructively. The post-cleanup live store had `796` total records, `217` active records, and `579` archived records; a follow-up `archive-noise` dry run matched `0` remaining records.
 
 Live memory inventory from this repository on 2026-06-09 showed:
 
@@ -58,7 +71,7 @@ Current write flow:
 5. `stop.py` writes `project_state`.
 6. `memory_manager.add_record_if_useful()` redacts content, asks `write_policy.classify_write()`, then writes through storage and appends the vector index.
 7. `write_policy.py` can ignore a few low-signal commands and generic checkpoints, update exact duplicates, link near duplicates, and process explicit supersession cues.
-8. `SessionStart` uses `session_context.py` to retrieve curated active memory and inject `hookSpecificOutput.additionalContext`.
+8. Current behavior: `SessionStart` stays quiet; `UserPromptSubmit` uses `session_context.py` to retrieve curated active memory only after explicit RECALL invocation.
 
 Good existing foundations:
 
@@ -204,7 +217,7 @@ Evidence:
 
 Resolution:
 
-- Replace "successful command is stored" as the default invariant with "successful high-value command may be stored."
+- Replace "successful command is stored" as the default invariant with "successful high-value command evidence may be buffered for finalizer review after explicit activation."
 - Add tests:
   - `Get-Content`, `rg`, `git status`, and `recall_skill review-memory` successes are ignored.
   - Failed read commands go to `debug_history`.
@@ -277,7 +290,7 @@ The expected end state:
 - Explicit user memories are always respected.
 - Failures and durable milestones are saved.
 - Successful exploration commands are ignored.
-- SessionStart injects high-value context without depending on hundreds of command records.
+- Explicit `@recall` prompt retrieval injects high-value context without depending on hundreds of command records.
 - Review tools make memory quality visible.
 - Cleanup is non-destructive by default.
 - Performance improves because low-value events are rejected before storage/index/dedupe work.

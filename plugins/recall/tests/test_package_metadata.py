@@ -81,6 +81,7 @@ class PackageMetadataTests(unittest.TestCase):
     def test_memory_management_skill_surface_is_discoverable(self) -> None:
         skill_names = {path.parent.name for path in (ROOT / "skills").glob("*/SKILL.md")}
         expected = {
+            "archive-noise",
             "confirm-memory",
             "define-category",
             "delete-memory",

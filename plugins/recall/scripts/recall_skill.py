@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import config as recall_config
+import memory_noise
 import memory_review
 import memory_manager
 
@@ -202,6 +203,10 @@ def handle_review_memory(args: argparse.Namespace, root: Path | None) -> None:
     )
 
 
+def handle_archive_noise(args: argparse.Namespace, root: Path | None) -> None:
+    print_json(memory_noise.archive_noise(root, apply=args.apply, limit=args.limit))
+
+
 def handle_confirm_memory(args: argparse.Namespace, root: Path | None) -> None:
     record = memory_manager.confirm_record(args.id, root, args.source_session)
     print_json({"action": "confirm-memory", "id": record.id, "metadata": record.metadata})
@@ -324,6 +329,11 @@ def main() -> None:
     review.add_argument("--source")
     review.add_argument("--limit", type=int, default=20)
     review.set_defaults(handler=handle_review_memory)
+
+    archive_noise = subparsers.add_parser("archive-noise")
+    archive_noise.add_argument("--apply", action="store_true", help="Archive matched noise. Omit for dry-run.")
+    archive_noise.add_argument("--limit", type=int, help="Maximum matched memories to review or archive.")
+    archive_noise.set_defaults(handler=handle_archive_noise)
 
     confirm = subparsers.add_parser("confirm-memory")
     confirm.add_argument("id", type=int)

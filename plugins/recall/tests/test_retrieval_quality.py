@@ -106,10 +106,10 @@ class RetrievalQualityTests(unittest.TestCase):
             )
             memory_manager.add_record(
                 "risks",
-                "Hook payload drift can break SessionStart context injection.",
+                "Hook payload drift can break explicit RECALL context retrieval.",
                 memory_manager.build_card_metadata(
-                    summary="Hook payload drift can break recall.",
-                    tags=["hook-payload", "sessionstart", "failure"],
+                    summary="Hook payload drift can break explicit recall retrieval.",
+                    tags=["hook-payload", "recall-retrieval", "failure"],
                     status="open",
                     importance=0.9,
                 ),
@@ -117,17 +117,17 @@ class RetrievalQualityTests(unittest.TestCase):
             )
             memory_manager.add_record(
                 "debug_history",
-                "SessionStart failed when the hook payload omitted cwd.",
+                "Explicit RECALL retrieval failed when the hook payload omitted cwd.",
                 memory_manager.build_card_metadata(
-                    summary="Missing cwd caused SessionStart failure.",
-                    tags=["hook-payload", "sessionstart", "failure"],
+                    summary="Missing cwd caused explicit RECALL retrieval failure.",
+                    tags=["hook-payload", "recall-retrieval", "failure"],
                     status="active",
                     importance=0.8,
                 ),
                 root=tmp,
             )
 
-            result = memory_manager.query("SessionStart hook payload failure", root=tmp)
+            result = memory_manager.query("explicit RECALL hook payload failure", root=tmp)
             categories = [item["category"] for item in result["results"][:2]]
 
             self.assertIn("risks", categories)

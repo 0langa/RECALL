@@ -10,6 +10,7 @@ import _recall_path  # noqa: F401
 from hook_io import event_name, pre_compact_text, read_hook_input, root_from_payload
 import memory_manager
 from summarizer import summarize_texts
+import turn_buffer
 
 
 def main() -> None:
@@ -19,6 +20,10 @@ def main() -> None:
     args = parser.parse_args()
     payload, raw = read_hook_input()
     root = root_from_payload(payload, args.root)
+    if not turn_buffer.is_active(root, str(payload.get("session_id") or ""), str(payload.get("turn_id") or "")):
+        print(json.dumps({"continue": True}))
+        return
+
     text = pre_compact_text(payload, raw)
     if not text:
         print(json.dumps({"continue": True}))
