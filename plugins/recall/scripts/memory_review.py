@@ -139,7 +139,6 @@ def top_counter_items(counter: Counter[str], key_name: str, limit: int = 8) -> l
 
 
 def quality_metrics(records: list[storage.MemoryRecord]) -> dict[str, Any]:
-    total = len(records)
     active = 0
     archived = 0
     generic_summary_count = 0

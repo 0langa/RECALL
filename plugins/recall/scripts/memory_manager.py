@@ -317,6 +317,7 @@ def doctor(root: str | Path | None = None) -> dict[str, Any]:
         "malformed_jsonl_rows": 0,
         "invalid_jsonl_rows": 0,
     }
+    sqlite_report = storage.sqlite_diagnostics(root) if backend == "sqlite" else {}
     warnings: list[str] = []
     repairs_available: list[str] = []
     if index_report["missing_index_ids"]:
@@ -342,6 +343,7 @@ def doctor(root: str | Path | None = None) -> dict[str, Any]:
         "invalid_index_rows": index_report["invalid_index_rows"],
         "malformed_jsonl_rows": jsonl_report["malformed_jsonl_rows"],
         "invalid_jsonl_rows": jsonl_report["invalid_jsonl_rows"],
+        "sqlite": sqlite_report,
         "warnings": warnings,
         "repairs_available": repairs_available,
         "storage_path": str(db_path(root) if backend == "sqlite" else jsonl_dir(root)),

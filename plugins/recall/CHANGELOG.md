@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added automatic schema-v2 migration with a one-time v1 SQLite backup, WAL mode, foreign keys, bounded lock waits, normalized lifecycle/provenance columns, indexes, and optional FTS5.
+- Extended `doctor` with SQLite concurrency, FTS, and migration-backup diagnostics.
 - Removed the unsupported `UpdateCategories` hook wrapper and documented category normalization as an explicit support command.
 - Added regression coverage to keep category maintenance out of the hook surface.
 - Added golden retrieval quality fixtures with status-aware and field-aware ranking.
