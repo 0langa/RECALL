@@ -20,6 +20,7 @@ import memory_review
 import memory_manager
 from models import ReviewRequest
 from services.health_service import review_memory
+from services import provenance_service
 
 
 def print_json(payload: dict[str, Any]) -> None:
@@ -129,6 +130,11 @@ def save_turn_card(card: dict[str, Any], root: Path | None) -> dict[str, Any]:
 
 
 def handle_save_insight(args: argparse.Namespace, root: Path | None) -> None:
+    metadata_base = (
+        provenance_service.describe_file(root or Path.cwd(), args.source_path)
+        if args.source_path
+        else None
+    )
     record = memory_manager.add_record(
         args.category,
         args.content,
@@ -140,6 +146,7 @@ def handle_save_insight(args: argparse.Namespace, root: Path | None) -> None:
             status=args.status,
             importance=args.importance,
             confidence=args.confidence,
+            base=metadata_base,
         ),
         root,
     )
@@ -304,6 +311,19 @@ def handle_delete_memory(args: argparse.Namespace, root: Path | None) -> None:
     print_json({"action": "delete-memory", "id": record.id, "category": record.category})
 
 
+def handle_invalidate_by_file(args: argparse.Namespace, root: Path | None) -> None:
+    print_json({"action": "invalidate-by-file", "result": provenance_service.invalidate_by_file(args.path, root or Path.cwd())})
+
+
+def handle_refresh_source(args: argparse.Namespace, root: Path | None) -> None:
+    record = provenance_service.refresh_source(args.id, root or Path.cwd())
+    print_json({"action": "refresh-source", "id": record.id, "metadata": record.metadata})
+
+
+def handle_reconcile_sources(args: argparse.Namespace, root: Path | None) -> None:
+    print_json({"action": "reconcile-sources", "report": provenance_service.reconcile_sources(root or Path.cwd())})
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run RECALL skill actions against project-local memory.")
     parser.add_argument("--root", help="Project root. Defaults to the current working directory.")
@@ -316,6 +336,7 @@ def main() -> None:
     save.add_argument("--details")
     save.add_argument("--tag", action="append", default=[])
     save.add_argument("--source", default="skill")
+    save.add_argument("--source-path")
     save.add_argument("--status", default="active")
     save.add_argument("--importance", type=float)
     save.add_argument("--confidence", type=float)
@@ -417,6 +438,16 @@ def main() -> None:
     delete.add_argument("id", type=int)
     delete.add_argument("--confirm", required=True)
     delete.set_defaults(handler=handle_delete_memory)
+
+    invalidate = subparsers.add_parser("invalidate-by-file")
+    invalidate.add_argument("path")
+    invalidate.set_defaults(handler=handle_invalidate_by_file)
+
+    refresh = subparsers.add_parser("refresh-source")
+    refresh.add_argument("id", type=int)
+    refresh.set_defaults(handler=handle_refresh_source)
+
+    subparsers.add_parser("reconcile-sources").set_defaults(handler=handle_reconcile_sources)
 
     args = parser.parse_args()
     root = Path(args.root).resolve() if args.root else None

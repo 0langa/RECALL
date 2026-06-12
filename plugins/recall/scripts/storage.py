@@ -240,9 +240,9 @@ def add_record(
     embedding: list[float],
     root: str | Path | None = None,
 ) -> MemoryRecord:
-    init_store(root)
     cfg = recall_config.load_config(root)
     if cfg["backend"] == "sqlite":
+        init_sqlite(root)
         normalized = _normalized_fields(metadata, timestamp)
         with closing(connect_sqlite(root)) as connection:
             cursor = connection.execute(
@@ -266,6 +266,7 @@ def add_record(
             record_id = int(cursor.lastrowid)
             connection.commit()
     else:
+        jsonl_dir(root).mkdir(parents=True, exist_ok=True)
         record_id = next_jsonl_id(root)
         path = jsonl_dir(root) / f"{category}.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)

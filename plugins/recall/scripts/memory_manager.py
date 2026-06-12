@@ -188,7 +188,6 @@ def add_record(
     metadata: dict[str, Any] | None = None,
     root: str | Path | None = None,
 ) -> MemoryRecord:
-    storage.init_store(root)
     cfg = recall_config.load_config(root)
     normalized_category = recall_config.normalize_category(category)
     metadata = dict(metadata or {})
