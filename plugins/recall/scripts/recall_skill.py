@@ -18,6 +18,8 @@ import config as recall_config
 import memory_noise
 import memory_review
 import memory_manager
+from models import ReviewRequest
+from services.health_service import review_memory
 
 
 def print_json(payload: dict[str, Any]) -> None:
@@ -194,16 +196,17 @@ def handle_configure_capture(args: argparse.Namespace, root: Path | None) -> Non
 
 
 def handle_review_memory(args: argparse.Namespace, root: Path | None) -> None:
+    request = ReviewRequest(
+        root=root,
+        statuses=tuple(args.status or []),
+        categories=tuple(args.category or []),
+        source=args.source,
+        limit=args.limit,
+    )
     print_json(
         {
             "action": "review-memory",
-            "review": memory_review.review_memory(
-                root,
-                statuses=args.status,
-                categories=args.category,
-                source=args.source,
-                limit=args.limit,
-            ),
+            "review": review_memory(request).to_dict(),
         }
     )
 
