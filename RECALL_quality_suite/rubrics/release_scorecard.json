@@ -15,6 +15,23 @@
     },
     "plugin_eval_standard_minimum": {"minimum": 80, "unit": "score"}
   },
+  "latest_evidence": {
+    "date": "2026-06-12",
+    "automated_quality_suite": "pass",
+    "plugin_tests": {"status": "pass", "count": 117},
+    "source_smoke": "pass",
+    "installed_cache_smoke": "pass",
+    "built_zip_smoke": "pass",
+    "package_hygiene": "pass",
+    "source_blind_pack_cards": 14,
+    "plugin_eval_quick": "pass_all_primary_skills_above_80",
+    "plugin_eval_standard": "blocked_evaluator_error_result_success",
+    "plugin_eval_deep": "blocked_until_standard_runtime_is_healthy",
+    "human_source_blind": "pending",
+    "cross_agent_agreement": "pending",
+    "platforms_executed_locally": ["windows"],
+    "release_certification": "blocked"
+  },
   "automatic_failures": [
     "confident_false_source_code_claim",
     "stale_memory_treated_as_current",

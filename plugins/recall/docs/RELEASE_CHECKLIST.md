@@ -18,13 +18,13 @@ Run local plugin commands from `<repo-root>/plugins/recall` unless a step explic
 
 - [x] Install from `.agents/plugins/marketplace.json` in Codex CLI.
 - [x] Confirm `RECALL` appears in the plugin picker and can be enabled.
-- [x] Confirm bundled skills are discoverable in a new thread.
-- [x] Review and trust bundled hooks in Codex Settings > Coding > Hooks.
+- [ ] Confirm bundled skills are discoverable in a new thread.
+- [ ] Review and trust bundled hooks in Codex Settings > Coding > Hooks.
 - [x] In a temp project, submit a prompt without `@recall` and verify hooks stay idle with no durable memory write.
 - [x] In a temp project, simulate `@recall remember this:` and verify `UserPromptSubmit` stores a preference.
 - [x] Simulate a successful command after explicit `@recall` activation and verify `PostToolUse` buffers compact evidence without writing durable command memory.
 - [x] Trigger `Stop` after buffered evidence and verify it emits one compact inline finalizer request.
-- [x] Start a new thread in the same project and verify `SessionStart` stays quiet; explicit `@recall` prompt retrieval injects relevant local context.
+- [ ] Start a new thread in the same project and verify `SessionStart` stays quiet; explicit `@recall` prompt retrieval injects relevant local context.
 - [x] Run installed-bundle skill adapter retrieval rather than source-only backend commands.
 - [x] Run `python .\scripts\recall_skill.py archive-noise` as a dry run before any live cleanup.
 - [x] Run `python .\scripts\recall_skill.py archive-noise --apply --limit <n>` only after reviewing dry-run matches.
@@ -48,3 +48,13 @@ Run local plugin commands from `<repo-root>/plugins/recall` unless a step explic
 - [x] Create the GitHub release from the tag.
 - [x] Attach `dist/recall.zip` as a release artifact.
 - [x] Do not commit `dist/recall.zip`.
+
+## Certification
+
+- [x] PluginEval quick scores at least 80 for all five primary skills.
+- [ ] PluginEval standard scores at least 80 for all five primary skills.
+- [ ] PluginEval deep certification meets the release threshold.
+- [ ] Human source-blind evaluation meets the final threshold.
+- [ ] Cross-agent agreement meets the final threshold.
+
+See `docs/RELEASE_EVIDENCE_2026-06-12.md` for current automated evidence and blockers.
