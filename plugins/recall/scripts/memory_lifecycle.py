@@ -60,8 +60,12 @@ def confirm(record_id: int, root: str | Path | None = None, source_session: str 
     metadata["confirmed_count"] = int(metadata.get("confirmed_count", 0) or 0) + 1
     if source_session:
         metadata["source_session"] = source_session
-    if metadata.get("status") in (None, "", "stale"):
+    if metadata.get("status") in (None, "", "stale", "hypothesis"):
         metadata["status"] = "active"
+    if metadata["confirmed_count"] >= 2 and metadata.get("status") == "active":
+        metadata["status"] = "validated"
+        metadata["validated_at"] = utc_now()
+        metadata["trust"] = max(0.85, float(metadata.get("trust", metadata.get("confidence", 0.5))))
     metadata["updated_at"] = utc_now()
     return storage.update_record_metadata(record.id, metadata, root)
 

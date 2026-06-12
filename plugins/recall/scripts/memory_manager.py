@@ -27,7 +27,17 @@ SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
 ]
 
-CARD_STATUSES = {"active", "open", "resolved", "superseded", "stale", "archived"}
+CARD_STATUSES = {
+    "hypothesis",
+    "active",
+    "validated",
+    "open",
+    "resolved",
+    "stale",
+    "superseded",
+    "deprecated",
+    "archived",
+}
 AUTO_WRITE_SOURCES = {"post_tool_use", "pre_compact", "stop"}
 
 

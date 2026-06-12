@@ -10,6 +10,7 @@ from typing import Any
 
 import config as recall_config
 import memory_noise
+from services import lifecycle_service
 import storage
 
 
@@ -308,6 +309,7 @@ def audit_memory(
         if memory_noise.archive_reason(record) is not None:
             candidates.append(record)
     candidates.sort(key=lambda record: (record.timestamp, record.id), reverse=True)
+    conflict_clusters = lifecycle_service.find_conflicts(root)
     return {
         "total": review["total"],
         "matched": review["matched"],
@@ -318,4 +320,8 @@ def audit_memory(
         "source_counts": review["source_counts"],
         "quality": review["quality"],
         "noise_candidates": [memory_card(record) for record in candidates[:limit]],
+        "conflict_clusters": conflict_clusters,
+        "health_recommendations": [
+            "Resolve ambiguous conflict clusters before promoting claims to validated truth."
+        ] if conflict_clusters else [],
     }

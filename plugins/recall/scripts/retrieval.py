@@ -15,15 +15,18 @@ from summarizer import summarize_records
 
 
 STATUS_WEIGHTS = {
+    "validated": 1.1,
     "active": 1.0,
+    "hypothesis": 0.72,
     "open": 0.95,
     "resolved": 0.65,
     "stale": 0.35,
     "superseded": 0.25,
+    "deprecated": 0.2,
     "archived": 0.15,
 }
 DEFAULT_STATUS_WEIGHT = 0.8
-DEFAULT_QUERY_STATUSES = {"active", "open", "resolved", "stale", "superseded", "unspecified"}
+DEFAULT_QUERY_STATUSES = {"validated", "active", "hypothesis", "open", "resolved", "unspecified"}
 SOURCE_WEIGHTS = {
     "skill": 1.05,
     "user": 1.05,

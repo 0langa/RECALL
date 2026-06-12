@@ -21,6 +21,7 @@ import memory_manager
 from models import ReviewRequest
 from services.health_service import review_memory
 from services import provenance_service
+from services import lifecycle_service
 
 
 def print_json(payload: dict[str, Any]) -> None:
@@ -130,11 +131,17 @@ def save_turn_card(card: dict[str, Any], root: Path | None) -> dict[str, Any]:
 
 
 def handle_save_insight(args: argparse.Namespace, root: Path | None) -> None:
-    metadata_base = (
-        provenance_service.describe_file(root or Path.cwd(), args.source_path)
-        if args.source_path
-        else None
-    )
+    if bool(args.claim_key) != bool(args.claim_value):
+        raise ValueError("--claim-key and --claim-value must be provided together.")
+    metadata_base = {}
+    if args.source_path:
+        metadata_base.update(provenance_service.describe_file(root or Path.cwd(), args.source_path))
+    if args.memory_type:
+        metadata_base["memory_type"] = args.memory_type
+    if args.trust is not None:
+        metadata_base["trust"] = memory_manager.clamp_unit_interval(args.trust, "trust")
+    if args.claim_key:
+        metadata_base.update({"claim_key": args.claim_key, "claim_value": args.claim_value})
     record = memory_manager.add_record(
         args.category,
         args.content,
@@ -146,7 +153,7 @@ def handle_save_insight(args: argparse.Namespace, root: Path | None) -> None:
             status=args.status,
             importance=args.importance,
             confidence=args.confidence,
-            base=metadata_base,
+            base=metadata_base or None,
         ),
         root,
     )
@@ -324,6 +331,31 @@ def handle_reconcile_sources(args: argparse.Namespace, root: Path | None) -> Non
     print_json({"action": "reconcile-sources", "report": provenance_service.reconcile_sources(root or Path.cwd())})
 
 
+def handle_promote_memory(args: argparse.Namespace, root: Path | None) -> None:
+    record = lifecycle_service.promote(args.id, root, args.note)
+    print_json({"action": "promote-memory", "id": record.id, "metadata": record.metadata})
+
+
+def handle_deprecate_memory(args: argparse.Namespace, root: Path | None) -> None:
+    record = lifecycle_service.deprecate(args.id, root, args.note)
+    print_json({"action": "deprecate-memory", "id": record.id, "metadata": record.metadata})
+
+
+def handle_list_conflicts(args: argparse.Namespace, root: Path | None) -> None:
+    print_json({"action": "list-conflicts", "conflicts": lifecycle_service.find_conflicts(root)})
+
+
+def handle_resolve_conflict(args: argparse.Namespace, root: Path | None) -> None:
+    result = lifecycle_service.resolve_conflict(args.winner_id, args.loser_id, root, args.note)
+    print_json(
+        {
+            "action": "resolve-conflict",
+            "winner": {"id": result["winner"].id, "metadata": result["winner"].metadata},
+            "losers": [{"id": record.id, "metadata": record.metadata} for record in result["losers"]],
+        }
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run RECALL skill actions against project-local memory.")
     parser.add_argument("--root", help="Project root. Defaults to the current working directory.")
@@ -337,6 +369,10 @@ def main() -> None:
     save.add_argument("--tag", action="append", default=[])
     save.add_argument("--source", default="skill")
     save.add_argument("--source-path")
+    save.add_argument("--memory-type")
+    save.add_argument("--trust", type=float)
+    save.add_argument("--claim-key")
+    save.add_argument("--claim-value")
     save.add_argument("--status", default="active")
     save.add_argument("--importance", type=float)
     save.add_argument("--confidence", type=float)
@@ -448,6 +484,24 @@ def main() -> None:
     refresh.set_defaults(handler=handle_refresh_source)
 
     subparsers.add_parser("reconcile-sources").set_defaults(handler=handle_reconcile_sources)
+
+    promote = subparsers.add_parser("promote-memory")
+    promote.add_argument("id", type=int)
+    promote.add_argument("--note")
+    promote.set_defaults(handler=handle_promote_memory)
+
+    deprecate = subparsers.add_parser("deprecate-memory")
+    deprecate.add_argument("id", type=int)
+    deprecate.add_argument("--note")
+    deprecate.set_defaults(handler=handle_deprecate_memory)
+
+    subparsers.add_parser("list-conflicts").set_defaults(handler=handle_list_conflicts)
+
+    resolve_conflict = subparsers.add_parser("resolve-conflict")
+    resolve_conflict.add_argument("winner_id", type=int)
+    resolve_conflict.add_argument("loser_id", nargs="+", type=int)
+    resolve_conflict.add_argument("--note")
+    resolve_conflict.set_defaults(handler=handle_resolve_conflict)
 
     args = parser.parse_args()
     root = Path(args.root).resolve() if args.root else None
