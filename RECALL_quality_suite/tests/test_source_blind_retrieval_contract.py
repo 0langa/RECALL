@@ -10,6 +10,9 @@ from _harness import memory_cmd, plugin_root, run_json, skill_cmd, temp_project
 
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "source_blind_memory_cards.json"
+MIXED_HISTORY_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "mixed_history_memory_cards.json"
+GROUND_TRUTH_PATH = Path(__file__).resolve().parents[1] / "rubrics" / "source_blind_ground_truth.json"
+RELEASE_SCORECARD_PATH = Path(__file__).resolve().parents[1] / "rubrics" / "release_scorecard.json"
 
 
 def load_cards() -> list[dict[str, object]]:
@@ -41,6 +44,59 @@ def seed_cards(project: Path) -> None:
 
 
 class SourceBlindRetrievalReadinessTests(unittest.TestCase):
+    def test_release_scorecard_defines_required_machine_metrics(self) -> None:
+        scorecard = json.loads(RELEASE_SCORECARD_PATH.read_text(encoding="utf-8"))
+        required = {
+            "factual_precision",
+            "stale_current_accuracy",
+            "contradiction_recall",
+            "missing_information_honesty",
+            "cross_agent_agreement",
+            "signal_to_noise",
+            "token_budget_violations",
+            "concurrency_record_loss",
+            "retrieval_p95_ms",
+            "plugin_eval_standard_minimum",
+        }
+        self.assertTrue(required.issubset(scorecard["metrics"]))
+        self.assertEqual(scorecard["metrics"]["stale_current_accuracy"]["minimum"], 1.0)
+        self.assertEqual(scorecard["metrics"]["token_budget_violations"]["maximum"], 0)
+
+    def test_mixed_history_fixture_covers_release_failure_modes(self) -> None:
+        cards = json.loads(MIXED_HISTORY_PATH.read_text(encoding="utf-8"))
+        scenarios = {str(card["scenario"]) for card in cards}
+        self.assertTrue(
+            {
+                "duplicate",
+                "correction",
+                "contradiction",
+                "superseded",
+                "deleted_source",
+                "renamed_source",
+                "incomplete_knowledge",
+            }.issubset(scenarios)
+        )
+        self.assertTrue(all("expected" in card for card in cards))
+
+    def test_hidden_ground_truth_is_machine_readable_and_not_agent_facing(self) -> None:
+        truth = json.loads(GROUND_TRUTH_PATH.read_text(encoding="utf-8"))
+        self.assertGreaterEqual(len(truth["questions"]), 3)
+        self.assertTrue(all(item["required_facts"] for item in truth["questions"]))
+
+        script = Path(__file__).resolve().parents[1] / "scripts" / "source_blind_agent_gate.py"
+        with tempfile.TemporaryDirectory(prefix="recall-source-blind-pack-") as tmp:
+            out_dir = Path(tmp) / "pack"
+            run_json([
+                sys.executable,
+                str(script),
+                "--plugin-root",
+                str(plugin_root()),
+                "--out-dir",
+                str(out_dir),
+            ], cwd=plugin_root())
+            self.assertFalse((out_dir / GROUND_TRUTH_PATH.name).exists())
+            self.assertFalse((out_dir / RELEASE_SCORECARD_PATH.name).exists())
+
     def test_fixture_contains_verified_project_history_cards(self) -> None:
         cards = load_cards()
         project_history_cards = [

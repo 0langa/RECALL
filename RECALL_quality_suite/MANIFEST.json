@@ -13,6 +13,8 @@
     "existing_smoke_harness",
     "performance_benchmark",
     "package_hygiene",
-    "human_source_blind_evaluation"
+    "human_source_blind_evaluation",
+    "mixed_history_evaluation",
+    "release_scorecard"
   ]
 }

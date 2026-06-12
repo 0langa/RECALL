@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "metrics": {
+    "factual_precision": {"minimum": 0.9, "unit": "ratio"},
+    "stale_current_accuracy": {"minimum": 1.0, "unit": "ratio"},
+    "contradiction_recall": {"minimum": 0.9, "unit": "ratio"},
+    "missing_information_honesty": {"minimum": 1.0, "unit": "ratio"},
+    "cross_agent_agreement": {"minimum": 0.9, "unit": "ratio"},
+    "signal_to_noise": {"minimum": 0.9, "unit": "ratio"},
+    "token_budget_violations": {"maximum": 0, "unit": "count"},
+    "concurrency_record_loss": {"maximum": 0, "unit": "count"},
+    "retrieval_p95_ms": {
+      "maximum_by_store_size": {"500": 750, "5000": 1500, "50000": 4000},
+      "unit": "milliseconds"
+    },
+    "plugin_eval_standard_minimum": {"minimum": 80, "unit": "score"}
+  },
+  "automatic_failures": [
+    "confident_false_source_code_claim",
+    "stale_memory_treated_as_current",
+    "missing_information_fabricated",
+    "secret_persisted",
+    "record_lost_under_concurrency",
+    "token_budget_exceeded"
+  ]
+}

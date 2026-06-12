@@ -1,0 +1,29 @@
+{
+  "date": "2026-06-12",
+  "commit": "12709fc45840ef0c55134de3376348b984d7c925",
+  "commands": {
+    "quality_suite": "python RECALL_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --out-dir RECALL_quality_suite/baseline_results/2026-06-12 --quick",
+    "plugin_creator": "python <plugin-creator-root>/scripts/validate_plugin.py plugins/recall",
+    "plugin_eval_quick": "plugin-eval score plugins/recall/skills/<skill> --depth quick --output json"
+  },
+  "quality_gates": {
+    "existing_unit_tests": "pass",
+    "quality_suite_contract_tests": "pass",
+    "existing_smoke_harness": "pass",
+    "performance_benchmark": "pass",
+    "package_hygiene": "pass",
+    "plugin_creator": "pass"
+  },
+  "plugin_eval_quick": {
+    "manage-memory": 79.6586,
+    "review-memory": 77.2653,
+    "save-insight": 58.877,
+    "define-category": 57.1212,
+    "retrieve-memory": 56.2143
+  },
+  "known_gaps": [
+    "semantic source-blind answers require an external agent run",
+    "standard and deep PluginEval were not part of this static baseline",
+    "performance baseline covers 120 records in quick mode"
+  ]
+}

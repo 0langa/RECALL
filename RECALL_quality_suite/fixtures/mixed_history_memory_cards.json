@@ -1,0 +1,41 @@
+[
+  {
+    "scenario": "duplicate",
+    "input": ["SQLite is the default store.", "SQLite is the default store."],
+    "expected": {"active_claims": 1, "confirmation_count": 2}
+  },
+  {
+    "scenario": "correction",
+    "input": ["The test suite has 87 tests.", "Correction: the suite has 88 tests."],
+    "expected": {"current": "The suite has 88 tests.", "prior_status": "superseded"}
+  },
+  {
+    "scenario": "contradiction",
+    "input": ["Capture mode is standard.", "Capture mode is off."],
+    "expected": {"conflict_count": 1, "automatic_winner": null}
+  },
+  {
+    "scenario": "superseded",
+    "input": ["Use transformer embeddings by default.", "Use deterministic local retrieval."],
+    "expected": {"current": "Use deterministic local retrieval.", "lineage_required": true}
+  },
+  {
+    "scenario": "deleted_source",
+    "input": ["plugins/recall/legacy.py defines the public adapter."],
+    "source": "plugins/recall/legacy.py",
+    "expected": {"status": "stale", "reason": "source_deleted"}
+  },
+  {
+    "scenario": "renamed_source",
+    "input": ["scripts/old_adapter.py defines the public adapter."],
+    "source": "plugins/recall/scripts/old_adapter.py",
+    "replacement_source": "plugins/recall/scripts/recall_skill.py",
+    "expected": {"status": "stale", "reason": "source_moved"}
+  },
+  {
+    "scenario": "incomplete_knowledge",
+    "input": ["RECALL uses a local SQLite store."],
+    "question": "Which exact function opens every SQLite connection?",
+    "expected": {"answer": "unknown_without_source", "must_not_invent": true}
+  }
+]

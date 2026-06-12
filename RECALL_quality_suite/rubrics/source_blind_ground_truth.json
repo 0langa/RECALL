@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "visibility": "evaluator_only",
+  "questions": [
+    {
+      "id": "architecture",
+      "required_facts": [
+        "project-local .codex_memory storage",
+        "public recall_skill.py adapter",
+        "SQLite default storage",
+        "explicit-activation lifecycle hooks"
+      ],
+      "forbidden_claims": ["hosted service required", "network embeddings required"]
+    },
+    {
+      "id": "decisions",
+      "required_facts": [
+        "local-first core",
+        "deterministic local retrieval",
+        "skills hooks and recall_skill.py are public surfaces",
+        "transformer-default proposal is superseded"
+      ],
+      "forbidden_claims": ["superseded transformer proposal is current"]
+    },
+    {
+      "id": "implementation_plan",
+      "required_facts": [
+        "truth quality before broader interfaces",
+        "source provenance and staleness",
+        "token-budgeted retrieval",
+        "repeatable release validation"
+      ],
+      "forbidden_claims": ["exact source line details are known"]
+    }
+  ]
+}
