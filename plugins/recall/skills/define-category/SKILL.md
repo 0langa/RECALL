@@ -1,6 +1,6 @@
 ---
 name: define-category
-description: Use when the user wants to create, refine, or inspect a local-only RECALL memory category.
+description: Use this skill proactively when creating a reusable category, when configuring retrieval weight, when refining an auto-created definition, or when organizing repeated memory types. Trigger when category configuration is needed; invoke automatically for durable taxonomy work, not one-off tags.
 ---
 
 # Define Category
@@ -36,3 +36,60 @@ python ./scripts/recall_skill.py define-category <category> --description "<desc
 ```bash
 python ./scripts/recall_skill.py define-category api_contracts --description "Stable API shapes and compatibility promises." --weight 1.4
 ```
+
+## Inputs
+
+- Category name: normalized to lower snake case.
+- Description: concrete inclusion rule, not a vague label.
+- Weight: positive number; `1.0` normal, `>1.0` stronger, `<1.0` quieter.
+
+## Output Format
+
+Returns JSON containing normalized category and stored description/weight. Mention normalization when
+the output name differs from user input.
+
+```json
+{"action":"define-category","category":"api_contracts","details":{"description":"Stable API shapes.","weight":1.4}}
+```
+
+## Examples
+
+Moderate priority:
+
+```bash
+python ./scripts/recall_skill.py define-category release_evidence --description "Verified packaging, install, and release checks." --weight 1.2
+```
+
+Quiet background context:
+
+```bash
+python ./scripts/recall_skill.py define-category research_notes --description "Exploratory notes not yet promoted to decisions." --weight 0.8
+```
+
+## Edge Cases
+
+- Near-duplicate category: reuse existing category and refine it.
+- Empty or punctuation-only name: reject it.
+- Zero/negative weight: reject it.
+- One-off label: use tags instead of creating category.
+
+## Decision Guide
+
+| Need | Choice |
+|---|---|
+| Existing built-in meaning | Reuse built-in category |
+| Repeated distinct retrieval purpose | Define custom category |
+| One-off grouping | Add tag instead |
+| Broad category dominates results | Lower weight |
+
+## Troubleshooting
+
+- Unexpected normalized name: run `list-categories` and use returned name.
+- Category dominates retrieval: lower weight toward `1.0`.
+- Category remains too broad: narrow description or split only when durable use cases differ.
+
+## Related
+
+- [Save Insight](../save-insight/SKILL.md) for writing category members.
+- [Review Memory](../review-memory/SKILL.md) for category counts and quality.
+- [Category guide](references/category-design.md) for naming and weighting.

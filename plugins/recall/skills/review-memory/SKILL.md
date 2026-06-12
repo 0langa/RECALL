@@ -1,6 +1,6 @@
 ---
 name: review-memory
-description: Use this skill when the user wants to inspect RECALL memory quality, review current memory state, audit noise, check categories or sources, or gather memory IDs before maintenance, cleanup, or follow-up decisions.
+description: Use this skill proactively when inspecting RECALL memory quality, when reviewing current memory state, when auditing noise or conflicts, or when gathering memory IDs before maintenance; invoke automatically for inspection-only work, not mutation or new-memory capture.
 ---
 
 # Review Memory

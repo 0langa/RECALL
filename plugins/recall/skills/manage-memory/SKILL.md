@@ -1,6 +1,6 @@
 ---
 name: manage-memory
-description: Use this skill when a user needs to change RECALL capture mode, clean up noisy memory, repair local storage, or update the lifecycle state of existing memories during maintenance, debugging, or memory review follow-up work.
+description: Use this skill proactively when changing RECALL capture mode, when cleaning noisy memory, when repairing local storage, or when updating lifecycle state after review; invoke automatically for explicit maintenance requests, never for ordinary retrieval or new-memory capture.
 ---
 
 # Manage Memory

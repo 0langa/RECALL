@@ -1,6 +1,6 @@
 ---
 name: save-insight
-description: Use when the user asks Codex to remember durable project context in local-only RECALL memory.
+description: Use this skill proactively when debugging a durable failure, when testing a verified command, when implementing an accepted decision, or when recording a standing requirement for future threads. Trigger when durable evidence should persist; invoke automatically only for explicit evidence, never drafts.
 ---
 
 # Save Insight
@@ -61,7 +61,10 @@ Lifecycle fields may also be present when a memory was confirmed, merged, supers
 python ./scripts/recall_skill.py save-insight <category> "<memory text>" --summary "<short summary>" --details "<supporting detail>" --tag <tag> --source skill --status active --importance 0.8 --confidence 0.9
 ```
 
-Use `--metadata` with a JSON object when file paths, command names, or issue IDs matter.
+Use `--source-path` when a claim comes from a project file. Use `--claim-key` and
+`--claim-value` for mutually exclusive current-truth claims. Preference memories
+must include durable evidence through `--preference-key`,
+`--preference-evidence-type`, and `--decision-id`.
 
 ## Examples
 
@@ -70,3 +73,39 @@ python ./scripts/recall_skill.py save-insight decisions "Use SQLite as RECALL's 
 python ./scripts/recall_skill.py save-insight commands "Verified test command: python -m unittest discover -s tests" --summary "Use unittest discovery for validation." --tag tests --tag command --source skill --status active --importance 0.7 --confidence 1.0
 python ./scripts/recall_skill.py supersede-memory 12 18 --note "Memory #18 corrects the older decision."
 ```
+
+## Inputs
+
+Required: category, durable content, concise summary. Add details, tags, source,
+importance, confidence, and provenance when known. Reject empty, secret-like, or
+purely temporary content.
+
+## Output Format
+
+Returns JSON with saved record ID and category. For preference evidence or automatic writes,
+report whether RECALL saved, updated, linked, or ignored the candidate.
+
+```json
+{"action":"save-insight","id":42,"category":"decisions"}
+```
+
+## Edge Cases
+
+- Drafts and one-task constraints are not standing preferences.
+- Corrections should supersede old truth instead of creating two current claims.
+- File-backed facts should carry `--source-path` so reconciliation can stale them.
+- Exact duplicates should confirm/update existing memory, not multiply records.
+
+## Troubleshooting
+
+- Secret-like text: do not weaken redaction; remove secret and save only durable fact.
+- Wrong category: use `edit-memory` after retrieving exact ID.
+- Conflicting current claims: run `list-conflicts`, then `resolve-conflict`.
+- Reusable custom category: refine it through `define-category`.
+
+## Related
+
+- [Retrieve Memory](../retrieve-memory/SKILL.md) for task-focused recall.
+- [Review Memory](../review-memory/SKILL.md) for inspection and conflict review.
+- [Manage Memory](../manage-memory/SKILL.md) for lifecycle changes.
+- [Evidence guide](references/evidence-policy.md) for durable write decisions.
