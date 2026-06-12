@@ -11,7 +11,7 @@ from pathlib import Path
 import _recall_path  # noqa: F401
 import capture_policy
 from finalizer_prompt import build_finalizer_prompt
-from hook_io import event_name, read_hook_input, root_from_payload, stop_text
+from hook_io import event_name, idempotency_key, read_hook_input, root_from_payload, stop_text
 import memory_manager
 import turn_buffer
 
@@ -62,6 +62,7 @@ def main() -> None:
                     "hook_event": event_name(payload, "Stop"),
                     "session_id": session_id,
                     "turn_id": turn_id,
+                    "idempotency_key": idempotency_key(payload, "Stop"),
                 },
             )
             memory_manager.add_record_if_useful("project_state", notes, metadata, root)

@@ -23,6 +23,7 @@ from services.health_service import review_memory
 from services import provenance_service
 from services import lifecycle_service
 from services.context_service import build_context_packet
+from services import recovery_service
 
 
 def print_json(payload: dict[str, Any]) -> None:
@@ -198,6 +199,22 @@ def handle_repair(args: argparse.Namespace, root: Path | None) -> None:
     print_json({"action": "repair", "report": memory_manager.repair(root)})
 
 
+def handle_export_memory(args: argparse.Namespace, root: Path | None) -> None:
+    print_json({"action": "export-memory", "report": recovery_service.export_memory(args.path, root)})
+
+
+def handle_import_memory(args: argparse.Namespace, root: Path | None) -> None:
+    print_json({"action": "import-memory", "report": recovery_service.import_memory(args.path, root, replace=args.replace)})
+
+
+def handle_backup_memory(args: argparse.Namespace, root: Path | None) -> None:
+    print_json({"action": "backup-memory", "report": recovery_service.backup_memory(root)})
+
+
+def handle_restore_memory(args: argparse.Namespace, root: Path | None) -> None:
+    print_json({"action": "restore-memory", "report": recovery_service.restore_memory(args.path, root)})
+
+
 def handle_list_categories(args: argparse.Namespace, root: Path | None) -> None:
     cfg = recall_config.load_config(root)
     categories = [
@@ -214,6 +231,11 @@ def handle_list_categories(args: argparse.Namespace, root: Path | None) -> None:
 def handle_configure_capture(args: argparse.Namespace, root: Path | None) -> None:
     cfg = recall_config.set_capture_mode(args.mode, root)
     print_json({"action": "configure-capture", "capture_mode": cfg["capture_mode"]})
+
+
+def handle_configure_recall(args: argparse.Namespace, root: Path | None) -> None:
+    cfg = recall_config.set_recall_mode(args.mode, root)
+    print_json({"action": "configure-recall", "recall_mode": cfg["recall_mode"]})
 
 
 def handle_review_memory(args: argparse.Namespace, root: Path | None) -> None:
@@ -421,10 +443,24 @@ def main() -> None:
 
     subparsers.add_parser("doctor").set_defaults(handler=handle_doctor)
     subparsers.add_parser("repair").set_defaults(handler=handle_repair)
+    export_memory = subparsers.add_parser("export-memory")
+    export_memory.add_argument("path")
+    export_memory.set_defaults(handler=handle_export_memory)
+    import_memory = subparsers.add_parser("import-memory")
+    import_memory.add_argument("path")
+    import_memory.add_argument("--replace", action="store_true")
+    import_memory.set_defaults(handler=handle_import_memory)
+    subparsers.add_parser("backup-memory").set_defaults(handler=handle_backup_memory)
+    restore_memory = subparsers.add_parser("restore-memory")
+    restore_memory.add_argument("path")
+    restore_memory.set_defaults(handler=handle_restore_memory)
     subparsers.add_parser("list-categories").set_defaults(handler=handle_list_categories)
     configure_capture = subparsers.add_parser("configure-capture")
     configure_capture.add_argument("mode", choices=sorted(recall_config.VALID_CAPTURE_MODES))
     configure_capture.set_defaults(handler=handle_configure_capture)
+    configure_recall = subparsers.add_parser("configure-recall")
+    configure_recall.add_argument("mode", choices=sorted(recall_config.VALID_RECALL_MODES))
+    configure_recall.set_defaults(handler=handle_configure_recall)
 
     review = subparsers.add_parser("review-memory")
     review.add_argument("--status", action="append", default=[])

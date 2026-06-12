@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import config as recall_config
+import security
 
 
 SCHEMA_VERSION = 2
@@ -240,6 +241,8 @@ def add_record(
     embedding: list[float],
     root: str | Path | None = None,
 ) -> MemoryRecord:
+    content = security.redact_text(content)
+    metadata = security.redact_value(metadata)
     cfg = recall_config.load_config(root)
     if cfg["backend"] == "sqlite":
         init_sqlite(root)
@@ -335,6 +338,7 @@ def get_record(record_id: int, root: str | Path | None = None) -> MemoryRecord |
 
 
 def update_record_metadata(record_id: int, metadata: dict[str, Any], root: str | Path | None = None) -> MemoryRecord:
+    metadata = security.redact_value(metadata)
     init_store(root)
     cfg = recall_config.load_config(root)
     if cfg["backend"] == "sqlite":
@@ -400,6 +404,8 @@ def update_record(
     embedding: list[float],
     root: str | Path | None = None,
 ) -> MemoryRecord:
+    content = security.redact_text(content)
+    metadata = security.redact_value(metadata)
     init_store(root)
     existing = get_record(record_id, root)
     if existing is None:

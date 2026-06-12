@@ -10,6 +10,7 @@ import re
 import _recall_path  # noqa: F401
 import capture_policy
 from hook_io import (
+    idempotency_key,
     patch_targets,
     read_hook_input,
     root_from_payload,
@@ -114,6 +115,7 @@ def main() -> None:
             "turn_id": turn_id,
             "tool_use_id": payload.get("tool_use_id"),
             "exit_code": capture_policy.exit_code(payload, safe_content),
+            "idempotency_key": idempotency_key(payload, "PostToolUse"),
         },
     )
     memory_manager.add_record_if_useful(

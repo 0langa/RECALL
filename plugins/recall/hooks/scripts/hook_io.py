@@ -3,10 +3,31 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import sys
 from pathlib import Path
 from typing import Any
+
+
+def idempotency_key(payload: dict[str, Any], fallback_event: str) -> str | None:
+    """Return a stable hook-delivery key when Codex provides delivery identity."""
+
+    event = event_name(payload, fallback_event)
+    tool_use_id = string_field(payload, "tool_use_id")
+    session_id = string_field(payload, "session_id")
+    turn_id = string_field(payload, "turn_id")
+    if not tool_use_id and not turn_id:
+        return None
+    identity = {
+        "event": event,
+        "session_id": session_id,
+        "turn_id": turn_id,
+        "tool_use_id": tool_use_id,
+        "trigger": string_field(payload, "trigger"),
+    }
+    digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode("utf-8")).hexdigest()
+    return f"hook:{digest}"
 
 
 def read_hook_input() -> tuple[dict[str, Any], str]:

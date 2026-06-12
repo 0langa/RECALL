@@ -69,6 +69,7 @@ DEFAULT_CATEGORIES: dict[str, dict[str, Any]] = {
 DEFAULT_CONFIG: dict[str, Any] = {
     "backend": "sqlite",
     "capture_mode": "minimal",
+    "recall_mode": "manual",
     "token_budget": 1200,
     "recency_days": None,
     "embedding_model": "local-hash-v1",
@@ -78,6 +79,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 
 VALID_BACKENDS = {"sqlite", "jsonl"}
 VALID_CAPTURE_MODES = {"manual", "minimal", "standard", "off"}
+VALID_RECALL_MODES = {"manual", "relevant", "always"}
 
 
 def project_root(raw_root: str | Path | None = None) -> Path:
@@ -188,6 +190,11 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"Unsupported RECALL capture_mode: {capture_mode}")
     merged["capture_mode"] = capture_mode
 
+    recall_mode = str(merged.get("recall_mode", "manual")).strip().lower()
+    if recall_mode not in VALID_RECALL_MODES:
+        raise ValueError(f"Unsupported RECALL recall_mode: {recall_mode}")
+    merged["recall_mode"] = recall_mode
+
     for name, details in categories.items():
         normalized = normalize_category(name)
         if not isinstance(details, dict):
@@ -243,6 +250,13 @@ def category_weight(config: dict[str, Any], category: str) -> float:
 def set_capture_mode(mode: str, raw_root: str | Path | None = None) -> dict[str, Any]:
     config = load_config(raw_root)
     config["capture_mode"] = mode
+    save_config(config, raw_root)
+    return config
+
+
+def set_recall_mode(mode: str, raw_root: str | Path | None = None) -> dict[str, Any]:
+    config = load_config(raw_root)
+    config["recall_mode"] = mode
     save_config(config, raw_root)
     return config
 

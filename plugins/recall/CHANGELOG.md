@@ -7,6 +7,9 @@
 - Added file provenance hashes, project-scope path checks, source refresh/invalidation, and repository reconciliation for modified, deleted, or moved sources.
 - Added hypothesis/validated/deprecated lifecycle states, trust promotion, explicit claim-slot conflict clusters, conflict resolution, and validated-truth protection.
 - Added durable preference evidence policy, hook-delivery idempotency keys, and explainable token-budgeted context packets with diversity and omission reporting.
+- Redacted secret-like values recursively in persisted metadata and added deterministic replay keys for identified hook deliveries.
+- Added portable export/import and timestamped backup/restore workflows that preserve memory IDs, lifecycle, provenance, and relationships.
+- Separated `manual`, `relevant`, and `always` recall activation from automatic capture mode.
 - Removed the unsupported `UpdateCategories` hook wrapper and documented category normalization as an explicit support command.
 - Added regression coverage to keep category maintenance out of the hook surface.
 - Added golden retrieval quality fixtures with status-aware and field-aware ranking.

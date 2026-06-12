@@ -165,6 +165,41 @@ class HookTests(unittest.TestCase):
             self.assertEqual(output["hookSpecificOutput"]["hookEventName"], "UserPromptSubmit")
             self.assertIn("RECALL hook tests", output["hookSpecificOutput"]["additionalContext"])
 
+    def test_always_recall_mode_injects_without_explicit_invocation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            memory_manager_cmd = [sys.executable, str(ROOT / "scripts" / "memory_manager.py"), "--root", tmp]
+            subprocess.run(memory_manager_cmd + ["add", "project_state", "Release train is green.", "--status", "active"], check=True, capture_output=True, text=True, cwd=ROOT)
+            subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "recall_skill.py"), "--root", tmp, "configure-recall", "always"],
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=ROOT,
+            )
+
+            output = run_hook("prompt_inspector.py", {"cwd": tmp, "prompt": "What is the release state?"})
+            self.assertIn("Release train is green", output["hookSpecificOutput"]["additionalContext"])
+
+    def test_relevant_recall_mode_ignores_unrelated_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "memory_manager.py"), "--root", tmp, "add", "architecture", "SQLite stores project memory."],
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=ROOT,
+            )
+            subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "recall_skill.py"), "--root", tmp, "configure-recall", "relevant"],
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=ROOT,
+            )
+
+            output = run_hook("prompt_inspector.py", {"cwd": tmp, "prompt": "Write a limerick about clouds."})
+            self.assertEqual(output, {"continue": True})
+
     def test_prompt_invocation_excludes_superseded_when_active_context_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             subprocess.run(
@@ -342,6 +377,27 @@ class HookTests(unittest.TestCase):
             self.assertEqual(second, {"continue": True})
             self.assertEqual(len(result["results"]), 1)
             self.assertIn("last_confirmed", result["results"][0]["metadata"])
+
+    def test_post_tool_use_replay_uses_delivery_idempotency_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            activate_recall(tmp, "session-replay", "turn-replay")
+            payload = {
+                "cwd": tmp,
+                "session_id": "session-replay",
+                "turn_id": "turn-replay",
+                "tool_use_id": "tool-123",
+                "hook_event_name": "PostToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": "python -m unittest discover -s tests"},
+                "tool_response": {"exit_code": 0, "stdout": "Ran 49 tests in 1.0s\nOK", "stderr": ""},
+            }
+            run_hook("post_tool_use.py", payload)
+            replay = {**payload, "tool_response": {"exit_code": 0, "stdout": "different replay body", "stderr": ""}}
+            run_hook("post_tool_use.py", replay)
+            result = query_memory(tmp, "python unittest", "commands")
+
+            self.assertEqual(len(result["results"]), 1)
+            self.assertTrue(result["results"][0]["metadata"]["idempotency_key"].startswith("hook:"))
 
     def test_post_tool_use_links_near_duplicate_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

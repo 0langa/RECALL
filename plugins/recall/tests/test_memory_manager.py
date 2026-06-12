@@ -71,6 +71,25 @@ class MemoryManagerTests(unittest.TestCase):
             result = memory_manager.query("api key", root=tmp)
             self.assertIn("[REDACTED]", result["results"][0]["content"])
 
+    def test_secret_like_metadata_is_redacted_before_persistence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            record = memory_manager.add_record(
+                "risks",
+                "Credential handling must remain safe.",
+                {
+                    "summary": "password=do-not-store-this",
+                    "nested": {"token": "token=also-secret"},
+                    "items": ["api_key=hidden-value"],
+                },
+                tmp,
+            )
+            fetched = memory_manager.get_record(record.id, tmp)
+            serialized = json.dumps(fetched.metadata)
+            self.assertNotIn("do-not-store-this", serialized)
+            self.assertNotIn("also-secret", serialized)
+            self.assertNotIn("hidden-value", serialized)
+            self.assertIn("[REDACTED]", serialized)
+
     def test_rebuild_index_restores_missing_vector_index(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory_manager.add_record("architecture", "Storage is the source of truth for RECALL memories.", root=tmp)

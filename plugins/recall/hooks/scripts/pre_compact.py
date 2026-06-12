@@ -8,7 +8,7 @@ import json
 
 import _recall_path  # noqa: F401
 import capture_policy
-from hook_io import event_name, pre_compact_text, read_hook_input, root_from_payload
+from hook_io import event_name, idempotency_key, pre_compact_text, read_hook_input, root_from_payload
 import memory_manager
 from summarizer import summarize_texts
 import turn_buffer
@@ -34,7 +34,7 @@ def main() -> None:
         return
     summary = summarize_texts([text], token_budget=700)
     metadata = json.loads(args.metadata)
-    save_result = memory_manager.add_record_if_useful(
+    memory_manager.add_record_if_useful(
         "session_summaries",
         summary,
         memory_manager.build_card_metadata(
@@ -52,6 +52,7 @@ def main() -> None:
                 "trigger": payload.get("trigger"),
                 "session_id": payload.get("session_id"),
                 "turn_id": payload.get("turn_id"),
+                "idempotency_key": idempotency_key(payload, "PreCompact"),
                 **metadata,
             },
         ),

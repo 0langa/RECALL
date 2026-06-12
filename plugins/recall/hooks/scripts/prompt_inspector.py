@@ -11,6 +11,7 @@ import _recall_path  # noqa: F401
 import capture_policy
 from hook_io import additional_context, read_hook_input, root_from_payload
 import memory_manager
+import config as recall_config
 import session_context
 import turn_buffer
 
@@ -35,15 +36,17 @@ def main() -> None:
     if not prompt:
         print(json.dumps({"continue": True}))
         return
-    if not RECALL_INVOKE_RE.search(prompt):
+    explicit_recall = bool(RECALL_INVOKE_RE.search(prompt))
+    recall_mode = str(recall_config.load_config_if_present(root).get("recall_mode", "manual"))
+    if not explicit_recall and recall_mode == "manual":
         print(json.dumps({"continue": True}))
         return
 
     session_id = str(payload.get("session_id") or "")
     turn_id = str(payload.get("turn_id") or "")
-    cue_text = RECALL_INVOKE_RE.sub("", prompt).strip()
+    cue_text = RECALL_INVOKE_RE.sub("", prompt).strip() if explicit_recall else prompt
 
-    category_match = CATEGORY_RE.search(cue_text)
+    category_match = CATEGORY_RE.search(cue_text) if explicit_recall else None
     if category_match:
         details = memory_manager.define_category(
             category_match.group("name"),
@@ -63,7 +66,7 @@ def main() -> None:
             turn_buffer.mark_active(root, session_id, turn_id, prompt)
         return
 
-    remember_match = REMEMBER_RE.search(cue_text)
+    remember_match = REMEMBER_RE.search(cue_text) if explicit_recall else None
     if remember_match:
         remembered = remember_match.group("content").strip()
         record = memory_manager.add_record(
@@ -91,7 +94,12 @@ def main() -> None:
     if capture_policy.should_activate_turn(root):
         turn_buffer.mark_active(root, session_id, turn_id, prompt)
 
-    if capture_policy.persistent_memory_exists(root):
+    should_retrieve = explicit_recall or recall_mode == "always"
+    if recall_mode == "relevant" and capture_policy.persistent_memory_exists(root):
+        preview = memory_manager.query(cue_text or prompt, limit=1, root=root)
+        should_retrieve = bool(preview["results"] and preview["results"][0]["score"] >= 0.15)
+
+    if should_retrieve and capture_policy.persistent_memory_exists(root):
         context = session_context.build_session_context(root, cue_text or prompt, 8)
         if context:
             print(json.dumps(additional_context("UserPromptSubmit", context)))

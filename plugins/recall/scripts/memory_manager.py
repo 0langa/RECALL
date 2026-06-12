@@ -16,17 +16,13 @@ import index_store
 import memory_hygiene
 import memory_lifecycle
 import retrieval
+import security
 import storage
 import write_policy
 from services import preference_service
 
 
 MemoryRecord = storage.MemoryRecord
-
-SECRET_PATTERNS = [
-    re.compile(r"(?i)(api[_-]?key|token|password|secret)\s*[:=]\s*['\"]?[^'\"\s]+"),
-    re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
-]
 
 CARD_STATUSES = {
     "hypothesis",
@@ -47,10 +43,13 @@ def utc_now() -> str:
 
 
 def redact_secrets(text: str) -> str:
-    redacted = text
-    for pattern in SECRET_PATTERNS:
-        redacted = pattern.sub("[REDACTED]", redacted)
-    return redacted
+    return security.redact_text(text)
+
+
+def redact_metadata(value: Any) -> Any:
+    """Recursively redact secret-like strings before persistence."""
+
+    return security.redact_value(value)
 
 
 def db_path(root: str | Path | None = None) -> Path:
@@ -164,7 +163,7 @@ def edit_record(
     safe_content = redact_secrets((content if content is not None else record.content).strip())
     if not safe_content:
         raise ValueError("Cannot store an empty RECALL memory.")
-    metadata = build_card_metadata(
+    metadata = redact_metadata(build_card_metadata(
         summary=summary,
         details=details,
         tags=tags,
@@ -173,7 +172,7 @@ def edit_record(
         importance=importance,
         confidence=confidence,
         base=dict(record.metadata or {}),
-    )
+    ))
     metadata["edited_at"] = utc_now()
     edited = storage.update_record(
         record.id,
@@ -201,7 +200,7 @@ def add_record(
 ) -> MemoryRecord:
     cfg = recall_config.load_config(root)
     normalized_category = recall_config.normalize_category(category)
-    metadata = dict(metadata or {})
+    metadata = redact_metadata(dict(metadata or {}))
     if normalized_category not in cfg["categories"]:
         recall_config.add_category(
             normalized_category,
