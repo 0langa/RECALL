@@ -26,7 +26,7 @@ STATUS_WEIGHTS = {
     "archived": 0.15,
 }
 DEFAULT_STATUS_WEIGHT = 0.8
-DEFAULT_QUERY_STATUSES = {"validated", "active", "hypothesis", "open", "resolved", "unspecified"}
+DEFAULT_QUERY_STATUSES = {"validated", "active", "open", "resolved", "unspecified"}
 SOURCE_WEIGHTS = {
     "skill": 1.05,
     "user": 1.05,

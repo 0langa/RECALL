@@ -18,6 +18,7 @@ import memory_lifecycle
 import retrieval
 import storage
 import write_policy
+from services import preference_service
 
 
 MemoryRecord = storage.MemoryRecord
@@ -243,6 +244,17 @@ def add_record_if_useful(
             "duplicate_id": None,
             "reason": "auto_capture_policy_required",
         }
+    idempotency_key = str(metadata.get("idempotency_key") or "").strip()
+    if idempotency_key:
+        for existing in storage.iter_records(root):
+            if str((existing.metadata or {}).get("idempotency_key") or "") == idempotency_key:
+                return {"action": "ignored", "record": existing, "duplicate_id": existing.id, "reason": "idempotent_replay"}
+    preference = preference_service.evaluate(recall_config.normalize_category(category), metadata, root)
+    if preference.action == "ignore":
+        return {"action": "ignored", "record": None, "duplicate_id": None, "reason": preference.reason}
+    if preference.action == "update":
+        return {"action": "updated_existing", "record": preference.record, "duplicate_id": preference.record.id, "reason": preference.reason}
+    metadata = preference.metadata
     decision = write_policy.classify_write(category, safe_content, metadata, str(root) if root is not None else None)
     if decision.action == "ignore":
         return {

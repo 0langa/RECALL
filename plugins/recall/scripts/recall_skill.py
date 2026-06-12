@@ -18,10 +18,11 @@ import config as recall_config
 import memory_noise
 import memory_review
 import memory_manager
-from models import ReviewRequest
+from models import ContextPacketRequest, ReviewRequest
 from services.health_service import review_memory
 from services import provenance_service
 from services import lifecycle_service
+from services.context_service import build_context_packet
 
 
 def print_json(payload: dict[str, Any]) -> None:
@@ -142,6 +143,12 @@ def handle_save_insight(args: argparse.Namespace, root: Path | None) -> None:
         metadata_base["trust"] = memory_manager.clamp_unit_interval(args.trust, "trust")
     if args.claim_key:
         metadata_base.update({"claim_key": args.claim_key, "claim_value": args.claim_value})
+    if args.preference_key:
+        metadata_base["preference_key"] = args.preference_key
+    if args.preference_evidence_type:
+        metadata_base["preference_evidence_type"] = args.preference_evidence_type
+    if args.decision_id:
+        metadata_base["decision_id"] = args.decision_id
     record = memory_manager.add_record(
         args.category,
         args.content,
@@ -356,6 +363,16 @@ def handle_resolve_conflict(args: argparse.Namespace, root: Path | None) -> None
     )
 
 
+def handle_context_packet(args: argparse.Namespace, root: Path | None) -> None:
+    request = ContextPacketRequest(
+        args.query_text,
+        token_budget=args.token_budget,
+        categories=tuple(args.category or []),
+        root=root,
+    )
+    print_json({"action": "context-packet", "packet": build_context_packet(request).to_dict()})
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run RECALL skill actions against project-local memory.")
     parser.add_argument("--root", help="Project root. Defaults to the current working directory.")
@@ -373,6 +390,9 @@ def main() -> None:
     save.add_argument("--trust", type=float)
     save.add_argument("--claim-key")
     save.add_argument("--claim-value")
+    save.add_argument("--preference-key")
+    save.add_argument("--preference-evidence-type")
+    save.add_argument("--decision-id")
     save.add_argument("--status", default="active")
     save.add_argument("--importance", type=float)
     save.add_argument("--confidence", type=float)
@@ -502,6 +522,12 @@ def main() -> None:
     resolve_conflict.add_argument("loser_id", nargs="+", type=int)
     resolve_conflict.add_argument("--note")
     resolve_conflict.set_defaults(handler=handle_resolve_conflict)
+
+    context_packet = subparsers.add_parser("context-packet")
+    context_packet.add_argument("query_text")
+    context_packet.add_argument("--category", action="append", default=[])
+    context_packet.add_argument("--token-budget", type=int, default=1200)
+    context_packet.set_defaults(handler=handle_context_packet)
 
     args = parser.parse_args()
     root = Path(args.root).resolve() if args.root else None
