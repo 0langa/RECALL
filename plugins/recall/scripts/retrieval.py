@@ -23,6 +23,18 @@ STATUS_WEIGHTS = {
     "archived": 0.15,
 }
 DEFAULT_STATUS_WEIGHT = 0.8
+DEFAULT_QUERY_STATUSES = {"active", "open", "resolved", "stale", "superseded", "unspecified"}
+SOURCE_WEIGHTS = {
+    "skill": 1.05,
+    "user": 1.05,
+    "prompt_inspector": 1.0,
+    "finalizer": 1.0,
+    "smoke_recall": 1.0,
+    "stop": 0.92,
+    "pre_compact": 0.82,
+    "post_tool_use": 0.68,
+}
+DEFAULT_SOURCE_WEIGHT = 0.9
 
 
 def parse_timestamp(value: str) -> datetime:
@@ -41,6 +53,11 @@ def recency_timestamp(record: storage.MemoryRecord) -> datetime:
     return parse_timestamp(record.timestamp)
 
 
+def record_status(record: storage.MemoryRecord) -> str:
+    status = str((record.metadata or {}).get("status", "")).strip().lower()
+    return status or "unspecified"
+
+
 def passes_filters(
     record: storage.MemoryRecord,
     categories: set[str] | None,
@@ -54,7 +71,7 @@ def passes_filters(
         return False
     if since is not None and parse_timestamp(record.timestamp) < since:
         return False
-    if statuses is not None and str(record.metadata.get("status", "")).lower() not in statuses:
+    if statuses is not None and record_status(record) not in statuses:
         return False
     return True
 
@@ -108,8 +125,12 @@ def weighted_lexical_score(query_text: str, record: storage.MemoryRecord) -> flo
 
 
 def status_weight(record: storage.MemoryRecord) -> float:
-    status = str((record.metadata or {}).get("status", "")).strip().lower()
-    return STATUS_WEIGHTS.get(status, DEFAULT_STATUS_WEIGHT)
+    return STATUS_WEIGHTS.get(record_status(record), DEFAULT_STATUS_WEIGHT)
+
+
+def source_weight(record: storage.MemoryRecord) -> float:
+    source = str((record.metadata or {}).get("source", "")).strip().lower()
+    return SOURCE_WEIGHTS.get(source, DEFAULT_SOURCE_WEIGHT)
 
 
 def score_record(
@@ -129,6 +150,7 @@ def score_record(
         pass
     score *= recall_config.category_weight(cfg, record.category)
     score *= status_weight(record)
+    score *= source_weight(record)
     age_days = max(0.0, (datetime.now(timezone.utc) - recency_timestamp(record)).total_seconds() / 86400)
     score += 0.03 / (1.0 + age_days)
     return score
@@ -150,7 +172,7 @@ def query(
         if exclude_categories
         else None
     )
-    status_set = {value.strip().lower() for value in statuses} if statuses else None
+    status_set = {value.strip().lower() for value in statuses} if statuses else set(DEFAULT_QUERY_STATUSES)
     since = None
     if cfg.get("recency_days") is not None:
         since = datetime.now(timezone.utc) - timedelta(days=int(cfg["recency_days"]))

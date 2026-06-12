@@ -6,24 +6,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 from pathlib import Path
 
 import _recall_path  # noqa: F401
+import capture_policy
 from finalizer_prompt import build_finalizer_prompt
 from hook_io import event_name, read_hook_input, root_from_payload, stop_text
 import memory_manager
 import turn_buffer
-
-
-DURABLE_STOP_RE = re.compile(
-    r"(?i)\b("
-    r"completed|implemented|changed|fixed|verified|tested|built|released|"
-    r"commit|branch|push|pull request|pr\b|tag|artifact|"
-    r"requirement|decision|risk|blocker|next step|architecture|"
-    r"memory|recall|hook|plugin"
-    r")\b"
-)
 
 
 def plugin_root() -> Path:
@@ -57,24 +47,24 @@ def main() -> None:
 
         notes = memory_manager.redact_secrets(stop_text(payload, raw))
         events = turn_buffer.load_events(root, session_id, turn_id)
-        if notes and DURABLE_STOP_RE.search(notes):
-            turn_buffer.append_event(
-                root,
-                session_id,
-                turn_id,
-                {
-                    "event": "stop",
-                    "source": "Stop",
+        if capture_policy.should_store_stop_note(root, notes):
+            metadata = memory_manager.build_card_metadata(
+                summary=notes.splitlines()[0][:220],
+                details=notes,
+                tags=["stop", "project-state"],
+                source="stop",
+                status="active",
+                importance=0.65,
+                confidence=0.82,
+                base={
+                    "auto_capture_policy": "project_checkpoint",
+                    "record_kind": "project_state",
                     "hook_event": event_name(payload, "Stop"),
-                    "signal": "project_state",
-                    "summary": notes.splitlines()[0][:220],
-                    "details": notes,
-                    "durable_candidate": True,
-                    "importance_hint": 0.6,
-                    "tags": ["stop", "project-state"],
+                    "session_id": session_id,
+                    "turn_id": turn_id,
                 },
             )
-            events = turn_buffer.load_events(root, session_id, turn_id)
+            memory_manager.add_record_if_useful("project_state", notes, metadata, root)
 
         if not turn_buffer.is_dirty(events):
             output({"continue": True})

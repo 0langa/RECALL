@@ -21,7 +21,11 @@ class MemoryHygieneTests(unittest.TestCase):
                 source="post_tool_use",
                 status="active",
                 tags=["tool-use", "bash"],
-                base={"tool_name": "Bash", "command": "python -m unittest"},
+                base={
+                    "tool_name": "Bash",
+                    "command": "python -m unittest",
+                    "auto_capture_policy": "test_result",
+                },
             )
             first = memory_manager.add_record_if_useful("commands", "Command: python -m unittest\nOK", metadata, tmp)
             second = memory_manager.add_record_if_useful("commands", "Command: python -m unittest\nOK", metadata, tmp)
@@ -39,7 +43,11 @@ class MemoryHygieneTests(unittest.TestCase):
                 source="post_tool_use",
                 status="active",
                 tags=["tool-use", "bash"],
-                base={"tool_name": "Bash", "command": "python -m unittest"},
+                base={
+                    "tool_name": "Bash",
+                    "command": "python -m unittest",
+                    "auto_capture_policy": "test_result",
+                },
             )
             first = memory_manager.add_record_if_useful(
                 "commands",

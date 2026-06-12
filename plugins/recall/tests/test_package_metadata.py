@@ -81,24 +81,13 @@ class PackageMetadataTests(unittest.TestCase):
     def test_memory_management_skill_surface_is_discoverable(self) -> None:
         skill_names = {path.parent.name for path in (ROOT / "skills").glob("*/SKILL.md")}
         expected = {
-            "archive-noise",
-            "confirm-memory",
             "define-category",
-            "delete-memory",
-            "doctor-memory",
-            "edit-memory",
-            "merge-memories",
-            "prune-memory",
-            "repair-memory",
+            "manage-memory",
             "retrieve-memory",
             "review-memory",
-            "resolve-memory",
             "save-insight",
-            "save-turn-card",
-            "stale-memory",
-            "supersede-memory",
         }
-        self.assertGreaterEqual(len(skill_names), 10)
+        self.assertEqual(len(skill_names), 5)
         self.assertEqual(skill_names, expected)
 
     def test_workflow_examples_cover_core_memory_cards(self) -> None:

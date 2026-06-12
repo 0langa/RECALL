@@ -7,6 +7,7 @@ import argparse
 import json
 
 import _recall_path  # noqa: F401
+import capture_policy
 from hook_io import event_name, pre_compact_text, read_hook_input, root_from_payload
 import memory_manager
 from summarizer import summarize_texts
@@ -21,6 +22,9 @@ def main() -> None:
     payload, raw = read_hook_input()
     root = root_from_payload(payload, args.root)
     if not turn_buffer.is_active(root, str(payload.get("session_id") or ""), str(payload.get("turn_id") or "")):
+        print(json.dumps({"continue": True}))
+        return
+    if not capture_policy.should_store_precompact(root):
         print(json.dumps({"continue": True}))
         return
 
@@ -42,19 +46,18 @@ def main() -> None:
             importance=0.7,
             confidence=0.8,
             base={
+                "auto_capture_policy": "session_summary",
+                "record_kind": "session_summary",
                 "hook_event": event_name(payload, "PreCompact"),
                 "trigger": payload.get("trigger"),
+                "session_id": payload.get("session_id"),
                 "turn_id": payload.get("turn_id"),
                 **metadata,
             },
         ),
         root,
     )
-    if save_result["action"] in {"ignored", "updated_existing"}:
-        print(json.dumps({"continue": True}))
-        return
-    record = save_result["record"]
-    print(json.dumps({"continue": True, "systemMessage": f"RECALL saved compaction checkpoint #{record.id}."}))
+    print(json.dumps({"continue": True}))
 
 
 if __name__ == "__main__":

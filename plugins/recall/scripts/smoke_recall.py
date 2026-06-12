@@ -247,7 +247,12 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
         },
     )
     require(tool_hook["continue"] is True, "PostToolUse hook did not continue")
-    checks.append("PostToolUse buffers compact command evidence")
+    tool_result = run_json(
+        memory_command(plugin_root, project_root, "query", "smoke harness successfully", "--category", "commands"),
+        cwd=plugin_root,
+    )
+    require(tool_result["results"], "PostToolUse did not store allowed command evidence")
+    checks.append("PostToolUse stores deterministic command evidence")
 
     pre_compact = run_json(
         hook_command(plugin_root, "pre_compact.py"),
@@ -276,9 +281,12 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
         },
     )
     require(stop["continue"] is True, "Stop hook did not continue")
-    require(stop.get("decision") == "block", "Stop hook did not request finalizer for dirty evidence")
-    require("RECALL_FINALIZER_REQUEST" in stop.get("reason", ""), "Stop hook did not include finalizer prompt")
-    checks.append("Stop hook requests finalizer for dirty evidence")
+    stop_result = run_json(
+        memory_command(plugin_root, project_root, "query", "stop checkpoint available next session", "--category", "project_state"),
+        cwd=plugin_root,
+    )
+    require(stop_result["results"], "Stop hook did not store deterministic project checkpoint")
+    checks.append("Stop hook stores deterministic project checkpoint")
 
     session_start = run_json(
         hook_command(plugin_root, "session_start.py"),

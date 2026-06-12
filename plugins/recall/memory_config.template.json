@@ -1,5 +1,6 @@
 {
   "backend": "sqlite",
+  "capture_mode": "minimal",
   "token_budget": 1200,
   "recency_days": null,
   "embedding_model": "local-hash-v1",

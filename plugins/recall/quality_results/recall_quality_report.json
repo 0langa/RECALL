@@ -1,0 +1,69 @@
+{
+  "gates": [
+    {
+      "command": [
+        "C:\\Python312\\python.exe",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests"
+      ],
+      "name": "existing_unit_tests",
+      "returncode": 0,
+      "seconds": 51.378,
+      "status": "pass",
+      "stderr_tail": "........................................................................................\n----------------------------------------------------------------------\nRan 88 tests in 51.077s\n\nOK\n",
+      "stdout_tail": ""
+    },
+    {
+      "command": [
+        "C:\\Python312\\python.exe",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "C:\\Users\\juliu\\source\\repos\\RECALL\\RECALL_quality_suite\\tests",
+        "-p",
+        "test_*.py"
+      ],
+      "name": "quality_suite_contract_tests",
+      "returncode": 0,
+      "seconds": 32.5948,
+      "status": "pass",
+      "stderr_tail": "...............................\n----------------------------------------------------------------------\nRan 31 tests in 32.439s\n\nOK\n",
+      "stdout_tail": ""
+    },
+    {
+      "command": [
+        "C:\\Python312\\python.exe",
+        "C:\\Users\\juliu\\source\\repos\\RECALL\\plugins\\recall\\scripts\\smoke_recall.py",
+        "--json"
+      ],
+      "name": "existing_smoke_harness",
+      "returncode": 0,
+      "seconds": 3.6177,
+      "status": "pass",
+      "stderr_tail": "",
+      "stdout_tail": "{\n  \"checks\": [\n    \"project gitignore covers .codex_memory\",\n    \"memory initialized inside project root\",\n    \"seed records saved\",\n    \"manual retrieval returns summarized context\",\n    \"skill adapter save and retrieval pass\",\n    \"review and lifecycle adapter actions pass\",\n    \"index rebuild and doctor pass\",\n    \"UserPromptSubmit activates RECALL and saves explicit memory cue\",\n    \"PostToolUse stores deterministic command evidence\",\n    \"PreCompact hook exits cleanly\",\n    \"Stop hook stores deterministic project checkpoint\",\n    \"SessionStart stays quiet until explicit RECALL invocation\",\n    \"final backend health is clean\"\n  ],\n  \"index_records\": 8,\n  \"plugin_root\": \"C:\\\\Users\\\\juliu\\\\source\\\\repos\\\\RECALL\\\\plugins\\\\recall\",\n  \"project_root\": \"C:\\\\Users\\\\juliu\\\\AppData\\\\Local\\\\Temp\\\\recall-smoke-fcac3d67\",\n  \"records\": 8,\n  \"status\": \"pass\"\n}\n"
+    },
+    {
+      "command": [
+        "C:\\Python312\\python.exe",
+        "C:\\Users\\juliu\\source\\repos\\RECALL\\RECALL_quality_suite\\scripts\\package_hygiene_check.py",
+        "--plugin-root",
+        "C:\\Users\\juliu\\source\\repos\\RECALL\\plugins\\recall"
+      ],
+      "name": "package_hygiene",
+      "returncode": 0,
+      "seconds": 0.0977,
+      "status": "pass",
+      "stderr_tail": "",
+      "stdout_tail": "{\n  \"failures\": [],\n  \"file_count\": 58,\n  \"status\": \"pass\",\n  \"zip\": \"C:\\\\Users\\\\juliu\\\\source\\\\repos\\\\RECALL\\\\plugins\\\\recall\\\\dist\\\\recall.zip\"\n}\n"
+    }
+  ],
+  "plugin_root": "C:\\Users\\juliu\\source\\repos\\RECALL\\plugins\\recall",
+  "repo_root": "C:\\Users\\juliu\\source\\repos\\RECALL",
+  "status": "pass",
+  "suite_root": "C:\\Users\\juliu\\source\\repos\\RECALL\\RECALL_quality_suite"
+}

@@ -90,6 +90,44 @@ class SkillCliContractTests(unittest.TestCase):
             self.assertEqual(len(superseded["results"]), 1)
             self.assertIn("Old", superseded["results"][0]["content"])
 
+    def test_review_and_audit_surface_memory_quality_signals(self) -> None:
+        with temp_project() as project:
+            noisy = run_json(skill_cmd(
+                project,
+                "save-insight",
+                "commands",
+                "Tool: Bash Command: Get-Content README.md Result: completed",
+                "--summary",
+                "Bash result captured.",
+                "--source",
+                "post_tool_use",
+                "--status",
+                "active",
+            ))
+            run_json(skill_cmd(
+                project,
+                "save-insight",
+                "project_state",
+                "RECALL should surface noise candidates before archive cleanup.",
+                "--summary",
+                "Surface noise candidates before cleanup.",
+                "--source",
+                "finalizer",
+                "--status",
+                "active",
+            ))
+
+            review = run_json(skill_cmd(project, "review-memory", "--limit", "10"))
+            audit = run_json(skill_cmd(project, "audit-memory", "--limit", "10"))
+
+            self.assertEqual(review["review"]["quality"]["active_noise_candidates"], 1)
+            self.assertEqual(review["review"]["quality"]["generic_summary_count"], 1)
+            self.assertEqual(review["review"]["quality"]["top_noisy_commands"][0]["pattern"], "Get-Content")
+            self.assertIn("post_tool_use", review["review"]["source_counts"])
+            self.assertEqual(audit["audit"]["shown"], 1)
+            self.assertEqual(audit["audit"]["noise_candidates"][0]["id"], noisy["id"])
+            self.assertIn("archive-noise", audit["audit"]["quality"]["recommended_cleanup_command"])
+
     def test_repair_recovers_missing_vector_index(self) -> None:
         with temp_project() as project:
             run_json(skill_cmd(project, "save-insight", "architecture", "Storage is the source of truth for RECALL memory."))

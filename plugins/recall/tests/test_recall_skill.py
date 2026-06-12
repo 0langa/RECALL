@@ -160,6 +160,7 @@ class RecallSkillAdapterTests(unittest.TestCase):
             self.assertIn(old["id"], supersede["new"]["metadata"]["supersedes"])
             self.assertEqual(confirm["metadata"]["source_session"], "session-1")
             self.assertEqual(review["review"]["category_counts"]["decisions"], 2)
+            self.assertIn("quality", review["review"])
             self.assertEqual(prune["metadata"]["status"], "archived")
 
     def test_archive_noise_is_dry_run_until_apply(self) -> None:
@@ -188,6 +189,43 @@ class RecallSkillAdapterTests(unittest.TestCase):
             self.assertEqual(applied["mode"], "apply")
             self.assertEqual(applied["archived"], 1)
             self.assertEqual(archived["review"]["memories"][0]["id"], noisy["id"])
+
+    def test_audit_memory_surfaces_noise_candidates_and_quality_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            noisy = run_skill(
+                tmp,
+                "save-insight",
+                "commands",
+                "Tool: Bash Command: Get-Content README.md Result: completed",
+                "--summary",
+                "Bash result captured.",
+                "--source",
+                "post_tool_use",
+                "--status",
+                "active",
+            )
+            run_skill(
+                tmp,
+                "save-insight",
+                "decisions",
+                "Use review-memory plus audit-memory to police store quality.",
+                "--summary",
+                "Use review plus audit for memory quality.",
+                "--source",
+                "finalizer",
+                "--status",
+                "active",
+            )
+
+            audit = run_skill(tmp, "audit-memory", "--limit", "10")
+            review = run_skill(tmp, "review-memory", "--limit", "10")
+
+            self.assertEqual(audit["action"], "audit-memory")
+            self.assertEqual(audit["audit"]["shown"], 1)
+            self.assertEqual(audit["audit"]["noise_candidates"][0]["id"], noisy["id"])
+            self.assertEqual(review["review"]["quality"]["active_noise_candidates"], 1)
+            self.assertEqual(review["review"]["quality"]["top_noisy_commands"][0]["pattern"], "Get-Content")
+            self.assertIn("post_tool_use", review["review"]["source_counts"])
 
     def test_edit_and_delete_memory_use_public_adapter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

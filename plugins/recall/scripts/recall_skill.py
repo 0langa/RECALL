@@ -188,11 +188,31 @@ def handle_list_categories(args: argparse.Namespace, root: Path | None) -> None:
     print_json({"action": "list-categories", "categories": categories})
 
 
+def handle_configure_capture(args: argparse.Namespace, root: Path | None) -> None:
+    cfg = recall_config.set_capture_mode(args.mode, root)
+    print_json({"action": "configure-capture", "capture_mode": cfg["capture_mode"]})
+
+
 def handle_review_memory(args: argparse.Namespace, root: Path | None) -> None:
     print_json(
         {
             "action": "review-memory",
             "review": memory_review.review_memory(
+                root,
+                statuses=args.status,
+                categories=args.category,
+                source=args.source,
+                limit=args.limit,
+            ),
+        }
+    )
+
+
+def handle_audit_memory(args: argparse.Namespace, root: Path | None) -> None:
+    print_json(
+        {
+            "action": "audit-memory",
+            "audit": memory_review.audit_memory(
                 root,
                 statuses=args.status,
                 categories=args.category,
@@ -322,6 +342,9 @@ def main() -> None:
     subparsers.add_parser("doctor").set_defaults(handler=handle_doctor)
     subparsers.add_parser("repair").set_defaults(handler=handle_repair)
     subparsers.add_parser("list-categories").set_defaults(handler=handle_list_categories)
+    configure_capture = subparsers.add_parser("configure-capture")
+    configure_capture.add_argument("mode", choices=sorted(recall_config.VALID_CAPTURE_MODES))
+    configure_capture.set_defaults(handler=handle_configure_capture)
 
     review = subparsers.add_parser("review-memory")
     review.add_argument("--status", action="append", default=[])
@@ -329,6 +352,13 @@ def main() -> None:
     review.add_argument("--source")
     review.add_argument("--limit", type=int, default=20)
     review.set_defaults(handler=handle_review_memory)
+
+    audit = subparsers.add_parser("audit-memory")
+    audit.add_argument("--status", action="append", default=[])
+    audit.add_argument("--category", action="append", default=[])
+    audit.add_argument("--source")
+    audit.add_argument("--limit", type=int, default=20)
+    audit.set_defaults(handler=handle_audit_memory)
 
     archive_noise = subparsers.add_parser("archive-noise")
     archive_noise.add_argument("--apply", action="store_true", help="Archive matched noise. Omit for dry-run.")

@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import unittest
 
-from _harness import hook_cmd, memory_cmd, run_json, run_text, temp_project
+from _harness import hook_cmd, memory_cmd, run_json, run_text, skill_cmd, temp_project
 
 
 class HookLifecycleContractTests(unittest.TestCase):
     def activate_recall(self, project, session_id: str = "", turn_id: str = "") -> None:
+        memory_init = memory_cmd(project, "init")
+        subprocess.run(memory_init, text=True, capture_output=True, check=True)
         output = run_json(hook_cmd("prompt_inspector.py"), input_payload={
             "cwd": str(project),
             "session_id": session_id,
@@ -97,20 +101,11 @@ class HookLifecycleContractTests(unittest.TestCase):
                 },
             })
             self.assertTrue(output["continue"])
-
-            stop = run_json(hook_cmd("stop.py"), input_payload={
-                "cwd": str(project),
-                "session_id": "quality-success",
-                "turn_id": "quality-success-turn",
-                "hook_event_name": "Stop",
-                "last_assistant_message": "Completed unit test validation for RECALL.",
-            })
-            self.assertEqual(stop["decision"], "block")
-            self.assertIn("RECALL_FINALIZER_REQUEST", stop["reason"])
-            self.assertIn("python -m unittest discover -s tests", stop["reason"])
-            self.assertNotIn("README.md", stop["reason"])
-            self.assertNotIn("secrets.txt", stop["reason"])
-            self.assertLess(len(stop["reason"]), 4000)
+            result = run_json(memory_cmd(project, "query", "unit test validation", "--category", "commands"))
+            self.assertEqual(len(result["results"]), 1)
+            self.assertIn("Ran 10 tests", result["results"][0]["metadata"]["summary"])
+            self.assertNotIn("README.md", result["results"][0]["content"])
+            self.assertNotIn("secrets.txt", result["results"][0]["content"])
 
     def test_post_tool_use_failure_goes_to_debug_history_with_redaction(self) -> None:
         with temp_project() as project:
@@ -124,19 +119,14 @@ class HookLifecycleContractTests(unittest.TestCase):
                 "tool_response": {"exit_code": 1, "stdout": "", "stderr": "failed with token=dummy-secret-value"},
             })
             self.assertTrue(output["continue"])
-
-            stop = run_json(hook_cmd("stop.py"), input_payload={
-                "cwd": str(project),
-                "turn_id": "quality-failure",
-                "hook_event_name": "Stop",
-                "last_assistant_message": "Debugged deploy failure.",
-            })
-            self.assertEqual(stop["decision"], "block")
-            self.assertIn("deploy", stop["reason"])
-            self.assertIn("[REDACTED]", stop["reason"])
+            result = run_json(memory_cmd(project, "query", "deploy failure", "--category", "debug_history"))
+            self.assertEqual(len(result["results"]), 1)
+            self.assertIn("[REDACTED]", result["results"][0]["content"])
 
     def test_precompact_stop_and_sessionstart_roundtrip_context(self) -> None:
         with temp_project() as project:
+            run_text(memory_cmd(project, "init"))
+            run_json(skill_cmd(project, "configure-capture", "standard"))
             self.activate_recall(project, "", "quality-precompact")
             pre = run_json(hook_cmd("pre_compact.py"), input_payload={
                 "cwd": str(project),
@@ -154,19 +144,16 @@ class HookLifecycleContractTests(unittest.TestCase):
                 "turn_id": "quality-stop",
                 "last_assistant_message": "Completed RECALL quality suite integration work.",
             })
-            self.assertEqual(stop["decision"], "block")
+            self.assertEqual(stop, {"continue": True})
 
-            saved = run_json(memory_cmd(
+            direct = run_json(memory_cmd(
                 project,
-                "add",
+                "query",
+                "quality suite integration work",
+                "--category",
                 "project_state",
-                "RECALL quality suite integration uses explicit prompt activation for context retrieval.",
-                "--summary",
-                "RECALL quality suite integration uses explicit activation.",
-                "--status",
-                "active",
             ))
-            self.assertEqual(saved["category"], "project_state")
+            self.assertEqual(len(direct["results"]), 1)
 
             session = run_json(hook_cmd("prompt_inspector.py"), input_payload={
                 "cwd": str(project),

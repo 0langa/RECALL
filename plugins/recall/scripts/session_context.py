@@ -23,7 +23,7 @@ CATEGORY_CAPS = {
 }
 DEFAULT_CATEGORIES = list(CATEGORY_CAPS)
 ACTIVE_STATUSES = ["active", "open"]
-HISTORICAL_STATUSES = ["resolved", "stale", "superseded", "archived"]
+HISTORICAL_STATUSES = ["resolved", "stale", "superseded"]
 GENERIC_SUMMARIES = {
     "session stop checkpoint.",
     "session compaction checkpoint.",

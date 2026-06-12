@@ -28,6 +28,7 @@ SECRET_PATTERNS = [
 ]
 
 CARD_STATUSES = {"active", "open", "resolved", "superseded", "stale", "archived"}
+AUTO_WRITE_SOURCES = {"post_tool_use", "pre_compact", "stop"}
 
 
 def utc_now() -> str:
@@ -225,6 +226,14 @@ def add_record_if_useful(
     safe_content = redact_secrets(content.strip())
     if not safe_content:
         raise ValueError("Cannot store an empty RECALL memory.")
+    source = str(metadata.get("source", "")).strip().lower()
+    if source in AUTO_WRITE_SOURCES and not metadata.get("auto_capture_policy"):
+        return {
+            "action": "ignored",
+            "record": None,
+            "duplicate_id": None,
+            "reason": "auto_capture_policy_required",
+        }
     decision = write_policy.classify_write(category, safe_content, metadata, str(root) if root is not None else None)
     if decision.action == "ignore":
         return {

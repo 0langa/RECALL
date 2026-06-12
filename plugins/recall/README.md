@@ -5,7 +5,7 @@ RECALL is a local-first Codex plugin for project memory. It stores durable conte
 ## What Works In This Foundation
 
 - Validation-ready Codex plugin manifest at `.codex-plugin/plugin.json`.
-- Skills for saving memories, retrieving context, and defining custom categories.
+- Compact skill surface for saving memory, retrieval, review, category definition, and maintenance.
 - Project-local configuration in `.codex_memory/memory_config.json`.
 - SQLite storage by default, with JSONL support available through config.
 - Deterministic local embeddings, a project-local `vector_index.bin`, and weighted retrieval with no network calls.
@@ -51,6 +51,7 @@ Review what RECALL thinks matters:
 
 ```bash
 python ./scripts/recall_skill.py review-memory --limit 20
+python ./scripts/recall_skill.py audit-memory --limit 20
 ```
 
 Preview and archive old automatic hook noise:

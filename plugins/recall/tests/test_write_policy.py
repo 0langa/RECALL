@@ -29,7 +29,12 @@ class WritePolicyTests(unittest.TestCase):
             metadata = memory_manager.build_card_metadata(
                 source="post_tool_use",
                 status="active",
-                base={"command": "python -m unittest", "tool_name": "Bash", "turn_id": "turn-1"},
+                base={
+                    "command": "python -m unittest",
+                    "tool_name": "Bash",
+                    "turn_id": "turn-1",
+                    "auto_capture_policy": "test_result",
+                },
             )
             first = memory_manager.add_record_if_useful("commands", "Command: python -m unittest\nOK", metadata, tmp)
             second = memory_manager.add_record_if_useful("commands", "Command: python -m unittest\nOK", metadata, tmp)
@@ -51,7 +56,11 @@ class WritePolicyTests(unittest.TestCase):
             new = memory_manager.add_record_if_useful(
                 "decisions",
                 f"Correction to memory #{old.id}: use structured cards.",
-                memory_manager.build_card_metadata(source="stop", status="active"),
+                memory_manager.build_card_metadata(
+                    source="stop",
+                    status="active",
+                    base={"auto_capture_policy": "project_checkpoint"},
+                ),
                 tmp,
             )
             fetched_old = memory_manager.get_record(old.id, tmp)

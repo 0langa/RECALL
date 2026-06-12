@@ -68,6 +68,7 @@ DEFAULT_CATEGORIES: dict[str, dict[str, Any]] = {
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "backend": "sqlite",
+    "capture_mode": "minimal",
     "token_budget": 1200,
     "recency_days": None,
     "embedding_model": "local-hash-v1",
@@ -76,6 +77,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 }
 
 VALID_BACKENDS = {"sqlite", "jsonl"}
+VALID_CAPTURE_MODES = {"manual", "minimal", "standard", "off"}
 
 
 def project_root(raw_root: str | Path | None = None) -> Path:
@@ -94,6 +96,10 @@ def memory_dir(raw_root: str | Path | None = None) -> Path:
 
 def config_path(raw_root: str | Path | None = None) -> Path:
     return memory_dir(raw_root) / "memory_config.json"
+
+
+def root_config_path(raw_root: str | Path | None = None) -> Path:
+    return project_root(raw_root) / "memory_config.json"
 
 
 def normalize_category(name: str) -> str:
@@ -116,12 +122,37 @@ def ensure_config(raw_root: str | Path | None = None) -> Path:
     if target.exists():
         return target
 
-    root_config = root / "memory_config.json"
+    root_config = root_config_path(root)
     if root_config.exists():
         shutil.copyfile(root_config, target)
     else:
         save_config(default_config(), root)
     return target
+
+
+def load_config_if_present(raw_root: str | Path | None = None) -> dict[str, Any]:
+    runtime_path = config_path(raw_root)
+    source_path = runtime_path if runtime_path.exists() else root_config_path(raw_root)
+    if source_path.exists():
+        with source_path.open(encoding="utf-8") as handle:
+            loaded = json.load(handle)
+        return validate_config(loaded)
+    return validate_config(default_config())
+
+
+def persistent_memory_exists(raw_root: str | Path | None = None) -> bool:
+    root = project_root(raw_root)
+    memory_root = memory_dir(root)
+    if not memory_root.exists():
+        return False
+    if config_path(root).exists():
+        return True
+    if (memory_root / "memory.sqlite").exists():
+        return True
+    if (memory_root / "vector_index.bin").exists():
+        return True
+    jsonl_root = memory_root / "jsonl"
+    return any(jsonl_root.glob("*.jsonl")) if jsonl_root.exists() else False
 
 
 def load_config(raw_root: str | Path | None = None) -> dict[str, Any]:
@@ -151,6 +182,11 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
     backend = merged.get("backend")
     if backend not in VALID_BACKENDS:
         raise ValueError(f"Unsupported RECALL backend: {backend}")
+
+    capture_mode = str(merged.get("capture_mode", "minimal")).strip().lower()
+    if capture_mode not in VALID_CAPTURE_MODES:
+        raise ValueError(f"Unsupported RECALL capture_mode: {capture_mode}")
+    merged["capture_mode"] = capture_mode
 
     for name, details in categories.items():
         normalized = normalize_category(name)
@@ -204,6 +240,13 @@ def category_weight(config: dict[str, Any], category: str) -> float:
     return float(details.get("weight", 1.0))
 
 
+def set_capture_mode(mode: str, raw_root: str | Path | None = None) -> dict[str, Any]:
+    config = load_config(raw_root)
+    config["capture_mode"] = mode
+    save_config(config, raw_root)
+    return config
+
+
 def main() -> None:
     import argparse
 
@@ -220,6 +263,10 @@ def main() -> None:
     define.add_argument("--weight", type=float, default=1.0)
     define.add_argument("--root")
 
+    capture = subparsers.add_parser("set-capture-mode")
+    capture.add_argument("mode", choices=sorted(VALID_CAPTURE_MODES))
+    capture.add_argument("--root")
+
     args = parser.parse_args()
     if args.command == "init":
         print(ensure_config())
@@ -228,6 +275,8 @@ def main() -> None:
     elif args.command == "define-category":
         add_category(args.name, args.description, args.weight, args.root)
         print(json.dumps(load_config(args.root)["categories"][normalize_category(args.name)], indent=2))
+    elif args.command == "set-capture-mode":
+        print(json.dumps(set_capture_mode(args.mode, args.root), indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":

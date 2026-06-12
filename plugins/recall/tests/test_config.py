@@ -21,6 +21,7 @@ class ConfigTests(unittest.TestCase):
             self.assertTrue(path.exists())
             cfg = recall_config.load_config(tmp)
             self.assertEqual(cfg["backend"], "sqlite")
+            self.assertEqual(cfg["capture_mode"], "minimal")
             self.assertIn("requirements", cfg["categories"])
 
     def test_custom_category_is_normalized(self) -> None:
@@ -81,6 +82,14 @@ class ConfigTests(unittest.TestCase):
             self.assertIn("api_contracts", report["categories"])
             self.assertIn("api_contracts", cfg["categories"])
             self.assertNotIn("API Contracts", cfg["categories"])
+
+    def test_capture_mode_is_validated_and_can_be_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = recall_config.set_capture_mode("manual", tmp)
+            self.assertEqual(cfg["capture_mode"], "manual")
+            self.assertEqual(recall_config.load_config(tmp)["capture_mode"], "manual")
+            with self.assertRaisesRegex(ValueError, "Unsupported RECALL capture_mode"):
+                recall_config.validate_config({"capture_mode": "always-on"})
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ import json
 import re
 
 import _recall_path  # noqa: F401
+import capture_policy
 from hook_io import additional_context, read_hook_input, root_from_payload
 import memory_manager
 import session_context
@@ -38,12 +39,8 @@ def main() -> None:
         print(json.dumps({"continue": True}))
         return
 
-    turn_buffer.mark_active(
-        root,
-        str(payload.get("session_id") or ""),
-        str(payload.get("turn_id") or ""),
-        prompt,
-    )
+    session_id = str(payload.get("session_id") or "")
+    turn_id = str(payload.get("turn_id") or "")
     cue_text = RECALL_INVOKE_RE.sub("", prompt).strip()
 
     category_match = CATEGORY_RE.search(cue_text)
@@ -62,14 +59,21 @@ def main() -> None:
                 )
             )
         )
+        if capture_policy.should_activate_turn(root, explicit_write=True):
+            turn_buffer.mark_active(root, session_id, turn_id, prompt)
         return
 
     remember_match = REMEMBER_RE.search(cue_text)
     if remember_match:
+        remembered = remember_match.group("content").strip()
         record = memory_manager.add_record(
             args.category,
-            remember_match.group("content").strip(),
-            {"source": "prompt_inspector"},
+            remembered,
+            memory_manager.build_card_metadata(
+                summary=remembered[:220],
+                source="prompt_inspector",
+                status="active",
+            ),
             root,
         )
         print(
@@ -80,12 +84,18 @@ def main() -> None:
                 )
             )
         )
+        if capture_policy.should_activate_turn(root, explicit_write=True):
+            turn_buffer.mark_active(root, session_id, turn_id, prompt)
         return
 
-    context = session_context.build_session_context(root, cue_text or prompt, 8)
-    if context:
-        print(json.dumps(additional_context("UserPromptSubmit", context)))
-        return
+    if capture_policy.should_activate_turn(root):
+        turn_buffer.mark_active(root, session_id, turn_id, prompt)
+
+    if capture_policy.persistent_memory_exists(root):
+        context = session_context.build_session_context(root, cue_text or prompt, 8)
+        if context:
+            print(json.dumps(additional_context("UserPromptSubmit", context)))
+            return
 
     print(json.dumps({"continue": True}))
 
