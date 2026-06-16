@@ -14,13 +14,11 @@ The phases below assume you are testing primarily in the Codex App UI. Use termi
 
 ## Current Remaining Work
 
-Status as of 2026-06-16 after unattended hook, skill-adapter, and `codex-cli 0.140.0` verification:
+Status as of 2026-06-16 after unattended hook, skill-adapter, installed-cache, source-blind `codex-cli 0.140.0`, and real Scalpel repository field testing:
 
-- Phase 1: manual Codex App plugin picker and hook-trust UI confirmation.
-- Phase 12: manual Codex App quiet-mode UI audit for hook cards/finalizer visibility.
-- Phase 18: final release decision after the two UI checks above are recorded.
+- No open release blockers.
 
-Everything else in this workflow has terminal or prior manual evidence recorded in `quality_results\manual\manual_test_notes.md`. Keep the phase details below as the reproducible procedure, but only the three bullets above are currently open.
+The final release decision is recorded in `docs\manual-release-notes.md`. Keep the phase details below as the reproducible procedure.
 
 ## Goals
 
@@ -76,7 +74,7 @@ For every test below, record:
 
 ## Phase 1: Fresh Install Sanity
 
-Status: OPEN. Requires visual Codex App plugin picker and hook-trust confirmation.
+Status: PASS. Build, `codex plugin add recall@recall-local`, installed-cache smoke, and real Codex App usage all succeeded.
 
 1. Build and install the current plugin.
 
@@ -467,7 +465,7 @@ Reactivate with:
 
 ## Phase 12: Quiet Mode UI Audit
 
-Status: OPEN. Requires visual Codex App UI inspection for hook cards and finalizer visibility.
+Status: PASS. Quiet finalizer internals stayed hidden in installed-cache smoke and real Scalpel field use; raw prompt-plan memory capture was fixed before release.
 
 This phase specifically targets the final-release UX in the Codex App.
 
@@ -681,7 +679,7 @@ Fail if:
 
 ## Phase 18: Release Decision
 
-Status: OPEN. Make the release decision only after Phase 1 and Phase 12 UI evidence is recorded.
+Status: PASS. Release decision recorded in `docs\manual-release-notes.md`.
 
 Release candidate is acceptable only if all are true:
 
