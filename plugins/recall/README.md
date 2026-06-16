@@ -2,7 +2,7 @@
 
 RECALL is a local-first Codex plugin for project memory. It stores durable context in `.codex_memory/` inside the active project so an agent can retrieve decisions, constraints, commands, debugging history, requirements, risks, and custom categories across sessions.
 
-## What Works In This Foundation
+## What Works In v1.0.0
 
 - Validation-ready Codex plugin manifest at `.codex-plugin/plugin.json`.
 - Compact skill surface for saving memory, retrieval, review, category definition, and maintenance.
@@ -16,7 +16,14 @@ RECALL is a local-first Codex plugin for project memory. It stores durable conte
 
 ## Minimal Working Path
 
-From the repository root:
+From GitHub:
+
+```bash
+codex plugin marketplace add 0langa/RECALL --ref v1.0.0
+codex plugin add recall@recall-local
+```
+
+From a local checkout:
 
 ```bash
 codex plugin marketplace add .
@@ -136,7 +143,13 @@ python <path-to-plugin-creator>/scripts/validate_plugin.py <path-to-RECALL>
 
 Build a zip package:
 
-macOS/Linux:
+Cross-platform Python:
+
+```bash
+python ./scripts/build_plugin.py
+```
+
+Convenience wrappers:
 
 ```bash
 ./build_plugin.sh
@@ -246,8 +259,8 @@ RECALL is designed to stay local. The foundation implementation makes no network
 - Codex hook trust is intentionally interactive; RECALL cannot bypass that review.
 - Retrieval is schema-first and deterministic, not transformer-grade semantic search.
 - RECALL depends on a local Python runtime being available to run its scripts and hooks.
-- Live Codex App picker visibility, fresh-thread skill discovery, hook trust, installed-cache smoke, and built-zip marketplace smoke were verified for `v0.1.0`; future Codex payload drift remains a normal compatibility risk.
+- Live Codex App picker visibility, fresh-thread skill discovery, hook trust, installed-cache smoke, and built-zip marketplace smoke were verified for `v1.0.0`; future Codex payload drift remains a normal compatibility risk.
 
 ## Roadmap
 
-The V1 path now prioritizes structured memory cards, live Codex install verification, hook payload hardening, release-grade packaging, and repeatable e2e smoke tests. Bundled local model embeddings remain optional after V1, only if they can be packaged and smoke-tested without network calls.
+Future work may improve broad "what next" ranking, richer automatic supersession, and optional local model embeddings if they can be packaged and smoke-tested without network calls.

@@ -2,5 +2,5 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$root/plugins/recall"
-./build_plugin.sh "$@"
+python_bin="${PYTHON:-python}"
+"$python_bin" "$root/build_plugin.py" "$@"

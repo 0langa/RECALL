@@ -50,6 +50,7 @@ class PackageMetadataTests(unittest.TestCase):
     def test_manifest_public_surface_metadata_is_present(self) -> None:
         payload = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
         interface = payload["interface"]
+        self.assertEqual(payload["version"], "1.0.0")
         self.assertEqual(payload["homepage"], "https://github.com/0langa/RECALL")
         self.assertEqual(payload["repository"], "https://github.com/0langa/RECALL")
         self.assertEqual(interface["websiteURL"], "https://github.com/0langa/RECALL")
@@ -67,6 +68,10 @@ class PackageMetadataTests(unittest.TestCase):
         self.assertTrue((ROOT / "assets" / "logo.png").is_file())
         self.assertTrue((ROOT / "docs" / "PRIVACY.md").is_file())
         self.assertTrue((ROOT / "docs" / "TERMS.md").is_file())
+
+    def test_cross_platform_python_builder_is_present(self) -> None:
+        self.assertTrue((REPO_ROOT / "build_plugin.py").is_file())
+        self.assertTrue((ROOT / "scripts" / "build_plugin.py").is_file())
 
     def test_skills_describe_local_only_storage_and_secret_safety(self) -> None:
         for path in sorted((ROOT / "skills").glob("*/SKILL.md")):

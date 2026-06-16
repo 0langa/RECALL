@@ -45,8 +45,8 @@ Recommended baseline commands:
 cd C:\Users\Julius\source\repos\RECALL
 python -m unittest discover -s plugins\recall\tests -q
 python RECALL_quality_suite\scripts\run_recall_quality_suite.py --repo-root . --quick
-.\build_plugin.ps1
-python plugins\recall\scripts\smoke_recall.py --installed-plugin-root C:\Users\Julius\.codex\plugins\cache\recall-local\recall\0.1.0+codex.20260615152000 --json
+python build_plugin.py
+python plugins\recall\scripts\smoke_recall.py --installed-plugin-root C:\Users\Julius\.codex\plugins\cache\recall-local\recall\1.0.0 --json
 ```
 
 Do not treat these commands as release proof. They only establish a clean starting point.
@@ -79,7 +79,7 @@ Status: PASS. Build, `codex plugin add recall@recall-local`, installed-cache smo
 1. Build and install the current plugin.
 
 ```powershell
-.\build_plugin.ps1
+python build_plugin.py
 codex plugin add recall@recall-local
 ```
 

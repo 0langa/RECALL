@@ -13,7 +13,7 @@ Run local plugin commands from `<repo-root>/plugins/recall` unless a step explic
 - [x] `python <plugin-creator-path>\scripts\validate_plugin.py <repo-root>/plugins/recall`
 - [x] `python .\scripts\smoke_recall.py --json`
 - [x] `python .\scripts\recall_skill.py retrieve-memory "current project context" --summary`
-- [x] `.\build_plugin.ps1` from `<repo-root>` or `<repo-root>/plugins/recall`
+- [x] `python build_plugin.py` from `<repo-root>` or `python scripts/build_plugin.py` from `<repo-root>/plugins/recall`
 - [x] `python .\scripts\inspect_package.py .\dist\recall.zip`
 - [x] `python .\scripts\smoke_zip_marketplace.py --json`
 
@@ -47,7 +47,7 @@ Run local plugin commands from `<repo-root>/plugins/recall` unless a step explic
 
 ## Tag And Artifact
 
-- [x] Tag `v0.1.0` only after local gates and install lifecycle pass.
+- [x] Tag `v1.0.0` only after local gates, install lifecycle, and real-project field testing pass.
 - [x] Create the GitHub release from the tag.
 - [x] Attach `dist/recall.zip` as a release artifact.
 - [x] Do not commit `dist/recall.zip`.

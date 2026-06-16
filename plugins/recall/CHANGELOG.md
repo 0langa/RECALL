@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- No unreleased changes.
+
+## 1.0.0 - 2026-06-16
+
 - Added persistent project-scoped activation with Git/manifest root resolution, explicit greenfield initialization, activation status, and non-destructive deactivation.
 - Changed `PostToolUse` and `Stop` from direct durable writes to redacted turn evidence plus one atomic, idempotent semantic finalizer batch.
 - Added relevance and sufficiency gating, command-category suppression for non-tooling prompts, quiet conflict alerts, and seven-day debug traces.

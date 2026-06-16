@@ -1,6 +1,20 @@
-# Install RECALL Locally
+# Install RECALL
 
 RECALL's installable plugin is kept at `plugins/recall/`. The repo includes a marketplace file at `.agents/plugins/marketplace.json` that points Codex at the plugin folder with `source.path: "./plugins/recall"`.
+
+## Install From GitHub
+
+```bash
+codex plugin marketplace add 0langa/RECALL --ref v1.0.0
+codex plugin add recall@recall-local
+```
+
+You can also use the HTTPS Git URL:
+
+```bash
+codex plugin marketplace add https://github.com/0langa/RECALL --ref v1.0.0
+codex plugin add recall@recall-local
+```
 
 ## Codex App
 
