@@ -22,6 +22,7 @@ import turn_buffer
 SCHEMA = "recall.finalizer_batch.v1"
 ALLOWED_OPERATIONS = {"save", "confirm", "supersede", "resolve"}
 EXPLICIT_CATEGORIES = {"requirements", "constraints", "decisions"}
+CURRENT_STATUSES = {"hypothesis", "active", "validated", "open"}
 
 
 def utc_now() -> str:
@@ -118,6 +119,45 @@ def _prepare_card(card: dict[str, Any], session_id: str, turn_id: str) -> dict[s
     return {"category": category, "content": content, "metadata": security.redact_value(metadata), "embedding": embed(content)}
 
 
+def _supersede_conflicting_claims(connection, new_id: int, category: str, metadata: dict[str, Any]) -> list[int]:
+    claim_key = str(metadata.get("claim_key") or "").strip()
+    claim_value = str(metadata.get("claim_value") or "").strip()
+    if not claim_key or not claim_value:
+        return []
+
+    superseded: list[int] = []
+    rows = connection.execute(
+        "SELECT id, timestamp, metadata FROM memories WHERE category = ? AND id != ?",
+        (category, new_id),
+    ).fetchall()
+    for row in rows:
+        old_id = int(row[0])
+        old_timestamp = str(row[1])
+        old_metadata = json.loads(row[2] or "{}")
+        old_status = str(old_metadata.get("status") or "active").lower()
+        if old_status not in CURRENT_STATUSES:
+            continue
+        if str(old_metadata.get("claim_key") or "") != claim_key:
+            continue
+        if str(old_metadata.get("claim_value") or "") == claim_value:
+            continue
+
+        old_metadata.update({"status": "superseded", "superseded_by": new_id, "superseded_at": utc_now(), "updated_at": utc_now()})
+        supersedes = metadata.get("supersedes", [])
+        if not isinstance(supersedes, list):
+            supersedes = []
+        if old_id not in supersedes:
+            supersedes.append(old_id)
+        metadata.update({"supersedes": supersedes, "updated_at": utc_now()})
+        _update_metadata(connection, old_id, old_timestamp, old_metadata)
+        superseded.append(old_id)
+    if superseded:
+        new_timestamp, current = _load_metadata(connection, new_id)
+        current.update(metadata)
+        _update_metadata(connection, new_id, new_timestamp, current)
+    return superseded
+
+
 def apply_finalizer_batch(batch: dict[str, Any], root: str | Path | None) -> dict[str, Any]:
     if batch.get("schema") != SCHEMA:
         raise ValueError(f"finalizer batch schema must be {SCHEMA}.")
@@ -181,8 +221,13 @@ def apply_finalizer_batch(batch: dict[str, Any], root: str | Path | None) -> dic
                         (prepared["category"], timestamp, prepared["content"], json.dumps(prepared["metadata"], sort_keys=True),
                          json.dumps(prepared["embedding"]), *normalized.values()),
                     )
+                    new_id = int(cursor.lastrowid)
+                    superseded = _supersede_conflicting_claims(connection, new_id, prepared["category"], prepared["metadata"])
                     changed = True
-                    results.append({"op": "save", "action": "saved", "id": int(cursor.lastrowid)})
+                    result = {"op": "save", "action": "saved", "id": new_id}
+                    if superseded:
+                        result["superseded_ids"] = superseded
+                    results.append(result)
                 elif kind == "confirm":
                     record_id = int(operation["id"])
                     timestamp, metadata = _load_metadata(connection, record_id)

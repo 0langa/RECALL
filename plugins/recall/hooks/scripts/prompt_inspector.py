@@ -22,9 +22,11 @@ import turn_buffer
 
 
 RECALL_INVOKE_RE = re.compile(r"(?i)(\[[^\]]*recall[^\]]*\]\(\s*plugin://recall[^)]*\)|@recall\b|plugin://recall[^\s)]*|\$recall:)")
+NATURAL_RECALL_INVOKE_RE = re.compile(r"(?i)\b(?:use|activate|enable)\s+recall\b")
 REMEMBER_RE = re.compile(
     r"(?is)(?:^|\n)\s*(?:please\s+)?remember(?:\s+(?:this|that|the following))?\s*[:\-]\s*(?P<content>.+)"
 )
+CATEGORIZED_REMEMBER_RE = re.compile(r"(?is)^\s*(?P<category>[a-zA-Z0-9_-]+)\s*:\s*(?P<content>.+)")
 CATEGORY_RE = re.compile(
     r"(?is)\bdefine category\s+(?P<name>[a-zA-Z0-9_-]+)(?:\s*:\s*(?P<description>.+))?"
 )
@@ -43,7 +45,7 @@ def main() -> None:
     if not prompt:
         print(json.dumps({"continue": True}))
         return
-    explicit_recall = bool(RECALL_INVOKE_RE.search(prompt))
+    explicit_recall = bool(RECALL_INVOKE_RE.search(prompt) or NATURAL_RECALL_INVOKE_RE.search(prompt))
     cue_text = RECALL_INVOKE_RE.sub("", prompt).strip() if explicit_recall else prompt
     memory_text = capture_policy.normalize_prompt_memory_text(prompt) if explicit_recall else prompt
     initialize = bool(explicit_recall and INITIALIZE_RE.search(cue_text))
@@ -81,9 +83,6 @@ def main() -> None:
     session_id = str(payload.get("session_id") or "")
     turn_id = str(payload.get("turn_id") or "")
     turn_buffer.mark_active(root, session_id, turn_id, prompt)
-    prompt_event = capture_policy.classify_prompt_event(memory_text or cue_text or prompt)
-    if prompt_event is not None:
-        turn_buffer.append_event(root, session_id, turn_id, prompt_event)
     observability.trace(
         root,
         "prompt_activation",
@@ -111,13 +110,22 @@ def main() -> None:
     remember_match = REMEMBER_RE.search(cue_text) if explicit_recall else None
     if remember_match:
         remembered = remember_match.group("content").strip()
+        category = args.category
+        categorized = CATEGORIZED_REMEMBER_RE.match(remembered)
+        if categorized:
+            candidate = capture_policy.normalize_prompt_memory_text(categorized.group("category"))
+            categories = recall_config.load_config_if_present(root).get("categories", {})
+            if candidate in categories:
+                category = candidate
+                remembered = categorized.group("content").strip()
         record = memory_manager.add_record(
-            args.category,
+            category,
             remembered,
             memory_manager.build_card_metadata(
                 summary=remembered[:220],
                 source="prompt_inspector",
                 status="active",
+                base=capture_policy.claim_metadata(category, remembered),
             ),
             root,
         )
@@ -130,6 +138,10 @@ def main() -> None:
             )
         )
         return
+
+    prompt_event = capture_policy.classify_prompt_event(memory_text or cue_text or prompt)
+    if prompt_event is not None:
+        turn_buffer.append_event(root, session_id, turn_id, prompt_event)
 
     retrieval_text = memory_text or cue_text or prompt
     exclusions = capture_policy.retrieval_exclusions(retrieval_text)

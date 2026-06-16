@@ -45,6 +45,8 @@ CONDITIONAL_COMMAND_MEMORY_RE = re.compile(
     r"\bonly\s+remember\b.+\bif\b.+\b(?:works?|passes?|succeeds?|success|actually\s+works?)\b|"
     r"\bremember\b.+\bif\s+(?:it|that|the\s+command)\s+(?:actually\s+)?(?:works?|passes?|succeeds?)\b"
 )
+RELEASE_NOTES_PATH_RE = re.compile(r"(?i)\brelease\s+notes?\b.*?\b(?:docs|doc)[\\/][A-Za-z0-9_.\\/-]+\.md\b")
+MARKDOWN_PATH_RE = re.compile(r"(?i)\b(?:docs|doc)[\\/][A-Za-z0-9_.\\/-]+\.md\b")
 PLUGIN_MENTION_RE = re.compile(r"(?i)\[[^\]]*recall[^\]]*\]\(\s*plugin://recall[^)]*\)")
 RAW_PLUGIN_RE = re.compile(r"(?i)\bplugin://recall[^\s)]*")
 RECALL_TOKEN_RE = re.compile(r"(?i)(?:@recall\b|\$recall:)")
@@ -293,14 +295,30 @@ def normalize_prompt_memory_text(prompt: str) -> str:
     return clean
 
 
+def claim_metadata(category: str, text: str) -> dict[str, str]:
+    normalized_category = recall_config.normalize_category(category)
+    if normalized_category not in {"requirements", "constraints", "decisions"}:
+        return {}
+    if not RELEASE_NOTES_PATH_RE.search(text):
+        return {}
+    path_match = MARKDOWN_PATH_RE.search(text)
+    if not path_match:
+        return {}
+    return {
+        "claim_key": "release_notes.path",
+        "claim_value": path_match.group(0).replace("\\", "/"),
+    }
+
+
 def classify_prompt_event(prompt: str) -> dict[str, Any] | None:
     clean = normalize_prompt_memory_text(prompt)
     if not clean:
         return None
     if CONDITIONAL_COMMAND_MEMORY_RE.search(clean):
         return None
+    requirement_claim = claim_metadata("requirements", clean)
     if PROMPT_CORRECTION_RE.search(clean):
-        category = "decisions"
+        category = "requirements" if requirement_claim else "decisions"
         signal = "explicit_correction"
     elif PROMPT_REQUIREMENT_RE.search(clean):
         category = "requirements"
@@ -310,7 +328,7 @@ def classify_prompt_event(prompt: str) -> dict[str, Any] | None:
         signal = "explicit_decision"
     else:
         return None
-    return {
+    event = {
         "durable_candidate": True,
         "signal": signal,
         "summary": clean[:220],
@@ -319,3 +337,5 @@ def classify_prompt_event(prompt: str) -> dict[str, Any] | None:
         "tags": ["user-prompt", signal.replace("explicit_", "")],
         "explicit_user_evidence": True,
     }
+    event.update(requirement_claim if category == "requirements" and requirement_claim else claim_metadata(category, clean))
+    return event

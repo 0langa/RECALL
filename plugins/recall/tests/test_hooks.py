@@ -117,6 +117,136 @@ class HookTests(unittest.TestCase):
             result = json.loads(query.stdout)
             self.assertIn("local-only", result["summary"])
 
+    def test_prompt_inspector_respects_remembered_category_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0.1.0'\n", encoding="utf-8")
+            output = run_hook(
+                "prompt_inspector.py",
+                {
+                    "cwd": tmp,
+                    "hook_event_name": "UserPromptSubmit",
+                    "prompt": "@recall remember this: requirements: Release notes stay under docs/manual-release-notes.md.",
+                },
+            )
+            self.assertTrue(output["continue"])
+
+            requirements = query_memory(tmp, "release notes", "requirements")
+            preferences = query_memory(tmp, "release notes", "preferences")
+            self.assertEqual(len(requirements["results"]), 1)
+            self.assertEqual(preferences["results"], [])
+            self.assertEqual(requirements["results"][0]["content"], "Release notes stay under docs/manual-release-notes.md.")
+            self.assertEqual(requirements["results"][0]["metadata"]["claim_key"], "release_notes.path")
+
+    def test_natural_use_recall_phrase_activates_project_and_buffers_requirement(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "package.json").write_text('{"name":"fixture","version":"0.1.0"}', encoding="utf-8")
+            output = run_hook(
+                "prompt_inspector.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-natural",
+                    "turn_id": "turn-natural",
+                    "hook_event_name": "UserPromptSubmit",
+                    "prompt": "Use RECALL for this project. We must keep generated release notes under docs/manual-release-notes.md.",
+                },
+            )
+            self.assertTrue(output["continue"])
+            events = runtime_events(tmp, "session-natural", "turn-natural")
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0]["category_hint"], "requirements")
+            self.assertIn("generated release notes", events[0]["summary"])
+
+    def test_release_notes_correction_supersedes_previous_requirement(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0.1.0'\n", encoding="utf-8")
+            run_hook(
+                "prompt_inspector.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-conflict",
+                    "turn_id": "turn-original",
+                    "hook_event_name": "UserPromptSubmit",
+                    "prompt": "@recall remember this: requirements: The release notes file must live at docs/manual-release-notes.md.",
+                },
+            )
+            run_hook(
+                "stop.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-conflict",
+                    "turn_id": "turn-original",
+                    "hook_event_name": "Stop",
+                    "last_assistant_message": "Recorded the original requirement.",
+                },
+            )
+            run_hook(
+                "prompt_inspector.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-conflict",
+                    "turn_id": "turn-correction",
+                    "hook_event_name": "UserPromptSubmit",
+                    "prompt": "Correction: the release notes file should instead live at docs/release/manual-notes.md.",
+                },
+            )
+            run_hook(
+                "stop.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-conflict",
+                    "turn_id": "turn-correction",
+                    "hook_event_name": "Stop",
+                    "last_assistant_message": "Recorded the corrected requirement.",
+                },
+            )
+
+            active = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "recall_skill.py"),
+                    "--root",
+                    tmp,
+                    "review-memory",
+                    "--category",
+                    "requirements",
+                    "--status",
+                    "active",
+                    "--status",
+                    "validated",
+                    "--limit",
+                    "20",
+                ],
+                text=True,
+                capture_output=True,
+                check=True,
+                cwd=ROOT,
+            )
+            active_review = json.loads(active.stdout)["review"]
+            self.assertEqual(active_review["matched"], 1)
+            self.assertIn("docs/release/manual-notes.md", active_review["memories"][0]["summary"])
+
+            superseded = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "recall_skill.py"),
+                    "--root",
+                    tmp,
+                    "review-memory",
+                    "--category",
+                    "requirements",
+                    "--status",
+                    "superseded",
+                    "--limit",
+                    "20",
+                ],
+                text=True,
+                capture_output=True,
+                check=True,
+                cwd=ROOT,
+            )
+            superseded_review = json.loads(superseded.stdout)["review"]
+            self.assertGreaterEqual(superseded_review["matched"], 1)
+
     def test_prompt_inspector_ignores_incidental_remembered_word(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             output = run_hook(

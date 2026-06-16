@@ -64,7 +64,7 @@ def quiet_card_from_event(event: dict, *, session_id: str, turn_id: str) -> dict
         tags = []
     evidence_id = str(event.get("event_id") or f"{session_id}:{turn_id}:{signal}").strip()
     status = "validated" if explicit and category in {"requirements", "constraints", "decisions"} else "active"
-    return {
+    card = {
         "category": category,
         "content": details[:4000],
         "summary": summary[:220],
@@ -78,6 +78,8 @@ def quiet_card_from_event(event: dict, *, session_id: str, turn_id: str) -> dict
         "record_kind": "semantic_memory",
         "capture_reason": "quiet semantic turn finalization",
     }
+    card.update(capture_policy.claim_metadata(category, details))
+    return card
 
 
 def quiet_finalizer_batch(events: list[dict], *, session_id: str, turn_id: str) -> dict:
