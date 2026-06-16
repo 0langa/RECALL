@@ -52,7 +52,8 @@ class ConfigTests(unittest.TestCase):
 
             target = recall_config.ensure_config(tmp)
             cfg = recall_config.load_config(tmp)
-            self.assertEqual(target, Path(tmp) / ".codex_memory" / "memory_config.json")
+            expected = Path(tmp) / ".codex_memory" / "memory_config.json"
+            self.assertTrue(target.samefile(expected), f"{target} is not {expected}")
             self.assertEqual(cfg["backend"], "jsonl")
             self.assertEqual(cfg["categories"]["requirements"]["weight"], 1.9)
 
