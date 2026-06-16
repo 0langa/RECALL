@@ -23,6 +23,15 @@ SCHEMA = "recall.finalizer_batch.v1"
 ALLOWED_OPERATIONS = {"save", "confirm", "supersede", "resolve"}
 EXPLICIT_CATEGORIES = {"requirements", "constraints", "decisions"}
 CURRENT_STATUSES = {"hypothesis", "active", "validated", "open"}
+PROMPT_PLAN_MARKERS = (
+    "please implement this plan",
+    "## summary",
+    "## key changes",
+    "make a plan now",
+    "do you think it is in shape",
+    "whatever you decide on is accepted",
+    "whatever you decide on is accpeted",
+)
 
 
 def utc_now() -> str:
@@ -92,11 +101,26 @@ def _prepare_card(card: dict[str, Any], session_id: str, turn_id: str) -> dict[s
     tags = card.get("tags", [])
     if not isinstance(tags, list):
         raise ValueError("finalizer card tags must be a list.")
+    normalized_tags = [str(tag) for tag in tags if str(tag).strip()]
+    if _looks_like_raw_prompt_card(content, summary, details, normalized_tags):
+        return {
+            "ignored": True,
+            "reason": "raw_prompt_transcript",
+            "category": category,
+            "content": content,
+            "metadata": {
+                "source": "finalizer",
+                "status": "ignored",
+                "reason": "raw_prompt_transcript",
+                "session_id": session_id,
+                "turn_id": turn_id,
+            },
+        }
     metadata = {
         "schema": "recall.turn_card.v1",
         "summary": summary,
         "details": details,
-        "tags": [str(tag) for tag in tags if str(tag).strip()],
+        "tags": normalized_tags,
         "source": "finalizer",
         "status": status,
         "importance": float(card.get("importance", 0.7)),
@@ -117,6 +141,19 @@ def _prepare_card(card: dict[str, Any], session_id: str, turn_id: str) -> dict[s
             metadata[key] = card[key]
     metadata["recall_fingerprint"] = memory_hygiene.content_fingerprint(category, content, metadata)
     return {"category": category, "content": content, "metadata": security.redact_value(metadata), "embedding": embed(content)}
+
+
+def _looks_like_raw_prompt_card(content: str, summary: str, details: str, tags: list[str]) -> bool:
+    """Detect finalizer cards that copied the user prompt instead of distilling it."""
+
+    if len(content) < 400:
+        return False
+    lowered = content.casefold()
+    tag_set = {tag.casefold() for tag in tags}
+    prompt_tagged = bool(tag_set & {"user-prompt", "correction"})
+    marker_count = sum(1 for marker in PROMPT_PLAN_MARKERS if marker in lowered)
+    duplicated_prompt = summary and details and summary.strip() == details.strip() and content.startswith(summary[:200])
+    return prompt_tagged and (marker_count >= 2 or duplicated_prompt)
 
 
 def _supersede_conflicting_claims(connection, new_id: int, category: str, metadata: dict[str, Any]) -> list[int]:
@@ -195,6 +232,13 @@ def apply_finalizer_batch(batch: dict[str, Any], root: str | Path | None) -> dic
                 if kind == "save":
                     prepared = prepared_cards[card_index]
                     card_index += 1
+                    if prepared.get("ignored"):
+                        results.append({
+                            "op": "save",
+                            "action": "ignored",
+                            "reason": str(prepared.get("reason") or "not_durable"),
+                        })
+                        continue
                     duplicate = connection.execute(
                         "SELECT id, timestamp, metadata FROM memories WHERE category = ? AND content = ? ORDER BY id DESC LIMIT 1",
                         (prepared["category"], prepared["content"]),

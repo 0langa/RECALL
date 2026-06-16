@@ -109,6 +109,71 @@ class ReleaseHardeningTests(unittest.TestCase):
                     tmp,
                 )
 
+    def test_finalizer_ignores_raw_prompt_plan_cards(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.activate_project(tmp, activated_by="test")
+            raw_prompt = (
+                "PLEASE IMPLEMENT THIS PLAN: # Scalpel Release-Ready Improvements 6-10\n"
+                "## Summary\n"
+                "Implement the following release plan exactly as written.\n"
+                "## Key Changes\n"
+                "- Large-file strategy with read_chunk and clear max-size errors.\n"
+                "- Binary/encoding guard.\n"
+                "- Operation journal.\n"
+                "- Better eval harness.\n"
+                "- Tool namespacing.\n"
+                + "More implementation detail. " * 30
+            )
+            result = apply_finalizer_batch(
+                batch(
+                    "session-a",
+                    "turn-plan",
+                    [
+                        {
+                            "op": "save",
+                            "card": {
+                                "category": "decisions",
+                                "content": raw_prompt,
+                                "summary": raw_prompt,
+                                "details": raw_prompt,
+                                "tags": ["user-prompt", "correction"],
+                                "explicit_user_evidence": True,
+                            },
+                        }
+                    ],
+                ),
+                tmp,
+            )
+            self.assertEqual(result["operations"][0]["action"], "ignored")
+            self.assertEqual(result["operations"][0]["reason"], "raw_prompt_transcript")
+            self.assertEqual(list(memory_manager.iter_records(tmp)), [])
+
+    def test_finalizer_keeps_distilled_plan_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.activate_project(tmp, activated_by="test")
+            result = apply_finalizer_batch(
+                batch(
+                    "session-a",
+                    "turn-distilled",
+                    [
+                        {
+                            "op": "save",
+                            "card": {
+                                "category": "project_state",
+                                "content": "Scalpel release-ready improvements 6-10 are implemented and validated.",
+                                "summary": "Scalpel release-ready improvements 6-10 implemented.",
+                                "details": "Validation passed via lint, typecheck, tests, build, and MCP smoke.",
+                                "tags": ["scalpel", "release-ready", "validation"],
+                                "explicit_user_evidence": False,
+                            },
+                        }
+                    ],
+                ),
+                tmp,
+            )
+            self.assertEqual(result["operations"][0]["action"], "saved")
+            self.assertEqual(len(list(memory_manager.iter_records(tmp))), 1)
+
     def test_successful_quiet_finalization_removes_turn_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             recall_config.activate_project(tmp, activated_by="test")

@@ -48,6 +48,7 @@ def build_finalizer_prompt(packet_path: str, packet: dict[str, Any] | None = Non
             "Max 3 new cards and 8 total operations.",
             "Submit exactly one recall.finalizer_batch.v1 object with apply-finalizer-batch --stdin.",
             "Store only future-useful decisions, requirements, risks, commands, architecture, lessons, or project state.",
+            "Do not copy raw user prompts, requested implementation plans, or transcript text; store the distilled accepted fact/outcome only.",
             "If nothing durable changed, store nothing.",
             f"PACKET={inline_packet or json.dumps({'packet_path': packet_path}, sort_keys=True)}",
             "Steps: review-memory/retrieve-memory, decide, apply one atomic batch, short summary.",
