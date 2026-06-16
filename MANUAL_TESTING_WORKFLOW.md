@@ -12,6 +12,16 @@ Current UI-app manual fixture paths:
 
 The phases below assume you are testing primarily in the Codex App UI. Use terminal commands only as an external audit/check after the UI turn has finished.
 
+## Current Remaining Work
+
+Status as of 2026-06-16 after unattended hook, skill-adapter, and `codex-cli 0.140.0` verification:
+
+- Phase 1: manual Codex App plugin picker and hook-trust UI confirmation.
+- Phase 12: manual Codex App quiet-mode UI audit for hook cards/finalizer visibility.
+- Phase 18: final release decision after the two UI checks above are recorded.
+
+Everything else in this workflow has terminal or prior manual evidence recorded in `quality_results\manual\manual_test_notes.md`. Keep the phase details below as the reproducible procedure, but only the three bullets above are currently open.
+
 ## Goals
 
 - Verify RECALL does not create memory stores for ordinary non-project prompts.
@@ -66,6 +76,8 @@ For every test below, record:
 
 ## Phase 1: Fresh Install Sanity
 
+Status: OPEN. Requires visual Codex App plugin picker and hook-trust confirmation.
+
 1. Build and install the current plugin.
 
 ```powershell
@@ -89,6 +101,8 @@ Fail if:
 - Hook trust review reappears after being accepted without an intentional reinstall.
 
 ## Phase 2: No Accidental Project Creation
+
+Status: PASS. Covered by unattended hook/skill simulation; evidence in `quality_results\manual\manual_test_notes.md`.
 
 Use a non-project folder:
 
@@ -140,6 +154,8 @@ Fail if:
 
 ## Phase 3: Explicit Greenfield Initialization
 
+Status: PASS. Covered by unattended hook/skill simulation; evidence in `quality_results\manual\manual_test_notes.md`.
+
 In the same scratch folder, submit:
 
 ```text
@@ -166,6 +182,8 @@ Fail if:
 - Config defaults are missing: `capture_mode=standard`, `recall_mode=relevant`, `observability_mode=quiet`.
 
 ## Phase 4: Recognized Project Activation
+
+Status: PASS. Covered by installed-cache fresh project E2E simulation; evidence in `quality_results\manual\manual_test_notes.md`.
 
 Create a real project fixture:
 
@@ -206,6 +224,8 @@ Fail if:
 
 ## Phase 5: Persistent Activation Across Prompts
 
+Status: PASS. Covered by installed-cache fresh project E2E simulation; evidence in `quality_results\manual\manual_test_notes.md`.
+
 In the same thread, do not mention RECALL.
 
 Submit:
@@ -237,6 +257,8 @@ Fail if:
 - The UI shows finalizer internals.
 
 ## Phase 6: New Session Retrieval
+
+Status: PASS. Prior manual transcript confirmed release-notes retrieval; evidence in `quality_results\manual\manual_test_notes.md`.
 
 Close the thread. Open a new Codex App thread in `C:\Users\Julius\source\test_enviroments\RECALL\project`.
 
@@ -270,6 +292,8 @@ Fail if:
 
 ## Phase 7: Retrieval Sufficiency And Honesty
 
+Status: PASS. Prior manual transcript confirmed calibrated insufficiency for unknown deployment/database decisions; evidence in `quality_results\manual\manual_test_notes.md`.
+
 Open or keep using a Codex App thread in:
 
 ```text
@@ -300,6 +324,8 @@ Fail if:
 - It uses memories from `project2` or the RECALL source repo while the current UI directory is `project`.
 
 ## Phase 8: Failure Capture
+
+Status: PASS after fix. Failure capture and conditional command capture were verified; evidence in `quality_results\manual\manual_test_notes.md`.
 
 In the Codex App UI for:
 
@@ -340,6 +366,8 @@ Fail if:
 
 ## Phase 9: Reusable Command Capture
 
+Status: PASS after fix. Conditional reusable command capture refused to save a failing command; evidence in `quality_results\manual\manual_test_notes.md`.
+
 In the same UI project, ask Codex to establish a verified reusable command:
 
 ```text
@@ -362,6 +390,8 @@ Fail if:
 - A command from the RECALL source repo is saved into the scratch project's memory.
 
 ## Phase 10: Conflict And Current Truth
+
+Status: PASS after fix. Release-notes path correction supersession was verified; evidence in `quality_results\manual\manual_test_notes.md`.
 
 Use `project2` for conflict testing so the main `project` fixture keeps its clean Phase 6/7 release-notes record:
 
@@ -401,6 +431,8 @@ Fail if:
 
 ## Phase 11: Deactivation
 
+Status: PASS. Deactivation preserved memory and stopped background behavior in simulation; evidence in `quality_results\manual\manual_test_notes.md`.
+
 Use `project2` for deactivation testing unless you intentionally want to pause the main `project` fixture.
 
 From an external terminal, run:
@@ -435,6 +467,8 @@ Reactivate with:
 
 ## Phase 12: Quiet Mode UI Audit
 
+Status: OPEN. Requires visual Codex App UI inspection for hook cards and finalizer visibility.
+
 This phase specifically targets the final-release UX in the Codex App.
 
 In an active project, preferably `project`, perform several turns involving:
@@ -458,6 +492,8 @@ Expected visible behavior:
 Fail if any finalizer implementation detail appears in normal quiet mode.
 
 ## Phase 13: Debug Mode Audit
+
+Status: PASS. Debug trace behavior was verified by terminal simulation; evidence in `quality_results\manual\manual_test_notes.md`.
 
 Enable debug mode only for development. Use `project2` so debug artifacts do not muddy the main fixture:
 
@@ -488,6 +524,8 @@ Fail if:
 - Debug behavior leaks into quiet mode.
 
 ## Phase 14: Corpus Quality Audit
+
+Status: PASS. Corpus review found no active automatic command-noise candidates in the manual fixtures; evidence in `quality_results\manual\manual_test_notes.md`.
 
 Run category review for both UI fixtures from an external terminal:
 
@@ -525,6 +563,8 @@ Fail if:
 - IDs restarting at `#1` in different projects are not a failure; memory IDs are project-local.
 
 ## Phase 15: Migration Audit
+
+Status: PASS. Migration dry-run and apply on `migration-copy` preserved records and created a backup; evidence in `quality_results\manual\manual_test_notes.md`.
 
 Use a copied project or backup corpus.
 
@@ -565,6 +605,8 @@ Fail if:
 
 ## Phase 16: Source-Blind Manual Evaluation
 
+Status: PASS after fix. All three source-blind prompts were exercised through `codex exec` against the active fixture; evidence in `quality_results\manual\manual_test_notes.md`.
+
 Use a fresh Codex App thread in:
 
 ```text
@@ -604,6 +646,8 @@ Fail release readiness if:
 
 ## Phase 17: Installed-Plugin Fresh Project E2E
 
+Status: PASS after fixes. Installed-cache E2E simulation covered activation, memory capture, failure capture, retrieval, deactivation, and debug traces; evidence in `quality_results\manual\manual_test_notes.md`.
+
 Use this current fixture path for installed-plugin E2E:
 
 ```powershell
@@ -636,6 +680,8 @@ Fail if:
 - The Codex App sidebar/thread project path differs from the intended `installed-e2e` directory.
 
 ## Phase 18: Release Decision
+
+Status: OPEN. Make the release decision only after Phase 1 and Phase 12 UI evidence is recorded.
 
 Release candidate is acceptable only if all are true:
 
