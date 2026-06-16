@@ -332,6 +332,57 @@ class HookTests(unittest.TestCase):
             output = run_hook("prompt_inspector.py", {"cwd": tmp, "prompt": "Write a limerick about clouds."})
             self.assertEqual(output, {"continue": True})
 
+    def test_source_blind_category_prompt_receives_project_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "recall_skill.py"),
+                    "--root",
+                    tmp,
+                    "initialize-project",
+                ],
+                text=True,
+                capture_output=True,
+                check=True,
+                cwd=ROOT,
+            )
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "recall_skill.py"),
+                    "--root",
+                    tmp,
+                    "save-insight",
+                    "requirements",
+                    "Generated release notes must stay in docs/manual-release-notes.md.",
+                    "--summary",
+                    "Generated release notes must stay in docs/manual-release-notes.md.",
+                    "--status",
+                    "validated",
+                ],
+                text=True,
+                capture_output=True,
+                check=True,
+                cwd=ROOT,
+            )
+            output = run_hook(
+                "prompt_inspector.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-source-blind",
+                    "turn_id": "turn-source-blind",
+                    "hook_event_name": "UserPromptSubmit",
+                    "prompt": (
+                        "Without running commands or reading source files, use only automatically provided "
+                        "RECALL memory: summarize this fixture project's current requirements and risks."
+                    ),
+                },
+            )
+            context = output["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("Curated RECALL project memory", context)
+            self.assertIn("Generated release notes", context)
+
     def test_prompt_invocation_excludes_superseded_when_active_context_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             subprocess.run(

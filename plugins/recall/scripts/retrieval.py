@@ -40,6 +40,16 @@ SOURCE_WEIGHTS = {
 DEFAULT_SOURCE_WEIGHT = 0.9
 CURRENT_DURABLE_CATEGORIES = {"requirements", "constraints", "decisions", "architecture", "risks", "tasks", "project_state"}
 CURRENT_STATUSES = {"validated", "active", "open"}
+SOURCE_BLIND_MEMORY_RE = {"recall memory", "project memory", "automatically provided", "without running commands", "without reading source"}
+CATEGORY_TERMS = {
+    "requirements": {"requirement", "requirements", "accepted requirements"},
+    "constraints": {"constraint", "constraints"},
+    "risks": {"risk", "risks", "blocker", "blockers"},
+    "architecture": {"architecture", "design"},
+    "decisions": {"decision", "decisions", "accepted"},
+    "tasks": {"next engineer", "next work", "next steps", "todo", "tasks"},
+    "project_state": {"current state", "status", "project state"},
+}
 
 
 def parse_timestamp(value: str) -> datetime:
@@ -133,6 +143,20 @@ def normalized_lexical_overlap(query_text: str, record: storage.MemoryRecord) ->
     """Return a stable 0..1 overlap used by automatic-injection gating."""
 
     return min(1.0, weighted_lexical_score(query_text, record))
+
+
+def source_blind_memory_request(query_text: str) -> bool:
+    lowered = query_text.casefold()
+    return any(marker in lowered for marker in SOURCE_BLIND_MEMORY_RE)
+
+
+def requested_categories(query_text: str) -> set[str]:
+    lowered = query_text.casefold()
+    requested: set[str] = set()
+    for category, terms in CATEGORY_TERMS.items():
+        if any(term in lowered for term in terms):
+            requested.add(category)
+    return requested
 
 
 def status_weight(record: storage.MemoryRecord) -> float:
@@ -244,17 +268,23 @@ def assess_relevance(
     minimum_lexical = float(thresholds.get("minimum_lexical_overlap", 0.15))
     raw_score = float(top.get("score", 0.0)) if top else 0.0
     relevance_score = max(raw_score, lexical + 0.25) if top else 0.0
+    category_match = False
     if top is not None and top.get("category") in CURRENT_DURABLE_CATEGORIES:
         status = str(((top.get("metadata") or {}).get("status") or "")).strip().lower()
+        requested = requested_categories(query_text)
+        category_match = source_blind_memory_request(query_text) and top.get("category") in requested and status in CURRENT_STATUSES
+        if category_match:
+            relevance_score = max(relevance_score, 0.8)
         if status in CURRENT_STATUSES and lexical >= minimum_lexical:
             relevance_score = max(relevance_score, lexical + 0.45)
-    relevant = bool(top and relevance_score >= minimum_score and lexical >= minimum_lexical)
+    relevant = bool(top and relevance_score >= minimum_score and (lexical >= minimum_lexical or category_match))
     return {
         "relevant": relevant,
         "sufficient": relevant and len(results) > 0,
         "top_score": round(relevance_score, 4),
         "raw_rank_score": round(raw_score, 4),
         "lexical_overlap": round(lexical, 4),
+        "category_match": category_match,
         "result_ids": [int(item["id"]) for item in results],
         "thresholds": {"minimum_score": minimum_score, "minimum_lexical_overlap": minimum_lexical},
     }
