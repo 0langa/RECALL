@@ -597,6 +597,49 @@ class HookTests(unittest.TestCase):
             self.assertNotIn("[](-local)", stored)
             self.assertNotIn("Use RECALL", stored)
 
+    def test_conditional_command_memory_is_not_saved_when_verification_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            activate_recall(tmp, "session-conditional", "turn-setup")
+            run_hook(
+                "prompt_inspector.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-conditional",
+                    "turn_id": "turn-conditional",
+                    "hook_event_name": "UserPromptSubmit",
+                    "prompt": "The reusable validation command for this project is `python -m pytest`; remember it only if it actually works.",
+                },
+            )
+            run_hook(
+                "post_tool_use.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-conditional",
+                    "turn_id": "turn-conditional",
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "python -m pytest"},
+                    "tool_response": {"exit_code": 1, "stdout": "", "stderr": "ERROR: file or directory not found: tests"},
+                },
+            )
+            output = run_hook(
+                "stop.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-conditional",
+                    "turn_id": "turn-conditional",
+                    "hook_event_name": "Stop",
+                    "last_assistant_message": "The command failed, so I did not remember it as reusable.",
+                },
+            )
+
+            self.assertEqual(output.get("systemMessage"), "RECALL saved 1 memory.")
+            self.assertEqual(query_memory(tmp, "reusable validation command", "decisions")["results"], [])
+            self.assertEqual(query_memory(tmp, "python pytest reusable", "commands")["results"], [])
+            failures = query_memory(tmp, "file or directory not found", "debug_history")
+            self.assertEqual(len(failures["results"]), 1)
+            self.assertIn("ERROR", failures["results"][0]["content"])
+
     def test_stop_empty_last_message_is_noop(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             output = run_hook(
@@ -631,6 +674,45 @@ class HookTests(unittest.TestCase):
             events = runtime_events(tmp, "", "turn-bash-failure")
             self.assertEqual(len(events), 1)
             self.assertIn("AssertionError", events[0]["details"])
+
+    def test_post_tool_use_failure_uses_project_activation_when_turn_activation_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            activate_recall(tmp, "session-project-active", "turn-setup")
+            output = run_hook(
+                "post_tool_use.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-project-active",
+                    "turn_id": "turn-project-active",
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "python -m pytest tests\\does_not_exist.py"},
+                    "tool_response": {
+                        "exit_code": 1,
+                        "stdout": "",
+                        "stderr": "ERROR: file or directory not found: tests\\does_not_exist.py",
+                    },
+                },
+            )
+            self.assertTrue(output["continue"])
+            events = runtime_events(tmp, "session-project-active", "turn-project-active")
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0]["category_hint"], "debug_history")
+            self.assertEqual(events[0]["record_kind"], "failure")
+
+            stop = run_hook(
+                "stop.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-project-active",
+                    "turn_id": "turn-project-active",
+                    "hook_event_name": "Stop",
+                    "last_assistant_message": "The intentionally failing command failed as expected.",
+                },
+            )
+            self.assertEqual(stop.get("systemMessage"), "RECALL saved 1 memory.")
+            result = query_memory(tmp, "does_not_exist", "debug_history")
+            self.assertEqual(len(result["results"]), 1)
 
     def test_post_tool_use_stores_apply_patch_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

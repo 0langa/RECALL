@@ -40,6 +40,11 @@ PROMPT_REQUIREMENT_RE = re.compile(r"(?i)\b(must|need to|required|acceptance cri
 PROMPT_DECISION_RE = re.compile(r"(?i)\b(decided|we will|use .+ instead|approved|accepted)\b")
 PROMPT_CORRECTION_RE = re.compile(r"(?i)\b(correction|actually|instead|no longer|replace|supersede)\b")
 COMMAND_QUERY_RE = re.compile(r"(?i)\b(build|test|run|command|install|lint|format|deploy|package|tooling)\b")
+CONDITIONAL_COMMAND_MEMORY_RE = re.compile(
+    r"(?is)\bremember\b.+\bonly\s+if\b.+\b(?:works?|passes?|succeeds?|success|actually\s+works?)\b|"
+    r"\bonly\s+remember\b.+\bif\b.+\b(?:works?|passes?|succeeds?|success|actually\s+works?)\b|"
+    r"\bremember\b.+\bif\s+(?:it|that|the\s+command)\s+(?:actually\s+)?(?:works?|passes?|succeeds?)\b"
+)
 PLUGIN_MENTION_RE = re.compile(r"(?i)\[[^\]]*recall[^\]]*\]\(\s*plugin://recall[^)]*\)")
 RAW_PLUGIN_RE = re.compile(r"(?i)\bplugin://recall[^\s)]*")
 RECALL_TOKEN_RE = re.compile(r"(?i)(?:@recall\b|\$recall:)")
@@ -291,6 +296,8 @@ def normalize_prompt_memory_text(prompt: str) -> str:
 def classify_prompt_event(prompt: str) -> dict[str, Any] | None:
     clean = normalize_prompt_memory_text(prompt)
     if not clean:
+        return None
+    if CONDITIONAL_COMMAND_MEMORY_RE.search(clean):
         return None
     if PROMPT_CORRECTION_RE.search(clean):
         category = "decisions"

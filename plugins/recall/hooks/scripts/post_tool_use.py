@@ -74,8 +74,10 @@ def main() -> None:
     session_id = str(payload.get("session_id") or "")
     turn_id = str(payload.get("turn_id") or "")
     if not turn_buffer.is_active(root, session_id, turn_id):
-        print(json.dumps({"continue": True}))
-        return
+        if not (root and recall_config.project_is_active(root) and capture_policy.auto_capture_allowed(root)):
+            print(json.dumps({"continue": True}))
+            return
+        turn_buffer.mark_active(root, session_id, turn_id, "")
 
     tool_name = str(payload.get("tool_name") or "").strip()
     command = args.command or tool_command(payload)
