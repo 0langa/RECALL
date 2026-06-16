@@ -41,6 +41,7 @@ if (Test-Path $Archive) {
 
 $Include = @(
   ".codex-plugin",
+  "assets",
   "skills",
   "hooks",
   "scripts",

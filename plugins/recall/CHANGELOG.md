@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Added persistent project-scoped activation with Git/manifest root resolution, explicit greenfield initialization, activation status, and non-destructive deactivation.
+- Changed `PostToolUse` and `Stop` from direct durable writes to redacted turn evidence plus one atomic, idempotent semantic finalizer batch.
+- Added relevance and sufficiency gating, command-category suppression for non-tooling prompts, quiet conflict alerts, and seven-day debug traces.
+- Added batch ingest with one SQLite transaction and one index rebuild; 500-record seed time is now below one second on the release workstation.
+- Added non-destructive corpus migration with pre-apply backup, evidence lineage, command synthesis, and historical score/checkpoint consolidation.
+- Migrated the repository corpus from 18 active automatic noise records to zero while preserving all source IDs and history.
+
 - Added automatic schema-v2 migration with a one-time v1 SQLite backup, WAL mode, foreign keys, bounded lock waits, normalized lifecycle/provenance columns, indexes, and optional FTS5.
 - Extended `doctor` with SQLite concurrency, FTS, and migration-backup diagnostics.
 - Added file provenance hashes, project-scope path checks, source refresh/invalidation, and repository reconciliation for modified, deleted, or moved sources.

@@ -11,9 +11,33 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import memory_manager  # noqa: E402
+import session_context  # noqa: E402
 
 
 class RetrievalQualityTests(unittest.TestCase):
+    def test_session_context_includes_validated_requirements(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            memory_manager.add_record(
+                "requirements",
+                "Generated release notes must stay in docs/manual-release-notes.md.",
+                memory_manager.build_card_metadata(
+                    summary="Generated release notes must stay in docs/manual-release-notes.md.",
+                    status="validated",
+                    source="unit-test",
+                ),
+                root=tmp,
+            )
+
+            context = session_context.build_session_context(
+                tmp,
+                "What release notes requirement should I preserve?",
+                8,
+                exclude_categories=["commands"],
+            )
+
+            self.assertIn("Curated RECALL project memory", context)
+            self.assertIn("docs/manual-release-notes.md", context)
+
     def test_structured_fields_beat_plain_keyword_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory_manager.add_record(

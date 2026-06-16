@@ -38,6 +38,8 @@ SOURCE_WEIGHTS = {
     "post_tool_use": 0.68,
 }
 DEFAULT_SOURCE_WEIGHT = 0.9
+CURRENT_DURABLE_CATEGORIES = {"requirements", "constraints", "decisions", "architecture", "risks", "tasks", "project_state"}
+CURRENT_STATUSES = {"validated", "active", "open"}
 
 
 def parse_timestamp(value: str) -> datetime:
@@ -127,6 +129,12 @@ def weighted_lexical_score(query_text: str, record: storage.MemoryRecord) -> flo
     return score
 
 
+def normalized_lexical_overlap(query_text: str, record: storage.MemoryRecord) -> float:
+    """Return a stable 0..1 overlap used by automatic-injection gating."""
+
+    return min(1.0, weighted_lexical_score(query_text, record))
+
+
 def status_weight(record: storage.MemoryRecord) -> float:
     return STATUS_WEIGHTS.get(record_status(record), DEFAULT_STATUS_WEIGHT)
 
@@ -205,3 +213,48 @@ def query(
     if summarize:
         response["summary"] = summarize_records(results, cfg["token_budget"])
     return response
+
+
+def assess_relevance(
+    query_text: str,
+    *,
+    root: str | Path | None,
+    categories: list[str] | None = None,
+    exclude_categories: list[str] | None = None,
+    statuses: list[str] | None = None,
+) -> dict[str, Any]:
+    response = query(
+        query_text,
+        categories=categories,
+        exclude_categories=exclude_categories,
+        limit=3,
+        root=root,
+        statuses=statuses,
+    )
+    results = response.get("results", [])
+    top = results[0] if results else None
+    lexical = 0.0
+    if top is not None:
+        record = storage.get_record(int(top["id"]), root)
+        if record is not None:
+            lexical = normalized_lexical_overlap(query_text, record)
+    cfg = recall_config.load_config_if_present(root)
+    thresholds = cfg.get("relevance", {})
+    minimum_score = float(thresholds.get("minimum_score", 0.75))
+    minimum_lexical = float(thresholds.get("minimum_lexical_overlap", 0.15))
+    raw_score = float(top.get("score", 0.0)) if top else 0.0
+    relevance_score = max(raw_score, lexical + 0.25) if top else 0.0
+    if top is not None and top.get("category") in CURRENT_DURABLE_CATEGORIES:
+        status = str(((top.get("metadata") or {}).get("status") or "")).strip().lower()
+        if status in CURRENT_STATUSES and lexical >= minimum_lexical:
+            relevance_score = max(relevance_score, lexical + 0.45)
+    relevant = bool(top and relevance_score >= minimum_score and lexical >= minimum_lexical)
+    return {
+        "relevant": relevant,
+        "sufficient": relevant and len(results) > 0,
+        "top_score": round(relevance_score, 4),
+        "raw_rank_score": round(raw_score, 4),
+        "lexical_overlap": round(lexical, 4),
+        "result_ids": [int(item["id"]) for item in results],
+        "thresholds": {"minimum_score": minimum_score, "minimum_lexical_overlap": minimum_lexical},
+    }

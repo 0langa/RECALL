@@ -13,6 +13,20 @@ RECALL is local-only project memory. Category definitions are stored in the acti
 
 Use this skill as the public RECALL category-management interface. When shell execution is needed, run the bundled skill adapter from the installed plugin root or source plugin root. Treat lower-level backend scripts as internal support code, not as the user-facing RECALL workflow.
 
+## Contract
+
+This skill receives a category-design request and returns one normalized category definition:
+name, description, and retrieval weight. It owns durable taxonomy, not ordinary tagging,
+memory writing, broad cleanup, or retrieval. If the request is about storing a fact, use
+`save-insight`. If it is about inspecting category counts or noisy records, use
+`review-memory`.
+
+Use the contract asset as the quick boundary check:
+
+```json
+{"asset":"assets/contract.json","kind":"category-boundary"}
+```
+
 ## Workflow
 
 1. Normalize the category to lower snake case.
@@ -30,6 +44,9 @@ python ./scripts/recall_skill.py list-categories
 ```bash
 python ./scripts/recall_skill.py define-category <category> --description "<description>" --weight <weight>
 ```
+
+7. Return the normalized category and explain whether this was a new category or a refinement.
+8. When a proposed category overlaps an existing one, reuse or refine the existing category instead of creating a synonym.
 
 ## Example
 
@@ -66,12 +83,27 @@ Quiet background context:
 python ./scripts/recall_skill.py define-category research_notes --description "Exploratory notes not yet promoted to decisions." --weight 0.8
 ```
 
+Refining an auto-created category:
+
+```bash
+python ./scripts/recall_skill.py define-category eval_findings --description "Durable evaluation scores, score drivers, and quality-gate outcomes." --weight 1.3
+```
+
+Rejecting a one-off tag:
+
+```json
+{"action":"no-category","reason":"Use a tag because this is not a repeated retrieval purpose."}
+```
+
 ## Edge Cases
 
 - Near-duplicate category: reuse existing category and refine it.
 - Empty or punctuation-only name: reject it.
 - Zero/negative weight: reject it.
 - One-off label: use tags instead of creating category.
+- Sensitive or personal category label: reject it and suggest a non-sensitive abstraction.
+- Category too broad: narrow the inclusion rule before raising weight.
+- Category too narrow: use tags unless multiple future memories need the same retrieval lane.
 
 ## Decision Guide
 
@@ -87,9 +119,12 @@ python ./scripts/recall_skill.py define-category research_notes --description "E
 - Unexpected normalized name: run `list-categories` and use returned name.
 - Category dominates retrieval: lower weight toward `1.0`.
 - Category remains too broad: narrow description or split only when durable use cases differ.
+- Category cannot be explained in one sentence: it is probably a workflow or document, not a category.
+- Two categories match the same memory equally well: merge the meaning into one category and use tags for the distinction.
 
 ## Related
 
 - [Save Insight](../save-insight/SKILL.md) for writing category members.
 - [Review Memory](../review-memory/SKILL.md) for category counts and quality.
 - [Category guide](references/category-design.md) for naming and weighting.
+- Sibling routes: skills/save-insight, skills/review-memory, skills/retrieve-memory.

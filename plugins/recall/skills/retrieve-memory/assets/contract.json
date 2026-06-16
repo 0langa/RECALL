@@ -1,0 +1,12 @@
+{
+  "skill": "retrieve-memory",
+  "owns": ["focused memory lookup", "context packet creation", "sufficiency labeling"],
+  "does_not_own": ["memory mutation", "category creation", "noise cleanup"],
+  "required_inputs": ["query", "categories or statuses when known", "token budget when compact context is needed"],
+  "returns": ["matching ids", "categories", "statuses", "summary", "sufficiency assessment"],
+  "handoffs": {
+    "save correction": "save-insight",
+    "inspect inventory": "review-memory",
+    "repair index": "manage-memory"
+  }
+}

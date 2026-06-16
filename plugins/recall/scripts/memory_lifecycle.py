@@ -57,12 +57,20 @@ def confirm(record_id: int, root: str | Path | None = None, source_session: str 
     record = get_required(record_id, root)
     metadata = dict(record.metadata or {})
     metadata["last_confirmed"] = utc_now()
-    metadata["confirmed_count"] = int(metadata.get("confirmed_count", 0) or 0) + 1
+    sessions = metadata.get("confirmation_sessions", [])
+    if not isinstance(sessions, list):
+        sessions = []
     if source_session:
+        if source_session not in sessions:
+            sessions.append(source_session)
+        metadata["confirmation_sessions"] = sessions
         metadata["source_session"] = source_session
+        metadata["confirmed_count"] = len(sessions)
+    else:
+        metadata["confirmed_count"] = max(1, int(metadata.get("confirmed_count", 0) or 0) + 1)
     if metadata.get("status") in (None, "", "stale", "hypothesis"):
         metadata["status"] = "active"
-    if metadata["confirmed_count"] >= 2 and metadata.get("status") == "active":
+    if (source_session is None or len(sessions) >= 2) and metadata.get("status") == "active":
         metadata["status"] = "validated"
         metadata["validated_at"] = utc_now()
         metadata["trust"] = max(0.85, float(metadata.get("trust", metadata.get("confidence", 0.5))))

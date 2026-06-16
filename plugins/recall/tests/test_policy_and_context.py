@@ -10,11 +10,27 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import memory_manager  # noqa: E402
+import capture_policy  # noqa: E402
 from models import ContextPacketRequest  # noqa: E402
 from services.context_service import build_context_packet  # noqa: E402
 
 
 class PolicyAndContextTests(unittest.TestCase):
+    def test_prompt_memory_text_strips_plugin_mentions_and_activation_lead_in(self) -> None:
+        prompt = (
+            "Use [@recall](plugin://recall@recall-local) for this project. "
+            "We must keep generated release notes under docs/manual-release-notes.md."
+        )
+        self.assertEqual(
+            capture_policy.normalize_prompt_memory_text(prompt),
+            "We must keep generated release notes under docs/manual-release-notes.md",
+        )
+        event = capture_policy.classify_prompt_event(prompt)
+        self.assertIsNotNone(event)
+        self.assertEqual(event["category_hint"], "requirements")
+        self.assertNotIn("[](-local)", event["summary"])
+        self.assertNotIn("Use RECALL", event["summary"])
+
     def test_replayed_idempotency_key_does_not_create_duplicate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             metadata = memory_manager.build_card_metadata(

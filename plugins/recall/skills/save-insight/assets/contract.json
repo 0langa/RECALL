@@ -1,0 +1,12 @@
+{
+  "skill": "save-insight",
+  "owns": ["new durable memory", "structured memory card", "write provenance", "current-truth claim keys"],
+  "does_not_own": ["broad retrieval", "category design", "lifecycle cleanup", "inspection reports"],
+  "required_inputs": ["category", "durable content", "summary", "source", "status", "confidence"],
+  "returns": ["saved id", "category", "saved-updated-linked-or-ignored action"],
+  "handoffs": {
+    "category missing": "define-category",
+    "conflict cleanup": "manage-memory",
+    "check existing memory": "retrieve-memory"
+  }
+}

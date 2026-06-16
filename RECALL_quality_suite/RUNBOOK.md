@@ -20,6 +20,12 @@ python recall_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --
 
 Use this after normal code edits.
 
+The suite runs independent gates in parallel by default. If a failure looks order-sensitive or resource-sensitive, rerun serially:
+
+```bash
+python recall_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick --serial
+```
+
 ## Full pre-release loop
 
 ```bash

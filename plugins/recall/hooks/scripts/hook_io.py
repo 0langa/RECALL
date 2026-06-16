@@ -9,6 +9,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import _recall_path  # noqa: F401
+import project_context
+
 
 def idempotency_key(payload: dict[str, Any], fallback_event: str) -> str | None:
     """Return a stable hook-delivery key when Codex provides delivery identity."""
@@ -43,11 +46,19 @@ def read_hook_input() -> tuple[dict[str, Any], str]:
 
 def root_from_payload(payload: dict[str, Any], fallback: str | None = None) -> str | None:
     if fallback:
-        return fallback
+        return str(Path(fallback).resolve())
     cwd = payload.get("cwd")
     if isinstance(cwd, str) and cwd.strip():
-        return str(Path(cwd).resolve())
+        resolved = project_context.resolve_project_root(cwd)
+        return str(resolved) if resolved is not None else None
     return None
+
+
+def cwd_from_payload(payload: dict[str, Any], fallback: str | None = None) -> str | None:
+    if fallback:
+        return str(Path(fallback).resolve())
+    cwd = payload.get("cwd")
+    return str(Path(cwd).resolve()) if isinstance(cwd, str) and cwd.strip() else None
 
 
 def event_name(payload: dict[str, Any], fallback: str) -> str:

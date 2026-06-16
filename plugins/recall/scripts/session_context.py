@@ -22,7 +22,7 @@ CATEGORY_CAPS = {
     "commands": 1,
 }
 DEFAULT_CATEGORIES = list(CATEGORY_CAPS)
-ACTIVE_STATUSES = ["active", "open"]
+ACTIVE_STATUSES = ["validated", "active", "open"]
 HISTORICAL_STATUSES = ["resolved", "stale", "superseded"]
 GENERIC_SUMMARIES = {
     "session stop checkpoint.",
@@ -89,12 +89,14 @@ def build_session_context(
     query: str,
     limit: int,
     token_budget: int | None = None,
+    exclude_categories: list[str] | None = None,
 ) -> str:
     cfg = recall_config.load_config(root)
     budget = min(int(token_budget or cfg.get("token_budget", 1200)), 900)
     active = memory_manager.query(
         query,
         categories=DEFAULT_CATEGORIES,
+        exclude_categories=exclude_categories,
         limit=max(limit * 2, sum(CATEGORY_CAPS.values())),
         root=root,
         statuses=ACTIVE_STATUSES,
@@ -106,6 +108,7 @@ def build_session_context(
     historical = memory_manager.query(
         query,
         categories=DEFAULT_CATEGORIES,
+        exclude_categories=exclude_categories,
         limit=limit,
         root=root,
         statuses=HISTORICAL_STATUSES,

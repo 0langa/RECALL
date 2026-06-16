@@ -1,0 +1,12 @@
+{
+  "skill": "define-category",
+  "owns": ["category naming", "category description", "retrieval weight"],
+  "does_not_own": ["new memory capture", "memory retrieval", "memory cleanup"],
+  "required_inputs": ["category intent", "description or inclusion rule", "weight when non-default"],
+  "returns": ["normalized category", "description", "weight", "created-or-refined status"],
+  "handoffs": {
+    "save a fact": "save-insight",
+    "inspect category contents": "review-memory",
+    "retrieve category members": "retrieve-memory"
+  }
+}

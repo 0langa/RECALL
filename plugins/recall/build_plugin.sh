@@ -20,7 +20,7 @@ rm -rf "$temp"
 mkdir -p "$temp" "$dist"
 rm -f "$archive"
 
-for item in .codex-plugin skills hooks scripts docs examples memory_config.template.json README.md CHANGELOG.md LICENSE; do
+for item in .codex-plugin assets skills hooks scripts docs examples memory_config.template.json README.md CHANGELOG.md LICENSE; do
   if [ -e "$root/$item" ]; then
     cp -R "$root/$item" "$temp/"
   fi

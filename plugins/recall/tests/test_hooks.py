@@ -56,7 +56,7 @@ def runtime_events(root: str, session_id: str, turn_id: str) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def activate_recall(root: str, session_id: str = "", turn_id: str = "") -> dict:
+def activate_recall(root: str, session_id: str = "", turn_id: str = "", prompt: str | None = None) -> dict:
     subprocess.run(
         [
             sys.executable,
@@ -77,7 +77,7 @@ def activate_recall(root: str, session_id: str = "", turn_id: str = "") -> dict:
             "session_id": session_id,
             "turn_id": turn_id,
             "hook_event_name": "UserPromptSubmit",
-            "prompt": "[@recall](plugin://recall@recall-local) continue with RECALL active.",
+            "prompt": prompt or "[@recall](plugin://recall@recall-local) continue with RECALL active.",
         },
     )
 
@@ -85,6 +85,7 @@ def activate_recall(root: str, session_id: str = "", turn_id: str = "") -> dict:
 class HookTests(unittest.TestCase):
     def test_prompt_inspector_saves_remembered_preference(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0.1.0'\n", encoding="utf-8")
             output = run_hook(
                 "prompt_inspector.py",
                 {
@@ -176,6 +177,7 @@ class HookTests(unittest.TestCase):
                 text=True,
                 cwd=ROOT,
             )
+            activate_recall(tmp, "always-session", "always-turn")
 
             output = run_hook("prompt_inspector.py", {"cwd": tmp, "prompt": "What is the release state?"})
             self.assertIn("Release train is green", output["hookSpecificOutput"]["additionalContext"])
@@ -325,7 +327,7 @@ class HookTests(unittest.TestCase):
                     "prompt": "@recall what matters here?",
                 },
             )
-            self.assertEqual(output, {"continue": True})
+            self.assertIn("initialize this project", output["hookSpecificOutput"]["additionalContext"])
             self.assertFalse((Path(tmp) / ".codex_memory").exists())
 
     def test_malformed_hook_json_is_noop(self) -> None:
@@ -356,8 +358,11 @@ class HookTests(unittest.TestCase):
             )
             self.assertTrue(output["continue"])
             result = query_memory(tmp, "unittest", "commands")
-            self.assertEqual(len(result["results"]), 1)
-            self.assertIn("Ran 9 tests", result["results"][0]["metadata"]["summary"])
+            self.assertEqual(result["results"], [])
+            events = runtime_events(tmp, "session-test", "turn-test")
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0]["record_kind"], "test_result")
+            self.assertIn("Ran 9 tests", events[0]["summary"])
 
     def test_post_tool_use_suppresses_exact_duplicate_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -375,8 +380,8 @@ class HookTests(unittest.TestCase):
 
             self.assertTrue(first["continue"])
             self.assertEqual(second, {"continue": True})
-            self.assertEqual(len(result["results"]), 1)
-            self.assertIn("last_confirmed", result["results"][0]["metadata"])
+            self.assertEqual(result["results"], [])
+            self.assertEqual(len(runtime_events(tmp, "", "")), 1)
 
     def test_post_tool_use_replay_uses_delivery_idempotency_key(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -396,8 +401,10 @@ class HookTests(unittest.TestCase):
             run_hook("post_tool_use.py", replay)
             result = query_memory(tmp, "python unittest", "commands")
 
-            self.assertEqual(len(result["results"]), 1)
-            self.assertTrue(result["results"][0]["metadata"]["idempotency_key"].startswith("hook:"))
+            self.assertEqual(result["results"], [])
+            events = runtime_events(tmp, "session-replay", "turn-replay")
+            self.assertEqual(len(events), 1)
+            self.assertTrue(events[0]["idempotency_key"].startswith("hook:"))
 
     def test_post_tool_use_links_near_duplicate_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -418,7 +425,8 @@ class HookTests(unittest.TestCase):
             )
             result = query_memory(tmp, "python unittest", "commands")
 
-            self.assertGreaterEqual(len(result["results"]), 1)
+            self.assertEqual(result["results"], [])
+            self.assertGreaterEqual(len(runtime_events(tmp, "", "")), 1)
 
     def test_post_tool_use_successful_listing_is_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -501,7 +509,7 @@ class HookTests(unittest.TestCase):
             result = query_memory(tmp, "turn-empty", "session_summaries")
             self.assertEqual(result["results"], [])
 
-    def test_stop_stores_project_state_directly_without_finalizer(self) -> None:
+    def test_stop_quiet_mode_hides_finalizer_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             activate_recall(tmp, "session-stop", "turn-stop")
             run_hook(
@@ -526,11 +534,68 @@ class HookTests(unittest.TestCase):
                     "last_assistant_message": "Completed Task 2 hook parsing and left storage healthy.",
                 },
             )
-            self.assertEqual(output, {"continue": True})
+            self.assertTrue(output["continue"])
+            self.assertNotIn("decision", output)
+            self.assertNotIn("reason", output)
+            self.assertNotIn("RECALL_FINALIZER_REQUEST", json.dumps(output))
             result = query_memory(tmp, "Task 2 hook parsing", "project_state")
-            self.assertEqual(len(result["results"]), 1)
+            self.assertEqual(result["results"], [])
             packet = Path(tmp) / ".codex_memory" / "runtime" / "finalizer_requests" / "session-stop-turn-stop.json"
             self.assertFalse(packet.exists())
+
+    def test_stop_quiet_mode_saves_explicit_prompt_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            activate_recall(
+                tmp,
+                "session-stop",
+                "turn-requirement",
+                prompt="[@recall](plugin://recall@recall-local) You must keep finalizer internals hidden from users.",
+            )
+            output = run_hook(
+                "stop.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-stop",
+                    "hook_event_name": "Stop",
+                    "turn_id": "turn-requirement",
+                    "last_assistant_message": "Implemented quiet Stop finalization.",
+                },
+            )
+            self.assertEqual(output.get("systemMessage"), "RECALL saved 1 memory.")
+            self.assertNotIn("decision", output)
+            self.assertNotIn("reason", output)
+            result = query_memory(tmp, "finalizer internals hidden", "requirements")
+            self.assertEqual(len(result["results"]), 1)
+            self.assertEqual(result["results"][0]["metadata"]["status"], "validated")
+
+    def test_explicit_recall_requirement_stores_clean_requirement_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            activate_recall(
+                tmp,
+                "session-clean",
+                "turn-clean",
+                prompt=(
+                    "Use [@recall](plugin://recall@recall-local) for this project. "
+                    "We must keep generated release notes under docs/manual-release-notes.md."
+                ),
+            )
+            output = run_hook(
+                "stop.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "session-clean",
+                    "hook_event_name": "Stop",
+                    "turn_id": "turn-clean",
+                    "last_assistant_message": "Recorded the project release notes requirement.",
+                },
+            )
+            self.assertEqual(output.get("systemMessage"), "RECALL saved 1 memory.")
+            result = query_memory(tmp, "generated release notes", "requirements")
+            self.assertEqual(len(result["results"]), 1)
+            stored = result["results"][0]["content"]
+            self.assertEqual(stored, "We must keep generated release notes under docs/manual-release-notes.md")
+            self.assertNotIn("[](-local)", stored)
+            self.assertNotIn("Use RECALL", stored)
 
     def test_stop_empty_last_message_is_noop(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -562,8 +627,10 @@ class HookTests(unittest.TestCase):
             )
             self.assertTrue(output["continue"])
             result = query_memory(tmp, "MissingTest boom", "debug_history")
-            self.assertEqual(len(result["results"]), 1)
-            self.assertIn("AssertionError", result["results"][0]["content"])
+            self.assertEqual(result["results"], [])
+            events = runtime_events(tmp, "", "turn-bash-failure")
+            self.assertEqual(len(events), 1)
+            self.assertIn("AssertionError", events[0]["details"])
 
     def test_post_tool_use_stores_apply_patch_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -581,8 +648,10 @@ class HookTests(unittest.TestCase):
             )
             self.assertTrue(output["continue"])
             result = query_memory(tmp, "README apply_patch", "commands")
-            self.assertEqual(len(result["results"]), 1)
-            self.assertIn("README.md", result["results"][0]["metadata"]["summary"])
+            self.assertEqual(result["results"], [])
+            events = runtime_events(tmp, "", "turn-patch")
+            self.assertEqual(len(events), 1)
+            self.assertIn("README.md", events[0]["summary"])
 
     def test_post_tool_use_redacts_secret_like_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -597,8 +666,10 @@ class HookTests(unittest.TestCase):
                 },
             )
             result = query_memory(tmp, "deploy failed token", "debug_history")
-            self.assertEqual(len(result["results"]), 1)
-            self.assertIn("[REDACTED]", result["results"][0]["content"])
+            self.assertEqual(result["results"], [])
+            events = runtime_events(tmp, "", "")
+            self.assertEqual(len(events), 1)
+            self.assertIn("[REDACTED]", events[0]["details"])
 
 
 if __name__ == "__main__":

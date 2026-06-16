@@ -1,0 +1,12 @@
+{
+  "skill": "manage-memory",
+  "owns": ["capture mode", "lifecycle state", "repair", "noise cleanup"],
+  "does_not_own": ["new memory capture", "inspection-only reports", "broad query answering"],
+  "required_inputs": ["maintenance intent", "memory ids when lifecycle-specific", "safety note for destructive actions"],
+  "returns": ["command run", "ids changed", "new status or capture mode", "follow-up"],
+  "handoffs": {
+    "new durable fact": "save-insight",
+    "find ids": "review-memory",
+    "topic lookup": "retrieve-memory"
+  }
+}

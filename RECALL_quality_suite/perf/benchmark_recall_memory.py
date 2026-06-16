@@ -88,12 +88,13 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory(prefix="recall-perf-") as tmp:
         start = time.perf_counter()
+        seed_cards = []
         for i in range(records):
             category = categories[i % len(categories)]
-            memory_manager.add_record(
-                category,
-                f"Benchmark memory {i}: {category} validates RECALL local-first retrieval, hooks, storage, and release quality gates.",
-                memory_manager.build_card_metadata(
+            seed_cards.append({
+                "category": category,
+                "content": f"Benchmark memory {i}: {category} validates RECALL local-first retrieval, hooks, storage, and release quality gates.",
+                "metadata": memory_manager.build_card_metadata(
                     summary=f"Benchmark {category} card {i}",
                     tags=["benchmark", category, f"batch-{i % 10}"],
                     source="quality-benchmark",
@@ -101,8 +102,8 @@ def main() -> None:
                     importance=(i % 10) / 10.0,
                     confidence=0.9,
                 ),
-                root=tmp,
-            )
+            })
+        memory_manager.add_records_batch(seed_cards, root=tmp)
         seed_seconds = time.perf_counter() - start
 
         start = time.perf_counter()

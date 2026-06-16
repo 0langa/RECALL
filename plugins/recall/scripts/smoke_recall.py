@@ -25,11 +25,6 @@ DEFAULT_RECORDS = [
         {"tags": ["smoke", "local-first"], "source": "smoke_recall", "status": "active"},
     ),
     (
-        "commands",
-        "Verified smoke command: python scripts/smoke_recall.py --json",
-        {"tags": ["smoke", "command"], "source": "smoke_recall", "status": "active"},
-    ),
-    (
         "risks",
         "Hook payload drift can break live Codex recall even when unit tests pass.",
         {"tags": ["smoke", "hooks"], "source": "smoke_recall", "status": "active"},
@@ -251,8 +246,10 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
         memory_command(plugin_root, project_root, "query", "smoke harness successfully", "--category", "commands"),
         cwd=plugin_root,
     )
-    require(tool_result["results"], "PostToolUse did not store allowed command evidence")
-    checks.append("PostToolUse stores deterministic command evidence")
+    require(not tool_result["results"], "PostToolUse created a durable command before finalization")
+    event_path = project_root / ".codex_memory" / "runtime" / "turns" / "smoke-session" / "smoke-turn.jsonl"
+    require(event_path.exists(), "PostToolUse did not buffer runtime evidence")
+    checks.append("PostToolUse buffers evidence without durable command spam")
 
     pre_compact = run_json(
         hook_command(plugin_root, "pre_compact.py"),
@@ -281,12 +278,19 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
         },
     )
     require(stop["continue"] is True, "Stop hook did not continue")
+    require("decision" not in stop, "quiet Stop hook exposed a blocking finalizer decision")
+    require("reason" not in stop, "quiet Stop hook exposed finalizer prompt text")
+    require("RECALL_FINALIZER_REQUEST" not in json.dumps(stop), "quiet Stop hook exposed finalizer internals")
     stop_result = run_json(
         memory_command(plugin_root, project_root, "query", "stop checkpoint available next session", "--category", "project_state"),
         cwd=plugin_root,
     )
-    require(stop_result["results"], "Stop hook did not store deterministic project checkpoint")
-    checks.append("Stop hook stores deterministic project checkpoint")
+    require(
+        not any("stop checkpoint" in str(item.get("content", "")).lower() for item in stop_result["results"]),
+        "Stop hook stored a generic project checkpoint directly",
+    )
+    require(not event_path.exists(), "quiet-mode successful finalization did not clean runtime evidence")
+    checks.append("Stop finalizes quietly without exposing finalizer internals")
 
     session_start = run_json(
         hook_command(plugin_root, "session_start.py"),

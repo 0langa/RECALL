@@ -1,0 +1,12 @@
+{
+  "skill": "review-memory",
+  "owns": ["memory inventory", "quality audit", "id gathering", "conflict/noise signal review"],
+  "does_not_own": ["new memory capture", "lifecycle mutation", "query-specific context injection"],
+  "required_inputs": ["review scope", "filters when requested", "limit for broad reviews"],
+  "returns": ["counts", "top ids", "quality signals", "recommended follow-up"],
+  "handoffs": {
+    "apply cleanup": "manage-memory",
+    "answer from topic memory": "retrieve-memory",
+    "record missing durable fact": "save-insight"
+  }
+}

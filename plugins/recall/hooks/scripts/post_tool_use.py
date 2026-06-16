@@ -9,6 +9,7 @@ import re
 
 import _recall_path  # noqa: F401
 import capture_policy
+import config as recall_config
 from hook_io import (
     idempotency_key,
     patch_targets,
@@ -17,7 +18,7 @@ from hook_io import (
     tool_command,
     tool_response_text,
 )
-import memory_manager
+import security
 import turn_buffer
 
 
@@ -83,8 +84,10 @@ def main() -> None:
         print(json.dumps({"continue": True}))
         return
 
+    cfg = recall_config.load_config_if_present(root)
+    mode = str(cfg.get("capture_mode", "standard"))
     content = compact_tool_response(tool_name, command, output)
-    safe_content = memory_manager.redact_secrets(content)
+    safe_content = security.redact_text(content)
     decision = capture_policy.classify_tool_capture(
         root=root,
         payload=payload,
@@ -92,38 +95,32 @@ def main() -> None:
         command=command or "",
         content=safe_content,
         patch_targets=patch_targets(command or "") if tool_name == "apply_patch" else None,
+        mode=mode,
     )
     if decision is None:
         print(json.dumps({"continue": True}))
         return
 
-    metadata = memory_manager.build_card_metadata(
-        summary=decision.summary,
-        details=decision.details,
-        tags=decision.tags,
-        source="post_tool_use",
-        status="active",
-        importance=decision.importance,
-        confidence=decision.confidence,
-        base={
-            "tool_name": tool_name,
-            "command": command,
-            "signal": decision.signal,
-            "record_kind": decision.record_kind,
-            "auto_capture_policy": decision.auto_capture_policy,
-            "session_id": session_id,
-            "turn_id": turn_id,
-            "tool_use_id": payload.get("tool_use_id"),
-            "exit_code": capture_policy.exit_code(payload, safe_content),
-            "idempotency_key": idempotency_key(payload, "PostToolUse"),
-        },
-    )
-    memory_manager.add_record_if_useful(
-        decision.category,
-        safe_content,
-        metadata,
-        root,
-    )
+    event = {
+        "durable_candidate": True,
+        "signal": decision.signal,
+        "summary": decision.summary,
+        "details": decision.details,
+        "category_hint": decision.category,
+        "tags": decision.tags,
+        "importance": decision.importance,
+        "confidence": decision.confidence,
+        "record_kind": decision.record_kind,
+        "tool_name": tool_name,
+        "command": command,
+        "tool_use_id": payload.get("tool_use_id"),
+        "exit_code": capture_policy.exit_code(payload, safe_content),
+        "idempotency_key": idempotency_key(payload, "PostToolUse"),
+    }
+    turn_buffer.append_event(root, session_id, turn_id, event)
+    if cfg.get("observability_mode") == "debug":
+        import observability
+        observability.trace(root, "tool_evidence_buffered", {"signal": decision.signal, "record_kind": decision.record_kind})
     print(json.dumps({"continue": True}))
 
 

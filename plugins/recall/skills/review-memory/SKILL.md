@@ -1,6 +1,6 @@
 ---
 name: review-memory
-description: Use this skill proactively when inspecting RECALL memory quality, when reviewing current memory state, when auditing noise or conflicts, or when gathering memory IDs before maintenance; invoke automatically for inspection-only work, not mutation or new-memory capture.
+description: Use this skill when inspecting RECALL memory quality, when reviewing current memory state, when auditing noise or conflicts, or when gathering memory IDs before maintenance. Use proactively for inspection-only work, not mutation or new-memory capture.
 ---
 
 # Review Memory
@@ -31,6 +31,19 @@ python ./scripts/recall_skill.py audit-memory --limit 20
 ```
 
 Use `recall_skill.py` only. Treat lower-level backend scripts as internal support code.
+
+## Contract
+
+This skill receives an inspection request and returns evidence: counts, IDs, quality signals,
+and suggested follow-up. It does not mutate memory. If the user asks to edit, archive, confirm,
+repair, or delete records, collect the needed IDs here and then hand the action to
+`manage-memory`.
+
+Use the contract asset as the quick boundary check:
+
+```json
+{"asset":"assets/contract.json","kind":"inspection-boundary"}
+```
 
 ## Inputs
 
@@ -101,6 +114,18 @@ Focused stale memory slice:
 python ./scripts/recall_skill.py review-memory --status stale --category risks --limit 20
 ```
 
+Conflict-focused inspection:
+
+```bash
+python ./scripts/recall_skill.py list-conflicts
+```
+
+Quality audit before cleanup:
+
+```bash
+python ./scripts/recall_skill.py audit-memory --limit 50
+```
+
 ## Decision Guide
 
 | Request type | Preferred command | Why |
@@ -118,9 +143,13 @@ python ./scripts/recall_skill.py review-memory --status stale --category risks -
 - If IDs look outdated, verify repository reality before changing memory state.
 - If the audit shows lots of low-value command records, recommend `archive-noise` rather than deleting records outright.
 - If the user actually wants to edit or resolve a memory, switch to `manage-memory` once the needed IDs are known.
+- If a record appears to contain a secret, report the ID and risk without repeating the value.
+- If review output contradicts the current repository, label the memory stale-candidate instead of treating it as current truth.
 
 ## Related
 
-See `skills/manage-memory` for cleanup, lifecycle changes, and repair work after inspection.
-See `skills/retrieve-memory` for query-driven lookup when the user already knows the topic.
-See `skills/save-insight` for creating a new durable memory when the review reveals something missing.
+See [Manage Memory](../manage-memory/SKILL.md) for cleanup, lifecycle changes, and repair work after inspection.
+See [Retrieve Memory](../retrieve-memory/SKILL.md) for query-driven lookup when the user already knows the topic.
+See [Save Insight](../save-insight/SKILL.md) for creating a new durable memory when the review reveals something missing.
+See [Audit signals](references/audit-signals.md) for quality and noise indicators.
+Sibling routes: skills/manage-memory, skills/retrieve-memory, skills/save-insight.

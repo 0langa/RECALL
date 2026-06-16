@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 import subprocess
@@ -42,6 +43,22 @@ def run_gate(name: str, cmd: list[str], cwd: Path, env: dict[str, str], optional
         "stdout_tail": completed.stdout[-4000:],
         "stderr_tail": completed.stderr[-4000:],
     }
+
+
+def run_gate_specs(gate_specs: list[dict[str, Any]], *, jobs: int, serial: bool) -> list[dict[str, Any]]:
+    if serial or len(gate_specs) <= 1:
+        return [run_gate(**spec) for spec in gate_specs]
+
+    worker_count = max(1, min(jobs, len(gate_specs)))
+    results: list[dict[str, Any] | None] = [None] * len(gate_specs)
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {
+            executor.submit(run_gate, **spec): index
+            for index, spec in enumerate(gate_specs)
+        }
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()
+    return [result for result in results if result is not None]
 
 
 def parse_json_stdout(gate: dict[str, Any]) -> dict[str, Any] | None:
@@ -91,6 +108,8 @@ def main() -> None:
     parser.add_argument("--skip-performance", action="store_true")
     parser.add_argument("--require-package", action="store_true", help="Fail if dist/recall.zip is missing.")
     parser.add_argument("--package-zip", help="Explicit release ZIP path.")
+    parser.add_argument("--serial", action="store_true", help="Run gates one at a time. Useful for diagnosing ordering-sensitive failures.")
+    parser.add_argument("--jobs", type=int, default=min(4, os.cpu_count() or 1), help="Maximum parallel quality gates. Default: min(4, CPU count).")
     args = parser.parse_args()
 
     repo_root, plugin_root = resolve_paths(args.repo_root, args.plugin_root)
@@ -100,54 +119,69 @@ def main() -> None:
     env = os.environ.copy()
     env["RECALL_PLUGIN_ROOT"] = str(plugin_root)
 
-    gates: list[dict[str, Any]] = []
+    gate_specs: list[dict[str, Any]] = []
 
     if not args.skip_existing_unit:
-        gates.append(run_gate(
-            "existing_unit_tests",
-            [sys.executable, "-m", "unittest", "discover", "-s", "tests"],
-            cwd=plugin_root,
-            env=env,
-        ))
+        gate_specs.append({
+            "name": "existing_unit_tests",
+            "cmd": [sys.executable, "-m", "unittest", "discover", "-s", "tests"],
+            "cwd": plugin_root,
+            "env": env,
+        })
 
-    gates.append(run_gate(
-        "quality_suite_contract_tests",
-        [sys.executable, "-m", "unittest", "discover", "-s", str(suite_root / "tests"), "-p", "test_*.py"],
-        cwd=plugin_root,
-        env=env,
-    ))
+    gate_specs.append({
+        "name": "quality_suite_contract_tests",
+        "cmd": [sys.executable, "-m", "unittest", "discover", "-s", str(suite_root / "tests"), "-p", "test_*.py"],
+        "cwd": plugin_root,
+        "env": env,
+    })
 
     if not args.skip_smoke:
         smoke = plugin_root / "scripts" / "smoke_recall.py"
         if smoke.exists():
-            gates.append(run_gate(
-                "existing_smoke_harness",
-                [sys.executable, str(smoke), "--json"],
-                cwd=plugin_root,
-                env=env,
-            ))
+            gate_specs.append({
+                "name": "existing_smoke_harness",
+                "cmd": [sys.executable, str(smoke), "--json"],
+                "cwd": plugin_root,
+                "env": env,
+            })
         else:
-            gates.append({"name": "existing_smoke_harness", "status": "fail", "seconds": 0, "returncode": 1, "command": [], "stdout_tail": "", "stderr_tail": "scripts/smoke_recall.py missing"})
+            gate_specs.append({
+                "name": "existing_smoke_harness",
+                "cmd": [sys.executable, "-c", "import sys; print('scripts/smoke_recall.py missing', file=sys.stderr); raise SystemExit(1)"],
+                "cwd": plugin_root,
+                "env": env,
+            })
 
     if not args.skip_performance:
         records = "120" if args.quick else "500"
         queries = "10" if args.quick else "30"
-        gates.append(run_gate(
-            "performance_benchmark",
-            [sys.executable, str(suite_root / "perf" / "benchmark_recall_memory.py"), "--plugin-root", str(plugin_root), "--records", records, "--queries", queries],
-            cwd=plugin_root,
-            env=env,
-        ))
+        gate_specs.append({
+            "name": "performance_benchmark",
+            "cmd": [sys.executable, str(suite_root / "perf" / "benchmark_recall_memory.py"), "--plugin-root", str(plugin_root), "--records", records, "--queries", queries],
+            "cwd": plugin_root,
+            "env": env,
+        })
 
     package_cmd = [sys.executable, str(suite_root / "scripts" / "package_hygiene_check.py"), "--plugin-root", str(plugin_root)]
     if args.package_zip:
         package_cmd.extend(["--zip", args.package_zip])
-    package_gate = run_gate("package_hygiene", package_cmd, cwd=plugin_root, env=env, optional=not args.require_package)
-    parsed_package = parse_json_stdout(package_gate)
-    if parsed_package and parsed_package.get("status") == "skip" and args.require_package:
-        package_gate["status"] = "fail"
-        package_gate["stderr_tail"] = parsed_package.get("reason", "Package missing")
-    gates.append(package_gate)
+    gate_specs.append({
+        "name": "package_hygiene",
+        "cmd": package_cmd,
+        "cwd": plugin_root,
+        "env": env,
+        "optional": not args.require_package,
+    })
+
+    gates = run_gate_specs(gate_specs, jobs=args.jobs, serial=args.serial)
+    for gate in gates:
+        if gate["name"] != "package_hygiene":
+            continue
+        parsed_package = parse_json_stdout(gate)
+        if parsed_package and parsed_package.get("status") == "skip" and args.require_package:
+            gate["status"] = "fail"
+            gate["stderr_tail"] = parsed_package.get("reason", "Package missing")
 
     status = "pass" if all(gate["status"] in {"pass", "skip"} for gate in gates) else "fail"
     report = {
@@ -155,6 +189,8 @@ def main() -> None:
         "repo_root": str(repo_root) if repo_root else None,
         "plugin_root": str(plugin_root),
         "suite_root": str(suite_root),
+        "parallel": not args.serial,
+        "jobs": 1 if args.serial else max(1, min(args.jobs, len(gate_specs))),
         "gates": gates,
     }
     write_reports(out_dir, report)

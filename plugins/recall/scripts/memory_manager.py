@@ -225,6 +225,29 @@ def add_record(
     return record
 
 
+def add_records_batch(
+    cards: list[dict[str, Any]],
+    root: str | Path | None = None,
+) -> list[MemoryRecord]:
+    """Persist a trusted batch with one embedding pass, transaction, and index rebuild."""
+
+    cfg = recall_config.load_config(root)
+    prepared: list[tuple[str, str, str, dict[str, Any], list[float]]] = []
+    for card in cards:
+        category = recall_config.normalize_category(str(card["category"]))
+        if category not in cfg["categories"]:
+            recall_config.add_category(category, f"Auto-created custom category `{category}`.", 1.0, root)
+            cfg = recall_config.load_config(root)
+        content = redact_secrets(str(card["content"]).strip())
+        if not content:
+            raise ValueError("Cannot store an empty RECALL memory.")
+        metadata = redact_metadata(dict(card.get("metadata") or {}))
+        prepared.append((category, utc_now(), content, metadata, embed(content)))
+    records = storage.add_records_batch(prepared, root)
+    index_store.rebuild(root)
+    return records
+
+
 def add_record_if_useful(
     category: str,
     content: str,

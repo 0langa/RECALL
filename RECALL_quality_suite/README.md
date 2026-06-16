@@ -55,7 +55,15 @@ Fast local loop:
 python recall_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick
 ```
 
-The quick runner uses the smaller performance benchmark profile for active development. Full release evidence still requires the non-quick run.
+The runner executes independent gates in parallel by default. The quick runner also uses the smaller performance benchmark profile for active development. Full release evidence still requires the non-quick run.
+
+Serial diagnostic run:
+
+```bash
+python recall_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick --serial
+```
+
+Use `--jobs <n>` to cap concurrent gates when the machine is already under load.
 
 Performance-only:
 

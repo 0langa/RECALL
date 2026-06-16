@@ -27,11 +27,14 @@ Then start a Codex thread in a project and review RECALL's hooks in Codex Settin
 
 For direct skill-adapter checks from this plugin folder:
 
-Initialize memory for the current project:
+Initialize and persistently activate memory for the current project:
 
 ```bash
-python ./scripts/recall_skill.py retrieve-memory "current project context" --summary
+python ./scripts/recall_skill.py initialize-project
+python ./scripts/recall_skill.py activation-status
 ```
+
+In Codex, mentioning `@recall` once inside a Git repository or recognized project activates that project across later turns and sessions. Empty greenfield folders require `@recall initialize this project` or `initialize-project --root <path>`. Ordinary prompts in unrecognized folders create nothing.
 
 Save a memory:
 
@@ -62,6 +65,28 @@ python ./scripts/recall_skill.py archive-noise --apply --limit 50
 ```
 
 `archive-noise` is non-destructive and dry-runs by default. With `--apply`, it marks low-value automatic `post_tool_use` command records as `archived`; it does not delete memory.
+
+Preview or apply the semantic corpus migration:
+
+```bash
+python ./scripts/recall_skill.py migrate-corpus --dry-run
+python ./scripts/recall_skill.py migrate-corpus --apply
+```
+
+Migration creates a SQLite backup, synthesizes reusable semantic cards, and archives noisy originals with lineage. It never deletes historical records.
+
+Temporarily stop background activity without deleting memory:
+
+```bash
+python ./scripts/recall_skill.py deactivate-project
+```
+
+Enable redacted runtime traces for diagnosis, then return to quiet mode:
+
+```bash
+python ./scripts/recall_skill.py configure-observability debug
+python ./scripts/recall_skill.py configure-observability quiet
+```
 
 Confirm, resolve, supersede, merge, or prune memories through the public adapter:
 
@@ -167,11 +192,13 @@ python ./scripts/smoke_recall.py --installed-plugin-root <installed-plugin-root>
 Codex auto-discovers plugin hooks from `hooks/hooks.json`. RECALL currently wires:
 
 - `SessionStart` as a quiet compatibility hook; it does not inject memory by default.
-- `UserPromptSubmit` to activate RECALL only when the prompt explicitly includes `@recall`, `plugin://recall`, or `$recall:`.
+- `UserPromptSubmit` to resolve the project root, persist explicit activation, and retrieve relevant sufficient context on later prompts without repeated mentions.
 - `UserPromptSubmit` to catch explicit "remember this" and "define category" cues after RECALL is activated.
-- `PostToolUse` to buffer useful command and debugging context only for activated RECALL turns.
-- `PreCompact` to save compaction checkpoints only for activated RECALL turns.
-- `Stop` to request one compact inline finalizer pass for activated RECALL turns with buffered durable evidence.
+- `PostToolUse` to buffer compact redacted evidence without creating durable command, file-edit, test, or build memories.
+- `PreCompact` to maintain one updatable summary per session around compaction.
+- `Stop` to request one atomic semantic finalizer batch with at most three new cards and eight lifecycle operations.
+
+Automatic retrieval excludes command memories unless the prompt concerns building, testing, running, installation, or tooling. Stale, superseded, deprecated, and archived records are excluded by default. Explicit memory questions report insufficient memory instead of encouraging unsupported answers.
 
 Plugin-bundled hooks are reviewed through Codex's normal hook trust flow before they run.
 

@@ -34,10 +34,8 @@ def main() -> None:
         return
     summary = summarize_texts([text], token_budget=700)
     metadata = json.loads(args.metadata)
-    memory_manager.add_record_if_useful(
-        "session_summaries",
-        summary,
-        memory_manager.build_card_metadata(
+    session_id = str(payload.get("session_id") or "session")
+    card_metadata = memory_manager.build_card_metadata(
             summary="Session compaction checkpoint.",
             details=summary,
             tags=["session-summary", "compaction"],
@@ -50,14 +48,38 @@ def main() -> None:
                 "record_kind": "session_summary",
                 "hook_event": event_name(payload, "PreCompact"),
                 "trigger": payload.get("trigger"),
-                "session_id": payload.get("session_id"),
+                "session_id": session_id,
                 "turn_id": payload.get("turn_id"),
                 "idempotency_key": idempotency_key(payload, "PreCompact"),
+                "claim_key": f"session_summary:{session_id}",
+                "claim_value": summary[:220],
                 **metadata,
             },
-        ),
-        root,
     )
+    existing = next(
+        (
+            record
+            for record in memory_manager.iter_records(root)
+            if record.category == "session_summaries"
+            and str((record.metadata or {}).get("session_id") or "") == session_id
+            and str((record.metadata or {}).get("status") or "active") not in {"archived", "superseded"}
+        ),
+        None,
+    )
+    if existing is None:
+        memory_manager.add_record_if_useful("session_summaries", summary, card_metadata, root)
+    else:
+        memory_manager.edit_record(
+            existing.id,
+            root,
+            content=summary,
+            summary="Session compaction checkpoint.",
+            details=summary,
+            source="pre_compact",
+            status="active",
+            importance=0.7,
+            confidence=0.8,
+        )
     print(json.dumps({"continue": True}))
 
 

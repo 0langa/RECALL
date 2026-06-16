@@ -36,6 +36,20 @@ STOP_DURABLE_RE = re.compile(
     r"memory|recall|hook|plugin"
     r")\b"
 )
+PROMPT_REQUIREMENT_RE = re.compile(r"(?i)\b(must|need to|required|acceptance criteria|do not|never)\b")
+PROMPT_DECISION_RE = re.compile(r"(?i)\b(decided|we will|use .+ instead|approved|accepted)\b")
+PROMPT_CORRECTION_RE = re.compile(r"(?i)\b(correction|actually|instead|no longer|replace|supersede)\b")
+COMMAND_QUERY_RE = re.compile(r"(?i)\b(build|test|run|command|install|lint|format|deploy|package|tooling)\b")
+PLUGIN_MENTION_RE = re.compile(r"(?i)\[[^\]]*recall[^\]]*\]\(\s*plugin://recall[^)]*\)")
+RAW_PLUGIN_RE = re.compile(r"(?i)\bplugin://recall[^\s)]*")
+RECALL_TOKEN_RE = re.compile(r"(?i)(?:@recall\b|\$recall:)")
+RECALL_ACTIVATION_SENTENCE_RE = re.compile(
+    r"(?i)^\s*(?:please\s+)?(?:use|enable|activate)\s+recall(?:\s+(?:for|in|on)\s+(?:this\s+)?(?:project|repo|repository|folder|workspace))?\s*[.!?:;-]*\s*"
+)
+ORPHANED_ACTIVATION_SENTENCE_RE = re.compile(
+    r"(?i)^\s*(?:please\s+)?use\s+(?:for|in|on)\s+(?:this\s+)?(?:project|repo|repository|folder|workspace)\s*[.!?:;-]*\s*"
+)
+LEADING_MEMORY_PHRASE_RE = re.compile(r"(?i)^\s*(?:remember\s+(?:this|that)\s*[:\-]\s*)")
 
 
 @dataclass(frozen=True)
@@ -132,8 +146,9 @@ def classify_tool_capture(
     command: str,
     content: str,
     patch_targets: list[str] | None = None,
+    mode: str | None = None,
 ) -> CaptureDecision | None:
-    mode = capture_mode(root)
+    mode = mode or capture_mode(root)
     if mode not in AUTO_CAPTURE_MODES:
         return None
 
@@ -251,3 +266,49 @@ def should_store_stop_note(root: str | None, note: str) -> bool:
     if mode not in AUTO_CAPTURE_MODES:
         return False
     return bool(note.strip()) and bool(STOP_DURABLE_RE.search(note))
+
+
+def retrieval_exclusions(prompt: str) -> list[str]:
+    return [] if COMMAND_QUERY_RE.search(prompt) else ["commands"]
+
+
+def normalize_prompt_memory_text(prompt: str) -> str:
+    clean = " ".join(prompt.split())
+    if not clean:
+        return ""
+    clean = PLUGIN_MENTION_RE.sub(" ", clean)
+    clean = RAW_PLUGIN_RE.sub(" ", clean)
+    clean = RECALL_TOKEN_RE.sub(" ", clean)
+    clean = re.sub(r"(?i)\brecall-local\b", " ", clean)
+    clean = re.sub(r"\[\s*\]\([^)]*\)", " ", clean)
+    clean = re.sub(r"\s+", " ", clean).strip(" \t\r\n-:;,.")
+    clean = RECALL_ACTIVATION_SENTENCE_RE.sub("", clean).strip(" \t\r\n-:;,.")
+    clean = ORPHANED_ACTIVATION_SENTENCE_RE.sub("", clean).strip(" \t\r\n-:;,.")
+    clean = LEADING_MEMORY_PHRASE_RE.sub("", clean).strip(" \t\r\n-:;,.")
+    return clean
+
+
+def classify_prompt_event(prompt: str) -> dict[str, Any] | None:
+    clean = normalize_prompt_memory_text(prompt)
+    if not clean:
+        return None
+    if PROMPT_CORRECTION_RE.search(clean):
+        category = "decisions"
+        signal = "explicit_correction"
+    elif PROMPT_REQUIREMENT_RE.search(clean):
+        category = "requirements"
+        signal = "explicit_requirement"
+    elif PROMPT_DECISION_RE.search(clean):
+        category = "decisions"
+        signal = "explicit_decision"
+    else:
+        return None
+    return {
+        "durable_candidate": True,
+        "signal": signal,
+        "summary": clean[:220],
+        "details": clean[:1200],
+        "category_hint": category,
+        "tags": ["user-prompt", signal.replace("explicit_", "")],
+        "explicit_user_evidence": True,
+    }

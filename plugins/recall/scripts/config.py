@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -67,9 +68,22 @@ DEFAULT_CATEGORIES: dict[str, dict[str, Any]] = {
 }
 
 DEFAULT_CONFIG: dict[str, Any] = {
+    "config_schema_version": 2,
     "backend": "sqlite",
-    "capture_mode": "minimal",
-    "recall_mode": "manual",
+    "activation": {
+        "enabled": False,
+        "project_root": None,
+        "activated_at": None,
+        "activated_by": None,
+    },
+    "capture_mode": "standard",
+    "recall_mode": "relevant",
+    "observability_mode": "quiet",
+    "debug_retention_days": 7,
+    "relevance": {
+        "minimum_score": 0.75,
+        "minimum_lexical_overlap": 0.15,
+    },
     "token_budget": 1200,
     "recency_days": None,
     "embedding_model": "local-hash-v1",
@@ -80,6 +94,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 VALID_BACKENDS = {"sqlite", "jsonl"}
 VALID_CAPTURE_MODES = {"manual", "minimal", "standard", "off"}
 VALID_RECALL_MODES = {"manual", "relevant", "always"}
+VALID_OBSERVABILITY_MODES = {"quiet", "debug"}
 
 
 def project_root(raw_root: str | Path | None = None) -> Path:
@@ -138,7 +153,16 @@ def load_config_if_present(raw_root: str | Path | None = None) -> dict[str, Any]
     if source_path.exists():
         with source_path.open(encoding="utf-8") as handle:
             loaded = json.load(handle)
-        return validate_config(loaded)
+        validated = validate_config(loaded)
+        if "activation" not in loaded and memory_dir(raw_root).exists():
+            validated["activation"].update(
+                {
+                    "enabled": True,
+                    "project_root": str(project_root(raw_root)),
+                    "activated_by": "legacy_memory_store",
+                }
+            )
+        return validated
     return validate_config(default_config())
 
 
@@ -161,7 +185,17 @@ def load_config(raw_root: str | Path | None = None) -> dict[str, Any]:
     path = ensure_config(raw_root)
     with path.open(encoding="utf-8") as handle:
         loaded = json.load(handle)
-    return validate_config(loaded)
+    validated = validate_config(loaded)
+    if "activation" not in loaded:
+        validated["activation"].update(
+            {
+                "enabled": True,
+                "project_root": str(project_root(raw_root)),
+                "activated_by": "legacy_memory_store",
+            }
+        )
+        save_config(validated, raw_root)
+    return validated
 
 
 def save_config(config: dict[str, Any], raw_root: str | Path | None = None) -> None:
@@ -181,19 +215,39 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
     categories.update(config.get("categories", {}))
     merged["categories"] = {}
 
+    merged["config_schema_version"] = 2
+    activation = merged.get("activation")
+    if not isinstance(activation, dict):
+        activation = {}
+    default_activation = deepcopy(DEFAULT_CONFIG["activation"])
+    default_activation.update(activation)
+    default_activation["enabled"] = bool(default_activation.get("enabled"))
+    merged["activation"] = default_activation
+
     backend = merged.get("backend")
     if backend not in VALID_BACKENDS:
         raise ValueError(f"Unsupported RECALL backend: {backend}")
 
-    capture_mode = str(merged.get("capture_mode", "minimal")).strip().lower()
+    capture_mode = str(merged.get("capture_mode", "standard")).strip().lower()
     if capture_mode not in VALID_CAPTURE_MODES:
         raise ValueError(f"Unsupported RECALL capture_mode: {capture_mode}")
     merged["capture_mode"] = capture_mode
 
-    recall_mode = str(merged.get("recall_mode", "manual")).strip().lower()
+    recall_mode = str(merged.get("recall_mode", "relevant")).strip().lower()
     if recall_mode not in VALID_RECALL_MODES:
         raise ValueError(f"Unsupported RECALL recall_mode: {recall_mode}")
     merged["recall_mode"] = recall_mode
+
+    observability_mode = str(merged.get("observability_mode", "quiet")).strip().lower()
+    if observability_mode not in VALID_OBSERVABILITY_MODES:
+        raise ValueError(f"Unsupported RECALL observability_mode: {observability_mode}")
+    merged["observability_mode"] = observability_mode
+    merged["debug_retention_days"] = max(1, int(merged.get("debug_retention_days", 7)))
+    relevance = merged.get("relevance") if isinstance(merged.get("relevance"), dict) else {}
+    merged["relevance"] = {
+        "minimum_score": float(relevance.get("minimum_score", 0.75)),
+        "minimum_lexical_overlap": float(relevance.get("minimum_lexical_overlap", 0.15)),
+    }
 
     for name, details in categories.items():
         normalized = normalize_category(name)
@@ -257,6 +311,58 @@ def set_capture_mode(mode: str, raw_root: str | Path | None = None) -> dict[str,
 def set_recall_mode(mode: str, raw_root: str | Path | None = None) -> dict[str, Any]:
     config = load_config(raw_root)
     config["recall_mode"] = mode
+    save_config(config, raw_root)
+    return config
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def activate_project(
+    raw_root: str | Path,
+    *,
+    activated_by: str = "explicit_recall",
+) -> dict[str, Any]:
+    root = project_root(raw_root)
+    config = load_config(root)
+    config["activation"] = {
+        "enabled": True,
+        "project_root": str(root),
+        "activated_at": utc_now(),
+        "activated_by": activated_by,
+    }
+    config.setdefault("capture_mode", "standard")
+    config.setdefault("recall_mode", "relevant")
+    config.setdefault("observability_mode", "quiet")
+    save_config(config, root)
+    return config
+
+
+def deactivate_project(raw_root: str | Path) -> dict[str, Any]:
+    root = project_root(raw_root)
+    config = load_config(root)
+    activation = dict(config.get("activation") or {})
+    activation["enabled"] = False
+    activation["deactivated_at"] = utc_now()
+    config["activation"] = activation
+    save_config(config, root)
+    return config
+
+
+def project_is_active(raw_root: str | Path | None) -> bool:
+    if raw_root is None or not persistent_memory_exists(raw_root):
+        return False
+    config = load_config_if_present(raw_root)
+    activation = config.get("activation")
+    if isinstance(activation, dict) and "enabled" in activation:
+        return bool(activation.get("enabled"))
+    return True
+
+
+def set_observability_mode(mode: str, raw_root: str | Path | None = None) -> dict[str, Any]:
+    config = load_config(raw_root)
+    config["observability_mode"] = mode
     save_config(config, raw_root)
     return config
 

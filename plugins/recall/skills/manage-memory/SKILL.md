@@ -1,6 +1,6 @@
 ---
 name: manage-memory
-description: Use this skill proactively when changing RECALL capture mode, when cleaning noisy memory, when repairing local storage, or when updating lifecycle state after review; invoke automatically for explicit maintenance requests, never for ordinary retrieval or new-memory capture.
+description: Use this skill when changing RECALL capture mode, when cleaning noisy memory, when repairing local storage, or when updating lifecycle state after review. Use proactively for explicit maintenance requests, never for ordinary retrieval or new-memory capture.
 ---
 
 # Manage Memory
@@ -54,6 +54,28 @@ python ./scripts/recall_skill.py delete-memory 12 --confirm DELETE-12
 
 Treat lower-level backend files as internal plumbing, not public workflow.
 
+## Contract
+
+This skill receives an existing-memory maintenance request and returns the lifecycle, capture,
+or storage-health change that was made. It does not create new durable facts and it does not
+perform inspection-only reports except to collect IDs needed for a maintenance action.
+
+Contract schema:
+
+| Field | Required | Meaning |
+|---|---:|---|
+| `intent` | yes | capture-mode, cleanup, lifecycle, doctor, or repair |
+| `ids` | for lifecycle | exact memory IDs gathered from user input or review output |
+| `note` | for state change | concise reason preserved in lifecycle metadata |
+| `safety` | for deletion | explicit confirmation token for destructive delete |
+| `result` | yes | command run, changed IDs, status/capture mode, follow-up |
+
+Use the contract asset when deciding whether the request belongs here:
+
+```json
+{"asset":"assets/contract.json","kind":"maintenance-boundary"}
+```
+
 ## Workflow
 
 1. Start with `review-memory` or `retrieve-memory` if IDs or current state are unclear.
@@ -83,6 +105,12 @@ When a command returns JSON, summarize the important fields instead of dumping r
 }
 ```
 
+For multi-record work, keep the same shape and make changed IDs explicit:
+
+```json
+{"action":"archive-noise","changed_ids":[18,19,22],"status":"archived","follow_up":"none"}
+```
+
 ## Examples
 
 Broad cleanup after an audit:
@@ -104,6 +132,18 @@ python ./scripts/recall_skill.py doctor
 python ./scripts/recall_skill.py repair
 ```
 
+Capture-mode change:
+
+```bash
+python ./scripts/recall_skill.py configure-capture minimal
+```
+
+Safe lifecycle correction:
+
+```bash
+python ./scripts/recall_skill.py stale-memory 42 --note "Repository state now contradicts this record."
+```
+
 ## Decision Guide
 
 | User intent | Preferred command | Why |
@@ -115,6 +155,16 @@ python ./scripts/recall_skill.py repair
 | replace an older memory with a newer one | `supersede-memory` | records relationship |
 | remove a wrong record completely | `delete-memory` | only with explicit user intent |
 
+## Ownership Boundaries
+
+| Request | This skill action | Handoff |
+|---|---|---|
+| "save this decision" | decline direct write | skills/save-insight |
+| "what does memory know?" | inspect only if IDs are needed | skills/review-memory |
+| "find the old test command" | no lifecycle mutation | skills/retrieve-memory |
+| "memory 12 is obsolete" | run stale/supersede/prune | none |
+| "index looks broken" | run doctor, then repair if indicated | none |
+
 ## Troubleshooting
 
 ## Common Issues
@@ -123,9 +173,13 @@ python ./scripts/recall_skill.py repair
 - If `doctor` reports index problems, use `repair` before creating more memories.
 - If the request is really about adding a new durable fact, switch to `save-insight`.
 - If a cleanup request could destroy information, prefer `archive-noise` or `prune-memory` over `delete-memory`.
+- If a retrieved memory conflicts with the repository, stale or supersede it rather than silently editing history.
+- If the user asks for deletion but the record may still be historically useful, offer archival unless deletion is explicit.
 
 ## Related
 
-See `skills/review-memory` for inspection and quality review before making changes.
-See `skills/retrieve-memory` for targeted lookup by query.
-See `skills/save-insight` for creating new durable memory instead of editing existing records.
+See [Review Memory](../review-memory/SKILL.md) for inspection and quality review before making changes.
+See [Retrieve Memory](../retrieve-memory/SKILL.md) for targeted lookup by query.
+See [Save Insight](../save-insight/SKILL.md) for creating new durable memory instead of editing existing records.
+See [Maintenance playbook](references/maintenance-playbook.md) for cleanup sequencing.
+Sibling routes: skills/review-memory, skills/retrieve-memory, skills/save-insight.

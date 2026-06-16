@@ -291,6 +291,43 @@ def add_record(
     return MemoryRecord(record_id, category, timestamp, content, metadata, embedding=embedding)
 
 
+def add_records_batch(
+    records: list[tuple[str, str, str, dict[str, Any], list[float]]],
+    root: str | Path | None = None,
+) -> list[MemoryRecord]:
+    """Insert records in one SQLite transaction."""
+
+    if not records:
+        return []
+    cfg = recall_config.load_config(root)
+    if cfg["backend"] != "sqlite":
+        return [add_record(category, timestamp, content, metadata, embedding, root) for category, timestamp, content, metadata, embedding in records]
+    init_sqlite(root)
+    inserted: list[MemoryRecord] = []
+    with closing(connect_sqlite(root)) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            for category, timestamp, content, metadata, embedding in records:
+                safe_content = security.redact_text(content)
+                safe_metadata = security.redact_value(metadata)
+                normalized = _normalized_fields(safe_metadata, timestamp)
+                cursor = connection.execute(
+                    """INSERT INTO memories (
+                        category, timestamp, content, metadata, embedding,
+                        memory_type, title, status, trust, confidence, importance,
+                        source_kind, source_path, source_hash, source_revision,
+                        created_at, updated_at, confirmed_at, accessed_at, expires_at, lineage
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (category, timestamp, safe_content, json.dumps(safe_metadata, sort_keys=True), json.dumps(embedding), *normalized.values()),
+                )
+                inserted.append(MemoryRecord(int(cursor.lastrowid), category, timestamp, safe_content, safe_metadata, embedding=embedding))
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+    return inserted
+
+
 def iter_records(root: str | Path | None = None) -> Iterable[MemoryRecord]:
     init_store(root)
     cfg = recall_config.load_config(root)

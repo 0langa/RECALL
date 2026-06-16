@@ -4,11 +4,18 @@ import json
 import subprocess
 import sys
 import unittest
+from pathlib import Path
 
 from _harness import hook_cmd, memory_cmd, run_json, run_text, skill_cmd, temp_project
 
 
 class HookLifecycleContractTests(unittest.TestCase):
+    def runtime_events(self, project: Path, session_id: str, turn_id: str) -> list[dict]:
+        path = project / ".codex_memory" / "runtime" / "turns" / (session_id or "session") / f"{turn_id or 'turn'}.jsonl"
+        if not path.exists():
+            return []
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
     def activate_recall(self, project, session_id: str = "", turn_id: str = "") -> None:
         memory_init = memory_cmd(project, "init")
         subprocess.run(memory_init, text=True, capture_output=True, check=True)
@@ -23,6 +30,12 @@ class HookLifecycleContractTests(unittest.TestCase):
 
     def test_user_prompt_submit_saves_explicit_memory_cue_and_ignores_incidental_word(self) -> None:
         with temp_project() as project:
+            initialized = run_json(hook_cmd("prompt_inspector.py"), input_payload={
+                "cwd": str(project),
+                "hook_event_name": "UserPromptSubmit",
+                "prompt": "@recall initialize this project",
+            })
+            self.assertTrue(initialized["continue"])
             positive = run_json(hook_cmd("prompt_inspector.py"), input_payload={
                 "cwd": str(project),
                 "hook_event_name": "UserPromptSubmit",
@@ -102,10 +115,12 @@ class HookLifecycleContractTests(unittest.TestCase):
             })
             self.assertTrue(output["continue"])
             result = run_json(memory_cmd(project, "query", "unit test validation", "--category", "commands"))
-            self.assertEqual(len(result["results"]), 1)
-            self.assertIn("Ran 10 tests", result["results"][0]["metadata"]["summary"])
-            self.assertNotIn("README.md", result["results"][0]["content"])
-            self.assertNotIn("secrets.txt", result["results"][0]["content"])
+            self.assertEqual(result["results"], [])
+            events = self.runtime_events(project, "quality-success", "quality-success-turn")
+            self.assertEqual(len(events), 1)
+            self.assertIn("Ran 10 tests", events[0]["summary"])
+            self.assertNotIn("README.md", events[0]["details"])
+            self.assertNotIn("secrets.txt", events[0]["details"])
 
     def test_post_tool_use_failure_goes_to_debug_history_with_redaction(self) -> None:
         with temp_project() as project:
@@ -120,8 +135,10 @@ class HookLifecycleContractTests(unittest.TestCase):
             })
             self.assertTrue(output["continue"])
             result = run_json(memory_cmd(project, "query", "deploy failure", "--category", "debug_history"))
-            self.assertEqual(len(result["results"]), 1)
-            self.assertIn("[REDACTED]", result["results"][0]["content"])
+            self.assertEqual(result["results"], [])
+            events = self.runtime_events(project, "", "quality-failure")
+            self.assertEqual(len(events), 1)
+            self.assertIn("[REDACTED]", events[0]["details"])
 
     def test_precompact_stop_and_sessionstart_roundtrip_context(self) -> None:
         with temp_project() as project:
@@ -137,32 +154,34 @@ class HookLifecycleContractTests(unittest.TestCase):
             })
             self.assertTrue(pre["continue"])
 
-            self.activate_recall(project, "", "quality-stop")
+            activated = run_json(hook_cmd("prompt_inspector.py"), input_payload={
+                "cwd": str(project),
+                "hook_event_name": "UserPromptSubmit",
+                "turn_id": "quality-stop",
+                "prompt": "@recall You must preserve quality suite integration hook payload hardening context.",
+            })
+            self.assertTrue(activated["continue"])
             stop = run_json(hook_cmd("stop.py"), input_payload={
                 "cwd": str(project),
                 "hook_event_name": "Stop",
                 "turn_id": "quality-stop",
                 "last_assistant_message": "Completed RECALL quality suite integration work.",
             })
-            self.assertEqual(stop, {"continue": True})
+            self.assertTrue(stop["continue"])
+            self.assertNotIn("decision", stop)
+            self.assertNotIn("reason", stop)
+            self.assertNotIn("RECALL_FINALIZER_REQUEST", json.dumps(stop))
+            self.assertEqual(self.runtime_events(project, "", "quality-stop"), [])
 
             direct = run_json(memory_cmd(
                 project,
                 "query",
-                "quality suite integration work",
+                "quality suite integration hook payload hardening",
                 "--category",
-                "project_state",
+                "requirements",
             ))
             self.assertEqual(len(direct["results"]), 1)
-
-            session = run_json(hook_cmd("prompt_inspector.py"), input_payload={
-                "cwd": str(project),
-                "hook_event_name": "UserPromptSubmit",
-                "prompt": "@recall quality suite integration hook payload hardening",
-            })
-            self.assertTrue(session["continue"])
-            context = session.get("hookSpecificOutput", {}).get("additionalContext", "")
-            self.assertIn("quality", context.lower())
+            self.assertEqual(direct["results"][0]["metadata"]["status"], "validated")
 
 
 if __name__ == "__main__":

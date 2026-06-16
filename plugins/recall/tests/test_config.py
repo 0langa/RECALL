@@ -21,7 +21,9 @@ class ConfigTests(unittest.TestCase):
             self.assertTrue(path.exists())
             cfg = recall_config.load_config(tmp)
             self.assertEqual(cfg["backend"], "sqlite")
-            self.assertEqual(cfg["capture_mode"], "minimal")
+            self.assertEqual(cfg["capture_mode"], "standard")
+            self.assertEqual(cfg["recall_mode"], "relevant")
+            self.assertEqual(cfg["observability_mode"], "quiet")
             self.assertIn("requirements", cfg["categories"])
 
     def test_custom_category_is_normalized(self) -> None:

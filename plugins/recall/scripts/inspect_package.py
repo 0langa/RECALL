@@ -104,6 +104,11 @@ def inspect_package(path: Path) -> dict[str, object]:
                 errors.append("Manifest must declare bundled skills.")
             if "hooks" in payload:
                 errors.append("Manifest must not declare unsupported `hooks`; use hooks/hooks.json.")
+            interface = payload.get("interface") if isinstance(payload.get("interface"), dict) else {}
+            for field in ("composerIcon", "logo"):
+                asset = str(interface.get(field) or "").lstrip("./")
+                if asset and asset not in names:
+                    errors.append(f"Manifest {field} points to missing package asset: {asset}")
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             errors.append(f"Manifest is not valid JSON: {exc}")
 

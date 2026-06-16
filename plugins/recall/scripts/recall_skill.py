@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import config as recall_config
+import corpus_migration
 import memory_noise
 import memory_review
 import memory_manager
@@ -24,6 +25,7 @@ from services import provenance_service
 from services import lifecycle_service
 from services.context_service import build_context_packet
 from services import recovery_service
+from services.finalizer_service import apply_finalizer_batch
 
 
 def print_json(payload: dict[str, Any]) -> None:
@@ -40,6 +42,16 @@ def load_json_card(*, file_path: str | None, use_stdin: bool) -> dict[str, Any]:
         raise ValueError(f"turn card JSON is invalid: {exc}") from exc
     if not isinstance(payload, dict):
         raise ValueError("turn card JSON must be an object.")
+    return payload
+
+
+def load_stdin_object() -> dict[str, Any]:
+    try:
+        payload = json.loads(sys.stdin.read())
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"stdin JSON is invalid: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("stdin JSON must be an object.")
     return payload
 
 
@@ -236,6 +248,63 @@ def handle_configure_capture(args: argparse.Namespace, root: Path | None) -> Non
 def handle_configure_recall(args: argparse.Namespace, root: Path | None) -> None:
     cfg = recall_config.set_recall_mode(args.mode, root)
     print_json({"action": "configure-recall", "recall_mode": cfg["recall_mode"]})
+
+
+def handle_initialize_project(args: argparse.Namespace, root: Path | None) -> None:
+    target = (root or Path.cwd()).resolve()
+    cfg = recall_config.activate_project(target, activated_by="explicit_initialize")
+    print_json({"action": "initialize-project", "root": str(target), "activation": cfg["activation"]})
+
+
+def handle_activation_status(args: argparse.Namespace, root: Path | None) -> None:
+    target = (root or Path.cwd()).resolve()
+    cfg = recall_config.load_config_if_present(target)
+    print_json({"action": "activation-status", "root": str(target), "active": recall_config.project_is_active(target), "activation": cfg.get("activation")})
+
+
+def handle_deactivate_project(args: argparse.Namespace, root: Path | None) -> None:
+    target = (root or Path.cwd()).resolve()
+    cfg = recall_config.deactivate_project(target)
+    print_json({"action": "deactivate-project", "root": str(target), "activation": cfg["activation"]})
+
+
+def handle_configure_observability(args: argparse.Namespace, root: Path | None) -> None:
+    cfg = recall_config.set_observability_mode(args.mode, root)
+    print_json({"action": "configure-observability", "observability_mode": cfg["observability_mode"]})
+
+
+def handle_apply_finalizer_batch(args: argparse.Namespace, root: Path | None) -> None:
+    payload = load_stdin_object()
+    try:
+        print_json(apply_finalizer_batch(payload, root))
+    except Exception as exc:
+        import observability
+        observability.trace(root, "finalizer_failed", {"error": type(exc).__name__, "message": str(exc)})
+        raise
+
+
+def handle_migrate_corpus(args: argparse.Namespace, root: Path | None) -> None:
+    report = corpus_migration.apply_migration(root) if args.apply else {"action": "migrate-corpus", "dry_run": True, "plan": corpus_migration.plan_migration(root)}
+    print_json(report)
+
+
+def handle_batch_ingest(args: argparse.Namespace, root: Path | None) -> None:
+    payload = load_stdin_object()
+    if payload.get("schema") != "recall.batch_ingest.v1" or not isinstance(payload.get("cards"), list):
+        raise ValueError("batch-ingest requires recall.batch_ingest.v1 with a cards list.")
+    records = memory_manager.add_records_batch(payload["cards"], root)
+    print_json({"action": "batch-ingest", "saved": len(records), "ids": [record.id for record in records]})
+
+
+def handle_debug_tail(args: argparse.Namespace, root: Path | None) -> None:
+    import observability
+    target = root or Path.cwd()
+    lines: list[dict[str, Any]] = []
+    for path in sorted(observability.debug_dir(target).glob("*.jsonl")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                lines.append(json.loads(line))
+    print_json({"action": "debug-tail", "events": lines[-args.limit:]})
 
 
 def handle_review_memory(args: argparse.Namespace, root: Path | None) -> None:
@@ -461,6 +530,26 @@ def main() -> None:
     configure_recall = subparsers.add_parser("configure-recall")
     configure_recall.add_argument("mode", choices=sorted(recall_config.VALID_RECALL_MODES))
     configure_recall.set_defaults(handler=handle_configure_recall)
+    subparsers.add_parser("initialize-project").set_defaults(handler=handle_initialize_project)
+    subparsers.add_parser("activation-status").set_defaults(handler=handle_activation_status)
+    subparsers.add_parser("deactivate-project").set_defaults(handler=handle_deactivate_project)
+    configure_observability = subparsers.add_parser("configure-observability")
+    configure_observability.add_argument("mode", choices=sorted(recall_config.VALID_OBSERVABILITY_MODES))
+    configure_observability.set_defaults(handler=handle_configure_observability)
+    finalizer_batch = subparsers.add_parser("apply-finalizer-batch")
+    finalizer_batch.add_argument("--stdin", action="store_true", required=True)
+    finalizer_batch.set_defaults(handler=handle_apply_finalizer_batch)
+    migrate_corpus = subparsers.add_parser("migrate-corpus")
+    migrate_mode = migrate_corpus.add_mutually_exclusive_group(required=True)
+    migrate_mode.add_argument("--dry-run", action="store_true")
+    migrate_mode.add_argument("--apply", action="store_true")
+    migrate_corpus.set_defaults(handler=handle_migrate_corpus)
+    batch_ingest = subparsers.add_parser("batch-ingest")
+    batch_ingest.add_argument("--stdin", action="store_true", required=True)
+    batch_ingest.set_defaults(handler=handle_batch_ingest)
+    debug_tail = subparsers.add_parser("debug-tail")
+    debug_tail.add_argument("--limit", type=int, default=50)
+    debug_tail.set_defaults(handler=handle_debug_tail)
 
     review = subparsers.add_parser("review-memory")
     review.add_argument("--status", action="append", default=[])
