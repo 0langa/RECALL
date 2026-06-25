@@ -55,6 +55,9 @@ The Kimi manifest is `kimi.plugin.json`. It loads the `using-recall` Skill at se
 When invoking RECALL MCP tools from Kimi, pass the active repository root as `root`. Kimi-originated writes are stamped with `origin_provider: "kimi"` by the MCP adapter.
 
 Optional Kimi hook setup is documented in [KIMI_CODE.md](KIMI_CODE.md). Hooks are configured in `~/.kimi-code/config.toml`; Kimi plugin manifests do not install hook rules.
+After editing a local checkout, reinstall or reload Kimi's managed plugin copy
+before testing. Kimi and Codex should use the same project root so both agents
+share `.recall/` memory instead of creating provider-specific stores.
 
 ## Hook Trust
 
@@ -65,6 +68,9 @@ Review the RECALL hook definitions and trust them when you are ready. After hook
 ## Local Runtime Data
 
 Project memories are written to `.recall/` in new projects, not to the plugin folder. Existing `.codex_memory/` stores remain supported and are used in place so current Codex projects keep their history. Ignore both `.recall/` and `.codex_memory/` in project repositories.
+
+See [E2E_VERIFICATION_LOG.md](E2E_VERIFICATION_LOG.md) for the latest Codex/Kimi
+live verification notes.
 
 If retrieval ever looks stale, first verify through the same bundled skill adapter the installed plugin uses:
 

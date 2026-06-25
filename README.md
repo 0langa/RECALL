@@ -16,6 +16,7 @@ The installable plugin lives in [`plugins/recall`](plugins/recall/). It contains
 - Uses SQLite by default, with JSONL storage available through config.
 - Builds and validates as a portable Codex plugin zip on Windows, macOS, and Linux.
 - Exposes a Kimi Code plugin manifest and MCP server wrapper over the same memory engine.
+- Shares one project-local memory store across Codex and Kimi; provider metadata records provenance without forking memory.
 
 RECALL does not use a hosted database or network embedding service. It is designed as a local project assistant, not a team memory server.
 
@@ -57,6 +58,9 @@ From Kimi Code, install the same plugin directory:
 RECALL's Kimi manifest loads the `using-recall` session Skill and declares a local MCP server named `recall`. Plugin installation does not execute code; the MCP server starts after reload or in a new session when enabled by Kimi Code. When using RECALL tools from Kimi, pass the active repository root as `root`.
 
 Optional Kimi hook setup lives in [`plugins/recall/docs/KIMI_CODE.md`](plugins/recall/docs/KIMI_CODE.md).
+The hook path is optional but verified: Kimi `UserPromptSubmit` content-part
+payloads are normalized before RECALL handles `@recall remember this:` and
+retrieval prompts.
 
 ## Build The Plugin Zip
 
@@ -149,6 +153,9 @@ python plugins/recall/scripts/smoke_zip_marketplace.py dist/recall.zip --json
 ```
 
 The v1.0.0 release was validated with the plugin test suite, quality suite, package inspection, built-zip marketplace smoke test, installed-cache smoke test, and a real project field test.
+The 2026-06-25 split retest also verified Codex CLI `0.140.0` and Kimi Code
+CLI `0.19.2` writing and reading each other's project-local `.recall/` memory
+through live hook-injected context.
 
 ## Release Status
 

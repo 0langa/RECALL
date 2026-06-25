@@ -60,6 +60,22 @@ def _message_texts(value: Any) -> list[str]:
     return texts
 
 
+def _content_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if not isinstance(value, list):
+        return ""
+    parts = []
+    for item in value:
+        if isinstance(item, dict) and isinstance(item.get("text"), str):
+            text = item["text"].strip()
+            if text:
+                parts.append(text)
+        elif isinstance(item, str) and item.strip():
+            parts.append(item.strip())
+    return "\n".join(parts)
+
+
 def _tool_response(payload: dict[str, Any], raw: str, event_name: str) -> dict[str, Any]:
     response = payload.get("tool_response")
     if isinstance(response, dict):
@@ -138,7 +154,11 @@ class HookEvent:
             or _string(payload, "command", "cmd", "tool_command")
         )
         tool_response = _tool_response(payload, raw_text, event_name)
-        prompt = _string(payload, "prompt", "message", "user_prompt")
+        prompt = (
+            _content_text(payload.get("prompt"))
+            or _content_text(payload.get("message"))
+            or _content_text(payload.get("user_prompt"))
+        )
         if not prompt and event_name == "UserPromptSubmit":
             prompt = raw_text.strip()
 
@@ -182,7 +202,7 @@ class HookEvent:
         if self.tool_response:
             payload["tool_response"] = dict(self.tool_response)
         if self.prompt:
-            payload.setdefault("prompt", self.prompt)
+            payload["prompt"] = self.prompt
         payload.setdefault("origin_provider", self.provider)
         return payload
 

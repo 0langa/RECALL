@@ -43,36 +43,52 @@ receive event JSON on stdin. Kimi only permits `event`, `matcher`, `command`,
 and `timeout` fields in each `[[hooks]]` entry.
 
 Use the path to Kimi's managed RECALL plugin copy from `/plugins info recall`.
-Replace `<managed-recall-plugin-root>` below.
+Replace `<managed-recall-plugin-root>` below. On Windows, prefer `py -3 -S`
+so the hook runs with a clean Python import path and lets RECALL's hook script
+add the bundled `scripts/` directory itself. On macOS and Linux, replace
+`py -3` with `python3`.
 
 ```toml
 [[hooks]]
+event = "SessionStart"
+matcher = "startup|resume"
+command = "py -3 -S \"<managed-recall-plugin-root>/hooks/scripts/session_start.py\" --provider kimi"
+timeout = 30
+
+[[hooks]]
 event = "UserPromptSubmit"
-command = "python \"<managed-recall-plugin-root>/hooks/scripts/prompt_inspector.py\" --provider kimi"
+command = "py -3 -S \"<managed-recall-plugin-root>/hooks/scripts/prompt_inspector.py\" --provider kimi"
 timeout = 30
 
 [[hooks]]
 event = "PostToolUse"
-command = "python \"<managed-recall-plugin-root>/hooks/scripts/post_tool_use.py\" --provider kimi"
+matcher = "Bash|apply_patch|Edit|Write|StrReplaceFile|WriteFile"
+command = "py -3 -S \"<managed-recall-plugin-root>/hooks/scripts/post_tool_use.py\" --provider kimi"
 timeout = 30
 
 [[hooks]]
 event = "PostToolUseFailure"
-command = "python \"<managed-recall-plugin-root>/hooks/scripts/post_tool_use.py\" --provider kimi"
+matcher = "Bash|apply_patch|Edit|Write|StrReplaceFile|WriteFile"
+command = "py -3 -S \"<managed-recall-plugin-root>/hooks/scripts/post_tool_use.py\" --provider kimi"
 timeout = 30
 
 [[hooks]]
 event = "PreCompact"
-command = "python \"<managed-recall-plugin-root>/hooks/scripts/pre_compact.py\" --provider kimi"
+matcher = "manual|auto"
+command = "py -3 -S \"<managed-recall-plugin-root>/hooks/scripts/pre_compact.py\" --provider kimi"
 timeout = 30
 
 [[hooks]]
 event = "Stop"
-command = "python \"<managed-recall-plugin-root>/hooks/scripts/stop.py\" --provider kimi"
+command = "py -3 -S \"<managed-recall-plugin-root>/hooks/scripts/stop.py\" --provider kimi"
 timeout = 30
 ```
 
 Restart or reload Kimi Code after editing `config.toml`.
+
+Kimi sends `UserPromptSubmit` text as content parts. RECALL normalizes those
+parts before handling `@recall remember this:` and retrieval prompts, so Kimi
+and Codex follow the same capture path after the hook starts.
 
 ## Shared Memory Semantics
 
@@ -86,6 +102,11 @@ provider-specific metadata only when a memory applies to one agent runtime:
 Retrieved memory is context, not authority. Prefer current files and newer user
 instructions when they conflict with memory, then save a verified correction or
 supersession.
+
+Codex and Kimi should normally point at the same repository root. New projects
+write to `.recall/`; projects that already contain `.codex_memory/` keep using
+that legacy store so existing Codex history remains visible to Kimi instead of
+being copied into a second provider-specific store.
 
 ## Trust And Safety
 

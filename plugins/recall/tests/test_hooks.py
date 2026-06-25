@@ -152,6 +152,32 @@ class HookTests(unittest.TestCase):
             self.assertEqual(requirements["results"][0]["content"], "Release notes stay under docs/manual-release-notes.md.")
             self.assertEqual(requirements["results"][0]["metadata"]["claim_key"], "release_notes.path")
 
+    def test_prompt_inspector_saves_kimi_content_part_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0.1.0'\n", encoding="utf-8")
+            output = run_hook_with_args(
+                "prompt_inspector.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "kimi-session",
+                    "hook_event_name": "UserPromptSubmit",
+                    "prompt": [
+                        {
+                            "type": "text",
+                            "text": "@recall remember this: requirements: Kimi content-part prompts must save.",
+                        }
+                    ],
+                },
+                "--provider",
+                "kimi",
+            )
+            self.assertIn("RECALL saved memory", output["hookSpecificOutput"]["additionalContext"])
+
+            requirements = query_memory(tmp, "content-part prompts", "requirements")
+            self.assertEqual(len(requirements["results"]), 1)
+            self.assertEqual(requirements["results"][0]["metadata"]["origin_provider"], "kimi")
+            self.assertEqual(requirements["results"][0]["metadata"]["capture_channel"], "hook")
+
     def test_natural_use_recall_phrase_activates_project_and_buffers_requirement(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, "package.json").write_text('{"name":"fixture","version":"0.1.0"}', encoding="utf-8")

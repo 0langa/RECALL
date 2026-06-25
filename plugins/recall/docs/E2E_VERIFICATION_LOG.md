@@ -76,3 +76,48 @@ Current behavior is explicit-activation first:
 - `Stop` emits one compact inline finalizer request with `PACKET=` JSON when buffered evidence deserves review.
 - `SessionStart` stays quiet; explicit `@recall` prompt retrieval injects curated context.
 - Live cleanup used `archive-noise` non-destructively. After cleanup, `archive-noise` dry-run matched `0` remaining records, and review showed `217` active memories and `579` archived memories.
+
+## Codex And Kimi Split Retest
+
+Date: 2026-06-25
+
+Environment:
+
+- Codex CLI: `codex-cli 0.140.0`
+- Kimi Code CLI: `0.19.2`
+- Codex install: `recall@recall-local` reinstalled from the repository marketplace into `<home>\.codex\plugins\cache\recall-local\recall\1.0.0`
+- Kimi install: fresh `dist/recall.zip` expanded into `<home>\.kimi-code\plugins\managed\recall`
+
+Automated verification:
+
+- `python -m unittest discover -s plugins\recall\tests`: pass, 150 tests.
+- `python RECALL_quality_suite\scripts\run_recall_quality_suite.py --repo-root . --quick`: pass.
+- `python build_plugin.py --skip-validator`: pass; package inspection reported 81 entries, no warnings, no errors.
+- `kimi doctor`: pass after RECALL hooks were added to `~/.kimi-code/config.toml`.
+
+Issue found and fixed:
+
+- Kimi `UserPromptSubmit` hook payloads send `prompt` as content parts, for example `[{"type":"text","text":"..."}]`.
+- RECALL's provider-neutral hook normalizer previously accepted string prompts only, so Kimi hook retrieval worked but `@recall remember this:` was not saved by the hook itself.
+- `hook_events.py` now normalizes Kimi-style content parts into the same prompt string shape used by Codex.
+- Regression coverage was added for the normalizer and for `prompt_inspector.py` saving categorized memories from a Kimi-shaped content-part payload.
+
+Live Kimi checks:
+
+- `kimi -p` in a fresh project with `@recall initialize this project` printed `RECALL activated for project ...`.
+- A follow-up `kimi -p` prompt with `@recall remember this: requirements: Kimi hook content parts save marker 20260625...` printed `RECALL saved memory #1 in requirements` from the `UserPromptSubmit` hook.
+- Retrieval through the installed Kimi plugin copy returned the saved memory with `origin_provider: kimi` and `capture_channel: hook`.
+- `doctor` on the Kimi test project reported `records: 1`, `index_records: 1`, `index_complete: true`, and no warnings.
+
+Live Codex checks:
+
+- `codex exec --dangerously-bypass-hook-trust --enable hooks` in a fresh project with `@recall initialize this project` printed `RECALL activated for project ...`.
+- A follow-up `codex exec` prompt with `@recall remember this: requirements: Codex hook e2e marker 20260625...` printed `RECALL saved memory #1 in requirements` from the `UserPromptSubmit` hook.
+- Retrieval through the installed Codex plugin cache returned the saved memory with `origin_provider: codex` and `capture_channel: hook`.
+- `doctor` on the Codex test project reported `records: 1`, `index_records: 1`, `index_complete: true`, and no warnings.
+
+Cross-provider checks:
+
+- Kimi, running in the Codex-written test project, retrieved the Codex memory through hook-injected RECALL context.
+- Codex, running in the Kimi-written test project, retrieved the Kimi memory through hook-injected RECALL context.
+- This confirms Codex and Kimi share project-local `.recall/` memory and use provider metadata as provenance, not as separate memory stores.

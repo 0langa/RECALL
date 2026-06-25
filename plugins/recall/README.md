@@ -6,6 +6,7 @@ RECALL is local-first project memory for Codex and Kimi Code. It stores durable 
 
 - Validation-ready Codex plugin manifest at `.codex-plugin/plugin.json`.
 - Kimi Code plugin manifest at `kimi.plugin.json`, with `using-recall` session guidance and a local MCP server wrapper.
+- Shared project-local memory across Codex and Kimi, with provider metadata used for provenance rather than separate stores.
 - Compact skill surface for saving memory, retrieval, review, category definition, and maintenance.
 - Project-local configuration in `.recall/memory_config.json`, or legacy `.codex_memory/memory_config.json` when that store already exists.
 - SQLite storage by default, with JSONL support available through config.
@@ -43,6 +44,9 @@ For Kimi Code from a local checkout:
 The Kimi manifest loads `using-recall` at session start and declares a local MCP server named `recall`. Kimi plugins do not execute install-time code; the MCP server starts after reload or in a new session when enabled. When calling RECALL MCP tools, pass the active repository root as `root`.
 
 See [docs/KIMI_CODE.md](docs/KIMI_CODE.md) for optional Kimi hook `config.toml` snippets.
+The Kimi hook path normalizes `UserPromptSubmit` content-part payloads before
+handling `@recall remember this:` and retrieval prompts, so Kimi and Codex use
+the same capture and retrieval logic.
 
 For direct skill-adapter checks from this plugin folder:
 
@@ -263,6 +267,9 @@ To use JSONL files, change `backend` in the active memory store's `memory_config
 If a project-level `memory_config.json` exists before initialization, RECALL copies it into the active project-local runtime store and uses that copy from there.
 
 Provider-aware writes can include metadata such as `origin_provider`, `origin_agent`, `source_session`, `source_turn`, `cwd`, `branch`, `commit`, `capture_channel`, and `applies_to_provider`. Shared project truth should use `applies_to_provider: "all"`; provider-specific notes should say which provider they apply to.
+Codex and Kimi should point at the same repository root when collaborating on a
+project. RECALL stores shared facts in the active project memory directory and
+uses `origin_provider` / `capture_channel` to explain where a card came from.
 
 ## Security
 

@@ -59,6 +59,26 @@ class HookEventTests(unittest.TestCase):
             self.assertEqual(metadata["source_session"], "session-kimi")
             self.assertEqual(metadata["capture_channel"], "hook")
 
+    def test_kimi_prompt_content_parts_normalize_to_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = {
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": "session-kimi",
+                "cwd": tmp,
+                "prompt": [
+                    {
+                        "type": "text",
+                        "text": "@recall remember this: requirements: Kimi content parts must be parsed.",
+                    }
+                ],
+            }
+            event = HookEvent.from_payload(payload, fallback_event="UserPromptSubmit", provider="kimi")
+            compat = event.compatibility_payload()
+
+            self.assertEqual(event.provider, "kimi")
+            self.assertEqual(event.prompt, "@recall remember this: requirements: Kimi content parts must be parsed.")
+            self.assertEqual(compat["prompt"], "@recall remember this: requirements: Kimi content parts must be parsed.")
+
 
 if __name__ == "__main__":
     unittest.main()
