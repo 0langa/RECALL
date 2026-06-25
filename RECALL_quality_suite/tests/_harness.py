@@ -80,10 +80,15 @@ def hook_cmd(script_name: str) -> list[str]:
     return [sys.executable, str(root / "hooks" / "scripts" / script_name)]
 
 
+def active_memory_dir(project: Path) -> Path:
+    candidates = [project / ".recall", project / ".codex_memory"]
+    return next((candidate.resolve() for candidate in candidates if candidate.exists()), candidates[0].resolve())
+
+
 def assert_memory_inside_project(project: Path) -> None:
-    memory = (project / ".codex_memory").resolve()
-    assert memory.exists(), ".codex_memory was not created"
+    memory = active_memory_dir(project)
+    assert memory.exists(), "RECALL memory directory was not created"
     try:
         memory.relative_to(project.resolve())
     except ValueError as exc:
-        raise AssertionError(".codex_memory escaped the project root") from exc
+        raise AssertionError("RECALL memory escaped the project root") from exc

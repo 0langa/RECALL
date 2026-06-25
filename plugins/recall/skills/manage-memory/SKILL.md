@@ -5,7 +5,7 @@ description: Use this skill when changing RECALL capture mode, when cleaning noi
 
 # Manage Memory
 
-Use this skill for RECALL maintenance and lifecycle control after memory already exists. RECALL is local-only project memory. Work only in the active project's `.codex_memory/`. Do not store or repeat secrets.
+Use this skill for RECALL maintenance and lifecycle control after memory already exists. RECALL is local-only project memory. Work only in the active project's RECALL memory directory: `.recall/` for new projects, or existing `.codex_memory/` stores for legacy projects. Do not store or repeat secrets.
 
 ## When To Use
 

@@ -118,6 +118,19 @@ def save_turn_card(card: dict[str, Any], root: Path | None) -> dict[str, Any]:
         "turn_id": string_value(card, "turn_id"),
         "evidence_ids": list_value(card, "evidence_ids"),
     }
+    metadata_base.update(
+        memory_manager.provider_metadata(
+            origin_provider=string_value(card, "origin_provider"),
+            origin_agent=string_value(card, "origin_agent"),
+            source_session=string_value(card, "source_session") or string_value(card, "session_id"),
+            source_turn=string_value(card, "source_turn") or string_value(card, "turn_id"),
+            cwd=string_value(card, "cwd"),
+            branch=string_value(card, "branch"),
+            commit=string_value(card, "commit"),
+            capture_channel=string_value(card, "capture_channel") or source,
+            applies_to_provider=string_value(card, "applies_to_provider"),
+        )
+    )
     metadata = memory_manager.build_card_metadata(
         summary=summary,
         details=details,
@@ -162,6 +175,19 @@ def handle_save_insight(args: argparse.Namespace, root: Path | None) -> None:
         metadata_base["preference_evidence_type"] = args.preference_evidence_type
     if args.decision_id:
         metadata_base["decision_id"] = args.decision_id
+    metadata_base.update(
+        memory_manager.provider_metadata(
+            origin_provider=args.origin_provider,
+            origin_agent=args.origin_agent,
+            source_session=args.source_session,
+            source_turn=args.source_turn,
+            cwd=args.cwd,
+            branch=args.branch,
+            commit=args.commit,
+            capture_channel=args.capture_channel or args.source,
+            applies_to_provider=args.applies_to_provider,
+        )
+    )
     record = memory_manager.add_record(
         args.category,
         args.content,
@@ -476,6 +502,15 @@ def main() -> None:
     save.add_argument("--details")
     save.add_argument("--tag", action="append", default=[])
     save.add_argument("--source", default="skill")
+    save.add_argument("--origin-provider")
+    save.add_argument("--origin-agent")
+    save.add_argument("--source-session")
+    save.add_argument("--source-turn")
+    save.add_argument("--cwd")
+    save.add_argument("--branch")
+    save.add_argument("--commit")
+    save.add_argument("--capture-channel")
+    save.add_argument("--applies-to-provider")
     save.add_argument("--source-path")
     save.add_argument("--memory-type")
     save.add_argument("--trust", type=float)

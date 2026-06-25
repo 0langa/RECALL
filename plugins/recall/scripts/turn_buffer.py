@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import config as recall_config
+
 
 SCHEMA_EVENT = "recall.turn_event.v1"
 SCHEMA_FINALIZER = "recall.finalizer_request.v1"
@@ -31,7 +33,7 @@ def safe_name(value: str | None, fallback: str) -> str:
 
 def memory_dir(root: str | Path | None) -> Path:
     base = Path(root or os.getcwd()).resolve()
-    return base / ".codex_memory"
+    return recall_config.memory_dir(base)
 
 
 def runtime_dir(root: str | Path | None) -> Path:
@@ -250,7 +252,7 @@ def create_finalizer_request(
                 "retrieve-memory",
                 "apply-finalizer-batch",
             ],
-            "write_scope": ".codex_memory only",
+            "write_scope": f"{recall_config.memory_dir(root).name} only",
             "network": "not required",
         },
     }

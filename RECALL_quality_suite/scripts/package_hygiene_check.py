@@ -15,6 +15,7 @@ SECRET_PATTERNS = [
 ]
 
 FORBIDDEN_PATH_PARTS = [
+    ".recall",
     ".codex_memory",
     "memory.sqlite",
     "vector_index.bin",
@@ -28,12 +29,15 @@ FORBIDDEN_PATH_PARTS = [
 
 REQUIRED_FILES = [
     ".codex-plugin/plugin.json",
+    "kimi.plugin.json",
     "README.md",
     "hooks/hooks.json",
     "scripts/recall_skill.py",
+    "scripts/kimi_mcp_server.py",
     "skills/save-insight/SKILL.md",
     "skills/retrieve-memory/SKILL.md",
     "skills/define-category/SKILL.md",
+    "skills/using-recall/SKILL.md",
 ]
 
 

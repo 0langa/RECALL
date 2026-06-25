@@ -12,16 +12,19 @@ from pathlib import Path
 from typing import Iterable
 
 
-FORBIDDEN_PARTS = {".git", ".codex_memory", "__pycache__", "dist"}
+FORBIDDEN_PARTS = {".git", ".recall", ".codex_memory", "__pycache__", "dist"}
 FORBIDDEN_SUFFIXES = {".pyc", ".pyo"}
 WINDOWS_USER_MARKER = "C:" + "\\" + "Users" + "\\"
 POSIX_USER_MARKER = "/" + "Users" + "/"
 REQUIRED_PATHS = {
     ".codex-plugin/plugin.json",
     "hooks/hooks.json",
+    "kimi.plugin.json",
     "skills/save-insight/SKILL.md",
     "skills/retrieve-memory/SKILL.md",
+    "skills/using-recall/SKILL.md",
     "skills/define-category/SKILL.md",
+    "scripts/kimi_mcp_server.py",
     "scripts/recall_skill.py",
     "scripts/memory_manager.py",
 }

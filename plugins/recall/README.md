@@ -1,12 +1,13 @@
 # RECALL
 
-RECALL is a local-first Codex plugin for project memory. It stores durable context in `.codex_memory/` inside the active project so an agent can retrieve decisions, constraints, commands, debugging history, requirements, risks, and custom categories across sessions.
+RECALL is local-first project memory for Codex and Kimi Code. It stores durable context in `.recall/` inside the active project, while continuing to use existing `.codex_memory/` stores for backward compatibility, so agents can retrieve decisions, constraints, commands, debugging history, requirements, risks, and custom categories across sessions.
 
 ## What Works In v1.0.0
 
 - Validation-ready Codex plugin manifest at `.codex-plugin/plugin.json`.
+- Kimi Code plugin manifest at `kimi.plugin.json`, with `using-recall` session guidance and a local MCP server wrapper.
 - Compact skill surface for saving memory, retrieval, review, category definition, and maintenance.
-- Project-local configuration in `.codex_memory/memory_config.json`.
+- Project-local configuration in `.recall/memory_config.json`, or legacy `.codex_memory/memory_config.json` when that store already exists.
 - SQLite storage by default, with JSONL support available through config.
 - Deterministic local embeddings, a project-local `vector_index.bin`, and weighted retrieval with no network calls.
 - Rebuildable vector index and backend diagnostics through `rebuild-index`, `doctor`, and `repair`.
@@ -31,6 +32,15 @@ codex plugin add recall@recall-local
 ```
 
 Then start a Codex thread in a project and review RECALL's hooks in Codex Settings > Coding > Hooks. Plugin installation is one command once the marketplace is configured; hook execution still requires Codex's normal trust review for non-managed hooks.
+
+For Kimi Code from a local checkout:
+
+```text
+/plugins install <path-to-RECALL>/plugins/recall
+/reload
+```
+
+The Kimi manifest loads `using-recall` at session start and declares a local MCP server named `recall`. Kimi plugins do not execute install-time code; the MCP server starts after reload or in a new session when enabled. When calling RECALL MCP tools, pass the active repository root as `root`.
 
 For direct skill-adapter checks from this plugin folder:
 
@@ -238,17 +248,19 @@ Lifecycle metadata is stored inside each memory card. RECALL understands `relate
 
 ## Storage
 
-RECALL writes all runtime data under `.codex_memory/`, which is ignored by git. The default backend is SQLite:
+RECALL writes all runtime data under `.recall/` for new projects, which should be ignored by git. If `.codex_memory/` already exists, RECALL keeps using that legacy store so existing Codex projects are not silently forked. The default backend is SQLite:
 
 ```text
-.codex_memory/
+.recall/
   memory_config.json
   memory.sqlite
 ```
 
-To use JSONL files, change `backend` in `.codex_memory/memory_config.json` to `jsonl`.
+To use JSONL files, change `backend` in the active memory store's `memory_config.json` to `jsonl`.
 
-If a project-level `memory_config.json` exists before initialization, RECALL copies it into `.codex_memory/memory_config.json` and uses the project-local runtime copy from there.
+If a project-level `memory_config.json` exists before initialization, RECALL copies it into the active project-local runtime store and uses that copy from there.
+
+Provider-aware writes can include metadata such as `origin_provider`, `origin_agent`, `source_session`, `source_turn`, `cwd`, `branch`, `commit`, `capture_channel`, and `applies_to_provider`. Shared project truth should use `applies_to_provider: "all"`; provider-specific notes should say which provider they apply to.
 
 ## Security
 

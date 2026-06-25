@@ -94,6 +94,10 @@ def rebuild(root: str | Path | None = None) -> dict[str, Any]:
 
 def diagnostics(root: str | Path | None = None) -> dict[str, Any]:
     records = list(storage.iter_records(root))
+    return diagnostics_for_records(records, root)
+
+
+def diagnostics_for_records(records: list[storage.MemoryRecord], root: str | Path | None = None) -> dict[str, Any]:
     inspected = inspect_index(root)
     index = inspected["index"]
     record_ids = {record.id for record in records}
@@ -111,6 +115,16 @@ def diagnostics(root: str | Path | None = None) -> dict[str, Any]:
 
 def ensure_complete(root: str | Path | None = None) -> dict[int, dict[str, Any]]:
     report = diagnostics(root)
+    if not report["index_complete"]:
+        rebuild(root)
+    return load_index(root)
+
+
+def ensure_complete_for_records(
+    records: list[storage.MemoryRecord],
+    root: str | Path | None = None,
+) -> dict[int, dict[str, Any]]:
+    report = diagnostics_for_records(records, root)
     if not report["index_complete"]:
         rebuild(root)
     return load_index(root)

@@ -10,6 +10,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ADAPTER = ROOT / "scripts" / "recall_skill.py"
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import config as recall_config  # noqa: E402
 
 
 def run_skill(root: str, *args: str) -> dict:
@@ -121,13 +124,46 @@ class RecallSkillAdapterTests(unittest.TestCase):
                 "--status",
                 "active",
             )
-            index_path = Path(tmp) / ".codex_memory" / "vector_index.bin"
+            index_path = recall_config.memory_dir(tmp) / "vector_index.bin"
             index_path.write_text("", encoding="utf-8")
 
             repair = run_skill(tmp, "repair")
 
             self.assertEqual(repair["action"], "repair")
             self.assertTrue(repair["report"]["doctor"]["index_complete"])
+
+    def test_save_insight_accepts_provider_provenance_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            saved = run_skill(
+                tmp,
+                "save-insight",
+                "decisions",
+                "Kimi and Codex share provider-neutral RECALL memory.",
+                "--summary",
+                "Shared provider-neutral memory.",
+                "--origin-provider",
+                "kimi",
+                "--origin-agent",
+                "kimi-code",
+                "--source-session",
+                "session-42",
+                "--source-turn",
+                "turn-7",
+                "--capture-channel",
+                "mcp",
+                "--applies-to-provider",
+                "all",
+            )
+            retrieved = run_skill(tmp, "retrieve-memory", "provider-neutral memory", "--category", "decisions")
+            metadata = retrieved["results"][0]["metadata"]
+
+            self.assertEqual(saved["category"], "decisions")
+            self.assertEqual(metadata["origin_provider"], "kimi")
+            self.assertEqual(metadata["origin_agent"], "kimi-code")
+            self.assertEqual(metadata["source_session"], "session-42")
+            self.assertEqual(metadata["source_turn"], "turn-7")
+            self.assertEqual(metadata["capture_channel"], "mcp")
+            self.assertEqual(metadata["applies_to_provider"], "all")
 
     def test_review_and_lifecycle_actions_use_public_adapter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

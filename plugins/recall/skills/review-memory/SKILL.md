@@ -7,7 +7,7 @@ description: Use this skill when inspecting RECALL memory quality, when reviewin
 
 Use this skill when the user asks what RECALL currently remembers, asks for a memory audit, or needs IDs before changing memory state.
 
-RECALL is local-only project memory. Read from the active project's `.codex_memory/` directory and never require hosted services or external APIs. Do not repeat secrets verbatim if a stored memory appears to contain sensitive data.
+RECALL is local-only project memory. Read from the active project's RECALL memory directory: `.recall/` for new projects, or existing `.codex_memory/` stores for legacy projects. Never require hosted services or external APIs. Do not repeat secrets verbatim if a stored memory appears to contain sensitive data.
 
 ## When To Use
 

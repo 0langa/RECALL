@@ -212,10 +212,11 @@ def query(
     if cfg.get("recency_days") is not None:
         since = datetime.now(timezone.utc) - timedelta(days=int(cfg["recency_days"]))
 
-    index = index_store.ensure_complete(root)
+    records = list(storage.iter_records(root))
+    index = index_store.ensure_complete_for_records(records, root)
     query_vector = embed(query_text)
     ranked: list[storage.MemoryRecord] = []
-    for record in storage.iter_records(root):
+    for record in records:
         if not passes_filters(record, include_set, exclude_set, since, status_set):
             continue
         record.score = score_record(record, query_text, query_vector, index, cfg)

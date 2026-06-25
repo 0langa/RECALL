@@ -9,6 +9,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import config as recall_config  # noqa: E402
 
 
 def run_hook(script: str, payload: dict) -> dict:
@@ -50,7 +53,7 @@ def query_memory(root: str, query: str, category: str) -> dict:
 def runtime_events(root: str, session_id: str, turn_id: str) -> list[dict]:
     safe_session = session_id or "session"
     safe_turn = turn_id or "turn"
-    path = Path(root) / ".codex_memory" / "runtime" / "turns" / safe_session / f"{safe_turn}.jsonl"
+    path = recall_config.memory_dir(root) / "runtime" / "turns" / safe_session / f"{safe_turn}.jsonl"
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -509,6 +512,7 @@ class HookTests(unittest.TestCase):
                 },
             )
             self.assertIn("initialize this project", output["hookSpecificOutput"]["additionalContext"])
+            self.assertFalse((Path(tmp) / ".recall").exists())
             self.assertFalse((Path(tmp) / ".codex_memory").exists())
 
     def test_malformed_hook_json_is_noop(self) -> None:
@@ -721,7 +725,7 @@ class HookTests(unittest.TestCase):
             self.assertNotIn("RECALL_FINALIZER_REQUEST", json.dumps(output))
             result = query_memory(tmp, "Task 2 hook parsing", "project_state")
             self.assertEqual(result["results"], [])
-            packet = Path(tmp) / ".codex_memory" / "runtime" / "finalizer_requests" / "session-stop-turn-stop.json"
+            packet = recall_config.memory_dir(tmp) / "runtime" / "finalizer_requests" / "session-stop-turn-stop.json"
             self.assertFalse(packet.exists())
 
     def test_stop_quiet_mode_saves_explicit_prompt_evidence(self) -> None:

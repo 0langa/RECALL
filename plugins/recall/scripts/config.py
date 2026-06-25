@@ -95,6 +95,8 @@ VALID_BACKENDS = {"sqlite", "jsonl"}
 VALID_CAPTURE_MODES = {"manual", "minimal", "standard", "off"}
 VALID_RECALL_MODES = {"manual", "relevant", "always"}
 VALID_OBSERVABILITY_MODES = {"quiet", "debug"}
+MEMORY_DIR_NAME = ".recall"
+LEGACY_MEMORY_DIR_NAME = ".codex_memory"
 
 
 def project_root(raw_root: str | Path | None = None) -> Path:
@@ -107,8 +109,30 @@ def project_root(raw_root: str | Path | None = None) -> Path:
     return Path.cwd().resolve()
 
 
+def neutral_memory_dir(raw_root: str | Path | None = None) -> Path:
+    return project_root(raw_root) / MEMORY_DIR_NAME
+
+
+def legacy_memory_dir(raw_root: str | Path | None = None) -> Path:
+    return project_root(raw_root) / LEGACY_MEMORY_DIR_NAME
+
+
 def memory_dir(raw_root: str | Path | None = None) -> Path:
-    return project_root(raw_root) / ".codex_memory"
+    """Return the active project memory directory.
+
+    New projects use provider-neutral `.recall/`. Existing `.codex_memory/`
+    stores remain authoritative until the user migrates them, so Codex users do
+    not lose or silently fork memory.
+    """
+
+    root = project_root(raw_root)
+    neutral = neutral_memory_dir(root)
+    legacy = legacy_memory_dir(root)
+    if neutral.exists():
+        return neutral
+    if legacy.exists():
+        return legacy
+    return neutral
 
 
 def config_path(raw_root: str | Path | None = None) -> Path:
@@ -131,7 +155,7 @@ def default_config() -> dict[str, Any]:
 
 
 def ensure_config(raw_root: str | Path | None = None) -> Path:
-    """Create `.codex_memory/memory_config.json` when missing."""
+    """Create the project-local memory config when missing."""
     root = project_root(raw_root)
     target_dir = memory_dir(root)
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -168,17 +192,19 @@ def load_config_if_present(raw_root: str | Path | None = None) -> dict[str, Any]
 
 def persistent_memory_exists(raw_root: str | Path | None = None) -> bool:
     root = project_root(raw_root)
-    memory_root = memory_dir(root)
-    if not memory_root.exists():
-        return False
-    if config_path(root).exists():
-        return True
-    if (memory_root / "memory.sqlite").exists():
-        return True
-    if (memory_root / "vector_index.bin").exists():
-        return True
-    jsonl_root = memory_root / "jsonl"
-    return any(jsonl_root.glob("*.jsonl")) if jsonl_root.exists() else False
+    for memory_root in (neutral_memory_dir(root), legacy_memory_dir(root)):
+        if not memory_root.exists():
+            continue
+        if (memory_root / "memory_config.json").exists():
+            return True
+        if (memory_root / "memory.sqlite").exists():
+            return True
+        if (memory_root / "vector_index.bin").exists():
+            return True
+        jsonl_root = memory_root / "jsonl"
+        if jsonl_root.exists() and any(jsonl_root.glob("*.jsonl")):
+            return True
+    return False
 
 
 def load_config(raw_root: str | Path | None = None) -> dict[str, Any]:

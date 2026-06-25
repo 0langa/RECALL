@@ -19,6 +19,7 @@ class ConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = recall_config.ensure_config(tmp)
             self.assertTrue(path.exists())
+            self.assertEqual(path.parent.name, ".recall")
             cfg = recall_config.load_config(tmp)
             self.assertEqual(cfg["backend"], "sqlite")
             self.assertEqual(cfg["capture_mode"], "standard")
@@ -52,10 +53,39 @@ class ConfigTests(unittest.TestCase):
 
             target = recall_config.ensure_config(tmp)
             cfg = recall_config.load_config(tmp)
-            expected = Path(tmp) / ".codex_memory" / "memory_config.json"
+            expected = Path(tmp) / ".recall" / "memory_config.json"
             self.assertTrue(target.samefile(expected), f"{target} is not {expected}")
             self.assertEqual(cfg["backend"], "jsonl")
             self.assertEqual(cfg["categories"]["requirements"]["weight"], 1.9)
+
+    def test_existing_codex_memory_store_remains_authoritative(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            legacy = Path(tmp) / ".codex_memory"
+            legacy.mkdir()
+            payload = recall_config.default_config()
+            payload["backend"] = "jsonl"
+            (legacy / "memory_config.json").write_text(json.dumps(payload), encoding="utf-8")
+
+            self.assertEqual(recall_config.memory_dir(tmp), legacy.resolve())
+            cfg = recall_config.load_config(tmp)
+            self.assertEqual(cfg["backend"], "jsonl")
+            self.assertFalse((Path(tmp) / ".recall").exists())
+
+    def test_neutral_memory_store_wins_when_both_exist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            neutral = Path(tmp) / ".recall"
+            legacy = Path(tmp) / ".codex_memory"
+            neutral.mkdir()
+            legacy.mkdir()
+            neutral_payload = recall_config.default_config()
+            neutral_payload["backend"] = "sqlite"
+            legacy_payload = recall_config.default_config()
+            legacy_payload["backend"] = "jsonl"
+            (neutral / "memory_config.json").write_text(json.dumps(neutral_payload), encoding="utf-8")
+            (legacy / "memory_config.json").write_text(json.dumps(legacy_payload), encoding="utf-8")
+
+            self.assertEqual(recall_config.memory_dir(tmp), neutral.resolve())
+            self.assertEqual(recall_config.load_config(tmp)["backend"], "sqlite")
 
     def test_invalid_category_weight_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "weight must be greater than zero"):

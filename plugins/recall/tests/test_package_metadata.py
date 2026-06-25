@@ -69,6 +69,20 @@ class PackageMetadataTests(unittest.TestCase):
         self.assertTrue((ROOT / "docs" / "PRIVACY.md").is_file())
         self.assertTrue((ROOT / "docs" / "TERMS.md").is_file())
 
+    def test_kimi_manifest_declares_supported_runtime_surface(self) -> None:
+        payload = json.loads((ROOT / "kimi.plugin.json").read_text(encoding="utf-8"))
+        self.assertEqual(payload["name"], "recall")
+        self.assertEqual(payload["skills"], "./skills/")
+        self.assertEqual(payload["sessionStart"]["skill"], "using-recall")
+        self.assertNotIn("hooks", payload)
+        self.assertNotIn("tools", payload)
+        self.assertNotIn("commands", payload)
+        self.assertIn("recall", payload["mcpServers"])
+        server = payload["mcpServers"]["recall"]
+        self.assertEqual(server["cwd"], "./")
+        self.assertEqual(server["args"], ["./scripts/kimi_mcp_server.py"])
+        self.assertTrue((ROOT / "scripts" / "kimi_mcp_server.py").is_file())
+
     def test_cross_platform_python_builder_is_present(self) -> None:
         self.assertTrue((REPO_ROOT / "build_plugin.py").is_file())
         self.assertTrue((ROOT / "scripts" / "build_plugin.py").is_file())
@@ -76,9 +90,10 @@ class PackageMetadataTests(unittest.TestCase):
     def test_skills_describe_local_only_storage_and_secret_safety(self) -> None:
         for path in sorted((ROOT / "skills").glob("*/SKILL.md")):
             text = path.read_text(encoding="utf-8").lower()
-            self.assertIn("local-only", text, path)
+            self.assertIn("local", text, path)
             self.assertIn("secret", text, path)
-            self.assertIn("recall_skill.py", text, path)
+            if path.parent.name != "using-recall":
+                self.assertIn("recall_skill.py", text, path)
             self.assertNotIn("memory_manager.py", text, path)
             self.assertNotIn("cloud", text, path)
             self.assertNotIn("remote api", text, path)
@@ -91,8 +106,9 @@ class PackageMetadataTests(unittest.TestCase):
             "retrieve-memory",
             "review-memory",
             "save-insight",
+            "using-recall",
         }
-        self.assertEqual(len(skill_names), 5)
+        self.assertEqual(len(skill_names), 6)
         self.assertEqual(skill_names, expected)
 
     def test_workflow_examples_cover_core_memory_cards(self) -> None:
@@ -107,10 +123,13 @@ class PackageMetadataTests(unittest.TestCase):
             archive = Path(tmp) / "recall.zip"
             with zipfile.ZipFile(archive, "w") as package:
                 package.writestr(".codex-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
+                package.writestr("kimi.plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
                 package.writestr("hooks/hooks.json", "{}")
                 package.writestr("skills/save-insight/SKILL.md", "# Save")
                 package.writestr("skills/retrieve-memory/SKILL.md", "# Retrieve")
                 package.writestr("skills/define-category/SKILL.md", "# Define")
+                package.writestr("skills/using-recall/SKILL.md", "# Using")
+                package.writestr("scripts/kimi_mcp_server.py", "print('ok')\n")
                 package.writestr("scripts/recall_skill.py", "print('ok')\n")
                 package.writestr("scripts/memory_manager.py", "print('ok')\n")
             completed = subprocess.run(
@@ -127,13 +146,17 @@ class PackageMetadataTests(unittest.TestCase):
             archive = Path(tmp) / "recall.zip"
             with zipfile.ZipFile(archive, "w") as package:
                 package.writestr(".codex-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
+                package.writestr("kimi.plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
                 package.writestr("hooks/hooks.json", "{}")
                 package.writestr("skills/save-insight/SKILL.md", "# Save")
                 package.writestr("skills/retrieve-memory/SKILL.md", "# Retrieve")
                 package.writestr("skills/define-category/SKILL.md", "# Define")
+                package.writestr("skills/using-recall/SKILL.md", "# Using")
+                package.writestr("scripts/kimi_mcp_server.py", "print('ok')\n")
                 package.writestr("scripts/recall_skill.py", "print('ok')\n")
                 package.writestr("scripts/memory_manager.py", "token=dummy-secret-value\n")
                 package.writestr(".codex_memory/memory.sqlite", "")
+                package.writestr(".recall/memory.sqlite", "")
             completed = subprocess.run(
                 [sys.executable, str(ROOT / "scripts" / "inspect_package.py"), str(archive)],
                 text=True,

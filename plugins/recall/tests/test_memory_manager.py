@@ -25,7 +25,7 @@ class MemoryManagerTests(unittest.TestCase):
                 tmp,
             )
             self.assertEqual(record.category, "decisions")
-            self.assertTrue((Path(tmp) / ".codex_memory" / "vector_index.bin").exists())
+            self.assertTrue((recall_config.memory_dir(tmp) / "vector_index.bin").exists())
             result = memory_manager.query("local backend database", root=tmp, summarize=True)
             self.assertEqual(len(result["results"]), 1)
             self.assertIn("SQLite", result["summary"])
@@ -48,7 +48,7 @@ class MemoryManagerTests(unittest.TestCase):
             cfg["backend"] = "jsonl"
             recall_config.save_config(cfg, tmp)
             memory_manager.add_record("commands", "Good JSONL command survives corrupt rows.", root=tmp)
-            bad_path = Path(tmp) / ".codex_memory" / "jsonl" / "commands.jsonl"
+            bad_path = recall_config.memory_dir(tmp) / "jsonl" / "commands.jsonl"
             with bad_path.open("a", encoding="utf-8") as handle:
                 handle.write("{bad json\n")
 
@@ -93,7 +93,7 @@ class MemoryManagerTests(unittest.TestCase):
     def test_rebuild_index_restores_missing_vector_index(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory_manager.add_record("architecture", "Storage is the source of truth for RECALL memories.", root=tmp)
-            index_path = Path(tmp) / ".codex_memory" / "vector_index.bin"
+            index_path = recall_config.memory_dir(tmp) / "vector_index.bin"
             index_path.unlink()
             report = memory_manager.rebuild_index(tmp)
             self.assertEqual(report["indexed_records"], 1)
@@ -108,7 +108,7 @@ class MemoryManagerTests(unittest.TestCase):
                 "RECALL must repair a missing vector index automatically.",
                 root=tmp,
             )
-            index_path = Path(tmp) / ".codex_memory" / "vector_index.bin"
+            index_path = recall_config.memory_dir(tmp) / "vector_index.bin"
             index_path.write_text("", encoding="utf-8")
             result = memory_manager.query("missing vector index", root=tmp)
             self.assertEqual(len(result["results"]), 1)
@@ -130,7 +130,7 @@ class MemoryManagerTests(unittest.TestCase):
     def test_doctor_reports_index_integrity_warnings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory_manager.add_record("decisions", "Index diagnostics should catch stale and bad rows.", root=tmp)
-            index_path = Path(tmp) / ".codex_memory" / "vector_index.bin"
+            index_path = recall_config.memory_dir(tmp) / "vector_index.bin"
             index_path.write_text(
                 "\n".join(
                     [
@@ -167,7 +167,7 @@ class MemoryManagerTests(unittest.TestCase):
     def test_repair_rebuilds_index_and_reports_final_health(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory_manager.add_record("requirements", "Repair should rebuild incomplete indexes.", root=tmp)
-            (Path(tmp) / ".codex_memory" / "vector_index.bin").write_text("", encoding="utf-8")
+            (recall_config.memory_dir(tmp) / "vector_index.bin").write_text("", encoding="utf-8")
             report = memory_manager.repair(tmp)
             self.assertTrue(report["doctor"]["index_complete"])
             self.assertEqual(report["doctor"]["warnings"], [])
@@ -175,7 +175,7 @@ class MemoryManagerTests(unittest.TestCase):
     def test_sqlite_migration_preserves_old_schema_records(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             recall_config.ensure_config(tmp)
-            db = Path(tmp) / ".codex_memory" / "memory.sqlite"
+            db = recall_config.memory_dir(tmp) / "memory.sqlite"
             db.parent.mkdir(parents=True, exist_ok=True)
             connection = sqlite3.connect(db)
             try:
@@ -222,7 +222,7 @@ class MemoryManagerTests(unittest.TestCase):
     def test_vector_index_records_include_model_and_dimensions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory_manager.add_record("decisions", "Index records include portable metadata.", root=tmp)
-            line = (Path(tmp) / ".codex_memory" / "vector_index.bin").read_text(encoding="utf-8").splitlines()[0]
+            line = (recall_config.memory_dir(tmp) / "vector_index.bin").read_text(encoding="utf-8").splitlines()[0]
             payload = json.loads(line)
             self.assertEqual(payload["embedding_model"], "local-hash-v1")
             self.assertEqual(payload["dimensions"], 64)

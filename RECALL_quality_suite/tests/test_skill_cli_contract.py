@@ -5,7 +5,7 @@ import sqlite3
 import unittest
 from pathlib import Path
 
-from _harness import assert_memory_inside_project, memory_cmd, run_json, skill_cmd, temp_project
+from _harness import active_memory_dir, assert_memory_inside_project, memory_cmd, run_json, skill_cmd, temp_project
 
 
 class SkillCliContractTests(unittest.TestCase):
@@ -35,7 +35,7 @@ class SkillCliContractTests(unittest.TestCase):
                 project,
                 "save-insight",
                 "requirements",
-                "RECALL must keep memory under the active project .codex_memory directory.",
+                "RECALL must keep memory under the active project RECALL memory directory.",
                 "--summary",
                 "Memory is project-local.",
                 "--details",
@@ -55,7 +55,7 @@ class SkillCliContractTests(unittest.TestCase):
             self.assertEqual(saved["category"], "requirements")
             assert_memory_inside_project(project)
 
-            memory_dir = project / ".codex_memory"
+            memory_dir = active_memory_dir(project)
             self.assertTrue((memory_dir / "memory_config.json").exists())
             self.assertTrue((memory_dir / "memory.sqlite").exists())
             self.assertTrue((memory_dir / "vector_index.bin").exists())
@@ -63,7 +63,7 @@ class SkillCliContractTests(unittest.TestCase):
             retrieved = run_json(skill_cmd(project, "retrieve-memory", "project local memory", "--summary"))
             self.assertGreaterEqual(len(retrieved["results"]), 1)
             top_result = retrieved["results"][0]
-            self.assertIn(".codex_memory", top_result["content"])
+            self.assertIn("RECALL memory directory", top_result["content"])
             self.assertEqual(top_result["category"], "requirements")
 
             doctor = run_json(skill_cmd(project, "doctor"))
@@ -131,7 +131,7 @@ class SkillCliContractTests(unittest.TestCase):
     def test_repair_recovers_missing_vector_index(self) -> None:
         with temp_project() as project:
             run_json(skill_cmd(project, "save-insight", "architecture", "Storage is the source of truth for RECALL memory."))
-            index_path = project / ".codex_memory" / "vector_index.bin"
+            index_path = active_memory_dir(project) / "vector_index.bin"
             index_path.write_text("", encoding="utf-8")
 
             doctor_before = run_json(skill_cmd(project, "doctor"))

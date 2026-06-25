@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-- No unreleased changes.
+- Added provider-neutral `.recall/` storage for new projects while preserving existing `.codex_memory/` stores as legacy authoritative memory.
+- Added Kimi Code plugin support with `kimi.plugin.json`, `using-recall` session guidance, and a local stdio MCP server over the shared RECALL core.
+- Added provider provenance metadata support for public memory writes, including `origin_provider`, `origin_agent`, session/turn, workspace, branch, commit, capture channel, and provider applicability fields.
+- Updated package/build/quality gates to require Kimi artifacts and reject `.recall/` runtime data in release packages.
+- Optimized retrieval to avoid a duplicate record scan during index-completeness checks, improving quick benchmark query latency headroom.
 
 ## 1.0.0 - 2026-06-16
 

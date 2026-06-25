@@ -12,6 +12,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import config as recall_config
+
 
 DEFAULT_RECORDS = [
     (
@@ -21,7 +23,7 @@ DEFAULT_RECORDS = [
     ),
     (
         "requirements",
-        "RECALL must keep all runtime memory inside the active project .codex_memory directory.",
+        "RECALL must keep all runtime memory inside the active project .recall directory, or existing legacy .codex_memory store.",
         {"tags": ["smoke", "local-first"], "source": "smoke_recall", "status": "active"},
     ),
     (
@@ -126,17 +128,21 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
     checks: list[str] = []
 
     gitignore = project_root / ".gitignore"
+    gitignore_entries = [".recall/", ".codex_memory/"]
     if not gitignore.exists():
-        gitignore.write_text(".codex_memory/\n", encoding="utf-8")
-    elif ".codex_memory/" not in gitignore.read_text(encoding="utf-8"):
-        gitignore.write_text(gitignore.read_text(encoding="utf-8").rstrip() + "\n.codex_memory/\n", encoding="utf-8")
-    checks.append("project gitignore covers .codex_memory")
+        gitignore.write_text("".join(f"{entry}\n" for entry in gitignore_entries), encoding="utf-8")
+    else:
+        contents = gitignore.read_text(encoding="utf-8")
+        missing = [entry for entry in gitignore_entries if entry not in contents]
+        if missing:
+            gitignore.write_text(contents.rstrip() + "\n" + "".join(f"{entry}\n" for entry in missing), encoding="utf-8")
+    checks.append("project gitignore covers RECALL memory directories")
 
     init_output = run_command(memory_command(plugin_root, project_root, "init"), cwd=plugin_root)
     require(init_output[0] == 0, f"init failed: {init_output[2]}")
-    memory_dir = project_root / ".codex_memory"
-    require(memory_dir.exists(), ".codex_memory was not created in the project root")
-    require(memory_dir.resolve().is_relative_to(project_root.resolve()), ".codex_memory escaped project root")
+    memory_dir = recall_config.memory_dir(project_root)
+    require(memory_dir.exists(), f"{memory_dir.name} was not created in the project root")
+    require(memory_dir.resolve().is_relative_to(project_root.resolve()), f"{memory_dir.name} escaped project root")
     checks.append("memory initialized inside project root")
 
     for category, content, metadata in DEFAULT_RECORDS:
@@ -247,7 +253,7 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
         cwd=plugin_root,
     )
     require(not tool_result["results"], "PostToolUse created a durable command before finalization")
-    event_path = project_root / ".codex_memory" / "runtime" / "turns" / "smoke-session" / "smoke-turn.jsonl"
+    event_path = recall_config.memory_dir(project_root) / "runtime" / "turns" / "smoke-session" / "smoke-turn.jsonl"
     require(event_path.exists(), "PostToolUse did not buffer runtime evidence")
     checks.append("PostToolUse buffers evidence without durable command spam")
 

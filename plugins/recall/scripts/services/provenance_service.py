@@ -12,7 +12,7 @@ import config as recall_config
 import storage
 
 
-IGNORED_PARTS = {".git", ".codex_memory", "__pycache__", "node_modules", "dist"}
+IGNORED_PARTS = {".git", ".recall", ".codex_memory", "__pycache__", "node_modules", "dist"}
 
 
 def utc_now() -> str:

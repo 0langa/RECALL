@@ -5,6 +5,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import config as recall_config
+
 
 MANIFEST_NAMES = {
     "pyproject.toml",
@@ -41,7 +43,7 @@ def existing_memory_root(start: str | Path) -> Path | None:
     for candidate in ancestors(start):
         if candidate == home or candidate.parent == candidate:
             continue
-        if (candidate / ".codex_memory").is_dir():
+        if (candidate / recall_config.MEMORY_DIR_NAME).is_dir() or (candidate / recall_config.LEGACY_MEMORY_DIR_NAME).is_dir():
             return candidate
     return None
 

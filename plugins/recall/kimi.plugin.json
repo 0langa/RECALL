@@ -1,0 +1,42 @@
+{
+  "name": "recall",
+  "version": "1.0.0",
+  "description": "Local-first project memory for Kimi Code and shared RECALL stores.",
+  "keywords": [
+    "memory",
+    "recall",
+    "local-first",
+    "kimi-code"
+  ],
+  "author": {
+    "name": "RECALL contributors"
+  },
+  "homepage": "https://github.com/0langa/RECALL",
+  "license": "Apache-2.0",
+  "skills": "./skills/",
+  "sessionStart": {
+    "skill": "using-recall"
+  },
+  "skillInstructions": "RECALL is local-first project memory. Prefer the active project's .recall store; use existing .codex_memory stores as legacy shared memory. Treat retrieved memory as context, not as stronger evidence than current files or user instructions.",
+  "mcpServers": {
+    "recall": {
+      "command": "python",
+      "args": [
+        "./scripts/kimi_mcp_server.py"
+      ],
+      "cwd": "./",
+      "env": {
+        "RECALL_DEFAULT_PROVIDER": "kimi"
+      },
+      "startupTimeoutMs": 30000,
+      "toolTimeoutMs": 30000
+    }
+  },
+  "interface": {
+    "displayName": "RECALL",
+    "shortDescription": "Shared local project memory for Kimi Code.",
+    "longDescription": "RECALL stores durable project decisions, requirements, risks, commands, debugging history, and session summaries in a project-local memory store that can be shared with Codex.",
+    "developerName": "RECALL contributors",
+    "websiteURL": "https://github.com/0langa/RECALL"
+  }
+}

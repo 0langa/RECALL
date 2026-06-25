@@ -1,6 +1,6 @@
 # Install RECALL
 
-RECALL's installable plugin is kept at `plugins/recall/`. The repo includes a marketplace file at `.agents/plugins/marketplace.json` that points Codex at the plugin folder with `source.path: "./plugins/recall"`.
+RECALL's installable plugin is kept at `plugins/recall/`. The same folder contains the shared RECALL core, Codex integration files, and Kimi Code integration files. The repo includes a marketplace file at `.agents/plugins/marketplace.json` that points Codex at the plugin folder with `source.path: "./plugins/recall"`.
 
 ## Install From GitHub
 
@@ -41,6 +41,19 @@ Or open the plugin browser:
 
 Install `RECALL` from the `RECALL Local` marketplace and start a new thread.
 
+## Kimi Code
+
+From Kimi Code, install the plugin directory or GitHub repository path:
+
+```text
+/plugins install <path-to-RECALL>/plugins/recall
+/reload
+```
+
+The Kimi manifest is `kimi.plugin.json`. It loads the `using-recall` Skill at session start and declares a local MCP server named `recall`. Kimi plugin installation does not execute scripts. The MCP server starts after `/reload` or in a new session when enabled by Kimi Code.
+
+When invoking RECALL MCP tools from Kimi, pass the active repository root as `root`. Kimi-originated writes are stamped with `origin_provider: "kimi"` by the MCP adapter.
+
 ## Hook Trust
 
 RECALL bundles lifecycle hooks in `hooks/hooks.json`. Codex requires non-managed hooks to be reviewed and trusted before they run. In the Codex app, open Settings > Coding > Hooks.
@@ -49,7 +62,7 @@ Review the RECALL hook definitions and trust them when you are ready. After hook
 
 ## Local Runtime Data
 
-Project memories are written to `.codex_memory/` in the active project, not to the plugin folder. This directory is ignored by git in this repo.
+Project memories are written to `.recall/` in new projects, not to the plugin folder. Existing `.codex_memory/` stores remain supported and are used in place so current Codex projects keep their history. Ignore both `.recall/` and `.codex_memory/` in project repositories.
 
 If retrieval ever looks stale, first verify through the same bundled skill adapter the installed plugin uses:
 

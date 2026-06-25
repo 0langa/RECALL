@@ -58,6 +58,9 @@ def main() -> None:
     args = parser.parse_args()
 
     plugin_root = Path(args.plugin_root).expanduser().resolve()
+    sys.path.insert(0, str(plugin_root / "scripts"))
+    import config as recall_config  # noqa: PLC0415
+
     out_dir = Path(args.out_dir).expanduser().resolve()
     if out_dir.exists():
         shutil.rmtree(out_dir)
@@ -96,7 +99,7 @@ def main() -> None:
 
     # Rename for the desired agent-facing folder name while preserving actual runtime layout.
     (out_dir / "codex_memory").mkdir()
-    for item in (project / ".codex_memory").iterdir():
+    for item in recall_config.memory_dir(project).iterdir():
         target = out_dir / "codex_memory" / item.name
         if item.is_dir():
             shutil.copytree(item, target)

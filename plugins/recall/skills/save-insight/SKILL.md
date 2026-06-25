@@ -5,9 +5,9 @@ description: Use this skill proactively when debugging a durable failure, when t
 
 # Save Insight
 
-Use this skill when the user asks Codex to remember a decision, constraint, command, requirement, risk, preference, bug fix, task status, or other durable project context.
+Use this skill when the user asks the active coding agent to remember a decision, constraint, command, requirement, risk, preference, bug fix, task status, or other durable project context.
 
-RECALL is local-only project memory. Store data under the active project's `.codex_memory/` directory and never require hosted services or external APIs. Do not store secrets, credentials, tokens, private keys, passwords, or sensitive personal data.
+RECALL is local-only project memory. Store data under the active project's RECALL memory directory: `.recall/` for new projects, or existing `.codex_memory/` stores for legacy projects. Never require hosted services or external APIs. Do not store secrets, credentials, tokens, private keys, passwords, or sensitive personal data.
 
 ## Execution Path
 

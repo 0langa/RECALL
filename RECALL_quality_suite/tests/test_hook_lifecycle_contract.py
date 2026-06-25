@@ -6,12 +6,12 @@ import sys
 import unittest
 from pathlib import Path
 
-from _harness import hook_cmd, memory_cmd, run_json, run_text, skill_cmd, temp_project
+from _harness import active_memory_dir, hook_cmd, memory_cmd, run_json, run_text, skill_cmd, temp_project
 
 
 class HookLifecycleContractTests(unittest.TestCase):
     def runtime_events(self, project: Path, session_id: str, turn_id: str) -> list[dict]:
-        path = project / ".codex_memory" / "runtime" / "turns" / (session_id or "session") / f"{turn_id or 'turn'}.jsonl"
+        path = active_memory_dir(project) / "runtime" / "turns" / (session_id or "session") / f"{turn_id or 'turn'}.jsonl"
         if not path.exists():
             return []
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]

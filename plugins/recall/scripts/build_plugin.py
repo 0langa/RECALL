@@ -21,6 +21,7 @@ INCLUDE = [
     "docs",
     "examples",
     "memory_config.template.json",
+    "kimi.plugin.json",
     "README.md",
     "CHANGELOG.md",
     "LICENSE",

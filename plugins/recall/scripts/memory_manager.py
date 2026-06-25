@@ -36,6 +36,17 @@ CARD_STATUSES = {
     "archived",
 }
 AUTO_WRITE_SOURCES = {"post_tool_use", "pre_compact", "stop"}
+PROVIDER_METADATA_FIELDS = {
+    "origin_provider",
+    "origin_agent",
+    "source_session",
+    "source_turn",
+    "cwd",
+    "branch",
+    "commit",
+    "capture_channel",
+    "applies_to_provider",
+}
 
 
 def utc_now() -> str:
@@ -81,6 +92,17 @@ def normalize_tags(tags: list[str] | None) -> list[str]:
         if cleaned and cleaned not in normalized:
             normalized.append(cleaned)
     return normalized
+
+
+def provider_metadata(**values: str | None) -> dict[str, str]:
+    metadata: dict[str, str] = {}
+    for key, value in values.items():
+        if key not in PROVIDER_METADATA_FIELDS or value is None:
+            continue
+        cleaned = str(value).strip()
+        if cleaned:
+            metadata[key] = cleaned
+    return metadata
 
 
 def build_card_metadata(

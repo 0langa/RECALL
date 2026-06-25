@@ -74,9 +74,9 @@ class StorageV2Tests(unittest.TestCase):
                 connection.commit()
 
             storage.init_store(tmp)
-            first_backups = list((Path(tmp) / ".codex_memory" / "backups").glob("memory-v1-*.sqlite"))
+            first_backups = list((recall_config.memory_dir(tmp) / "backups").glob("memory-v1-*.sqlite"))
             storage.init_store(tmp)
-            second_backups = list((Path(tmp) / ".codex_memory" / "backups").glob("memory-v1-*.sqlite"))
+            second_backups = list((recall_config.memory_dir(tmp) / "backups").glob("memory-v1-*.sqlite"))
 
             self.assertEqual(len(first_backups), 1)
             self.assertEqual(first_backups, second_backups)

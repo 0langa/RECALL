@@ -7,7 +7,7 @@ description: Use this skill proactively when creating a reusable category, when 
 
 Use this skill when the user wants a new memory category or wants to tune how strongly an existing category is retrieved.
 
-RECALL is local-only project memory. Category definitions are stored in the active project's `.codex_memory/memory_config.json` file and never require hosted services or external APIs. Do not put secrets, credentials, tokens, private keys, passwords, or sensitive personal data in category names or descriptions.
+RECALL is local-only project memory. Category definitions are stored in the active project's RECALL memory config: `.recall/memory_config.json` for new projects, or existing `.codex_memory/memory_config.json` stores for legacy projects. Never require hosted services or external APIs. Do not put secrets, credentials, tokens, private keys, passwords, or sensitive personal data in category names or descriptions.
 
 ## Execution Path
 
