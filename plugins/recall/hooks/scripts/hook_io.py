@@ -10,27 +10,31 @@ from pathlib import Path
 from typing import Any
 
 import _recall_path  # noqa: F401
+from hook_events import HookEvent
 import project_context
+
+
+def normalize_hook_event(
+    payload: dict[str, Any],
+    raw: str = "",
+    *,
+    fallback_event: str,
+    provider: str = "codex",
+    fallback_root: str | None = None,
+) -> HookEvent:
+    return HookEvent.from_payload(
+        payload,
+        raw,
+        fallback_event=fallback_event,
+        provider=provider,
+        fallback_root=fallback_root,
+    )
 
 
 def idempotency_key(payload: dict[str, Any], fallback_event: str) -> str | None:
     """Return a stable hook-delivery key when Codex provides delivery identity."""
 
-    event = event_name(payload, fallback_event)
-    tool_use_id = string_field(payload, "tool_use_id")
-    session_id = string_field(payload, "session_id")
-    turn_id = string_field(payload, "turn_id")
-    if not tool_use_id and not turn_id:
-        return None
-    identity = {
-        "event": event,
-        "session_id": session_id,
-        "turn_id": turn_id,
-        "tool_use_id": tool_use_id,
-        "trigger": string_field(payload, "trigger"),
-    }
-    digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode("utf-8")).hexdigest()
-    return f"hook:{digest}"
+    return normalize_hook_event(payload, fallback_event=fallback_event).idempotency_key(fallback_event)
 
 
 def read_hook_input() -> tuple[dict[str, Any], str]:
@@ -62,8 +66,7 @@ def cwd_from_payload(payload: dict[str, Any], fallback: str | None = None) -> st
 
 
 def event_name(payload: dict[str, Any], fallback: str) -> str:
-    value = payload.get("hook_event_name")
-    return value if isinstance(value, str) and value.strip() else fallback
+    return normalize_hook_event(payload, fallback_event=fallback).event_name
 
 
 def string_field(payload: dict[str, Any], *names: str) -> str:
@@ -121,56 +124,19 @@ def compact_json(value: Any, max_chars: int = 1200) -> str:
 
 
 def pre_compact_text(payload: dict[str, Any], raw: str) -> str:
-    direct = first_present(
-        string_field(payload, "summary", "compaction_summary", "context", "notes"),
-        string_field(payload, "last_assistant_message", "assistant_message"),
-    )
-    if direct:
-        return direct
-    messages = strings_from_messages(payload.get("messages") or payload.get("transcript"))
-    if messages:
-        return "\n".join(messages[-8:])
-    return ""
+    return normalize_hook_event(payload, raw, fallback_event="PreCompact").compaction_text()
 
 
 def stop_text(payload: dict[str, Any], raw: str) -> str:
-    direct = string_field(
-        payload,
-        "last_assistant_message",
-        "assistant_message",
-        "final_assistant_message",
-        "summary",
-    )
-    if direct:
-        return direct
-    messages = strings_from_messages(payload.get("messages") or payload.get("transcript"))
-    if messages:
-        return messages[-1]
-    return ""
+    return normalize_hook_event(payload, raw, fallback_event="Stop").stop_text()
 
 
 def tool_command(payload: dict[str, Any]) -> str:
-    tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
-    return string_field(tool_input, "command", "cmd", "description")
+    return normalize_hook_event(payload, fallback_event="PostToolUse").command
 
 
 def tool_response_text(payload: dict[str, Any], raw: str) -> str:
-    response = payload.get("tool_response")
-    if isinstance(response, dict):
-        return "\n".join(
-            part
-            for part in [
-                compact_json(response.get("stdout"), 1500),
-                compact_json(response.get("stderr"), 1500),
-                compact_json(response.get("output"), 1500),
-                compact_json(response.get("message"), 800),
-                f"exit_code: {response.get('exit_code')}" if response.get("exit_code") is not None else "",
-                "success: true" if response.get("success") is True else "",
-                "success: false" if response.get("success") is False else "",
-            ]
-            if part
-        )
-    return compact_json(response, 2000)
+    return normalize_hook_event(payload, raw, fallback_event="PostToolUse").output_text()
 
 
 def patch_targets(command: str) -> list[str]:

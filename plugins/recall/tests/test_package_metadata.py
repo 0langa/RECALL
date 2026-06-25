@@ -130,6 +130,7 @@ class PackageMetadataTests(unittest.TestCase):
                 package.writestr("skills/define-category/SKILL.md", "# Define")
                 package.writestr("skills/using-recall/SKILL.md", "# Using")
                 package.writestr("scripts/kimi_mcp_server.py", "print('ok')\n")
+                package.writestr("scripts/hook_events.py", "print('ok')\n")
                 package.writestr("scripts/recall_skill.py", "print('ok')\n")
                 package.writestr("scripts/memory_manager.py", "print('ok')\n")
             completed = subprocess.run(
@@ -153,6 +154,7 @@ class PackageMetadataTests(unittest.TestCase):
                 package.writestr("skills/define-category/SKILL.md", "# Define")
                 package.writestr("skills/using-recall/SKILL.md", "# Using")
                 package.writestr("scripts/kimi_mcp_server.py", "print('ok')\n")
+                package.writestr("scripts/hook_events.py", "print('ok')\n")
                 package.writestr("scripts/recall_skill.py", "print('ok')\n")
                 package.writestr("scripts/memory_manager.py", "token=dummy-secret-value\n")
                 package.writestr(".codex_memory/memory.sqlite", "")

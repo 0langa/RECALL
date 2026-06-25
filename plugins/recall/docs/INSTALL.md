@@ -54,6 +54,8 @@ The Kimi manifest is `kimi.plugin.json`. It loads the `using-recall` Skill at se
 
 When invoking RECALL MCP tools from Kimi, pass the active repository root as `root`. Kimi-originated writes are stamped with `origin_provider: "kimi"` by the MCP adapter.
 
+Optional Kimi hook setup is documented in [KIMI_CODE.md](KIMI_CODE.md). Hooks are configured in `~/.kimi-code/config.toml`; Kimi plugin manifests do not install hook rules.
+
 ## Hook Trust
 
 RECALL bundles lifecycle hooks in `hooks/hooks.json`. Codex requires non-managed hooks to be reviewed and trusted before they run. In the Codex app, open Settings > Coding > Hooks.

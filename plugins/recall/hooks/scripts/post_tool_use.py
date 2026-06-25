@@ -11,12 +11,9 @@ import _recall_path  # noqa: F401
 import capture_policy
 import config as recall_config
 from hook_io import (
-    idempotency_key,
+    normalize_hook_event,
     patch_targets,
     read_hook_input,
-    root_from_payload,
-    tool_command,
-    tool_response_text,
 )
 import security
 import turn_buffer
@@ -68,20 +65,29 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root")
     parser.add_argument("--command")
+    parser.add_argument("--provider", default="codex")
     args = parser.parse_args()
     payload, raw = read_hook_input()
-    root = root_from_payload(payload, args.root)
-    session_id = str(payload.get("session_id") or "")
-    turn_id = str(payload.get("turn_id") or "")
+    event = normalize_hook_event(
+        payload,
+        raw,
+        fallback_event="PostToolUse",
+        provider=args.provider,
+        fallback_root=args.root,
+    )
+    compat_payload = event.compatibility_payload()
+    root = event.root
+    session_id = event.session_id
+    turn_id = event.turn_id
     if not turn_buffer.is_active(root, session_id, turn_id):
         if not (root and recall_config.project_is_active(root) and capture_policy.auto_capture_allowed(root)):
             print(json.dumps({"continue": True}))
             return
         turn_buffer.mark_active(root, session_id, turn_id, "")
 
-    tool_name = str(payload.get("tool_name") or "").strip()
-    command = args.command or tool_command(payload)
-    output = tool_response_text(payload, raw)
+    tool_name = event.tool_name
+    command = args.command or event.command
+    output = event.output_text()
     if not output and not args.command:
         print(json.dumps({"continue": True}))
         return
@@ -92,7 +98,7 @@ def main() -> None:
     safe_content = security.redact_text(content)
     decision = capture_policy.classify_tool_capture(
         root=root,
-        payload=payload,
+        payload=compat_payload,
         tool_name=tool_name,
         command=command or "",
         content=safe_content,
@@ -115,9 +121,10 @@ def main() -> None:
         "record_kind": decision.record_kind,
         "tool_name": tool_name,
         "command": command,
-        "tool_use_id": payload.get("tool_use_id"),
-        "exit_code": capture_policy.exit_code(payload, safe_content),
-        "idempotency_key": idempotency_key(payload, "PostToolUse"),
+        "tool_use_id": compat_payload.get("tool_use_id"),
+        "exit_code": capture_policy.exit_code(compat_payload, safe_content),
+        "idempotency_key": event.idempotency_key("PostToolUse"),
+        **event.provider_metadata(capture_channel="hook"),
     }
     turn_buffer.append_event(root, session_id, turn_id, event)
     if cfg.get("observability_mode") == "debug":

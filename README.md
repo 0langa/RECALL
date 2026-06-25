@@ -56,6 +56,8 @@ From Kimi Code, install the same plugin directory:
 
 RECALL's Kimi manifest loads the `using-recall` session Skill and declares a local MCP server named `recall`. Plugin installation does not execute code; the MCP server starts after reload or in a new session when enabled by Kimi Code. When using RECALL tools from Kimi, pass the active repository root as `root`.
 
+Optional Kimi hook setup lives in [`plugins/recall/docs/KIMI_CODE.md`](plugins/recall/docs/KIMI_CODE.md).
+
 ## Build The Plugin Zip
 
 The release build is cross-platform and Python-based:

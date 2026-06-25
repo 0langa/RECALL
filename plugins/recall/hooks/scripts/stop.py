@@ -12,7 +12,7 @@ import _recall_path  # noqa: F401
 import capture_policy
 import config as recall_config
 from finalizer_prompt import build_finalizer_prompt
-from hook_io import read_hook_input, root_from_payload, stop_text
+from hook_io import normalize_hook_event, read_hook_input
 import observability
 import security
 from services.finalizer_service import apply_finalizer_batch
@@ -124,22 +124,30 @@ def quiet_result_message(result: dict) -> str | None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root")
+    parser.add_argument("--provider", default="codex")
     args = parser.parse_args()
     try:
         payload, raw = read_hook_input()
-        root = root_from_payload(payload, args.root)
-        session_id = str(payload.get("session_id") or "")
-        turn_id = str(payload.get("turn_id") or "")
+        event = normalize_hook_event(
+            payload,
+            raw,
+            fallback_event="Stop",
+            provider=args.provider,
+            fallback_root=args.root,
+        )
+        root = event.root
+        session_id = event.session_id
+        turn_id = event.turn_id
         if not turn_buffer.is_active(root, session_id, turn_id):
             output({"continue": True})
             return
 
-        if payload.get("stop_hook_active") is True:
+        if event.stop_hook_active:
             turn_buffer.mark_finalized(root, session_id, turn_id)
             output({"continue": True})
             return
 
-        notes = security.redact_text(stop_text(payload, raw))
+        notes = security.redact_text(event.stop_text())
         if capture_policy.should_store_stop_note(root, notes):
             turn_buffer.append_event(root, session_id, turn_id, {
                 "durable_candidate": True,
@@ -149,6 +157,7 @@ def main() -> None:
                 "category_hint": "project_state",
                 "tags": ["stop", "assistant-summary"],
                 "record_kind": "turn_summary_evidence",
+                **event.provider_metadata(capture_channel="hook"),
             })
 
         events = turn_buffer.load_events(root, session_id, turn_id)
@@ -176,10 +185,10 @@ def main() -> None:
             root,
             session_id=session_id,
             turn_id=turn_id,
-            cwd=str(payload.get("cwd") or root or ""),
+            cwd=str(event.cwd or root or ""),
             plugin_root=str(root_path),
             adapter=str(root_path / "scripts" / "recall_skill.py"),
-            transcript_path=str(payload.get("transcript_path") or "") or None,
+            transcript_path=event.transcript_path,
             last_assistant_message=notes,
             events=events,
         )

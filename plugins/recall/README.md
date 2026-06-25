@@ -42,6 +42,8 @@ For Kimi Code from a local checkout:
 
 The Kimi manifest loads `using-recall` at session start and declares a local MCP server named `recall`. Kimi plugins do not execute install-time code; the MCP server starts after reload or in a new session when enabled. When calling RECALL MCP tools, pass the active repository root as `root`.
 
+See [docs/KIMI_CODE.md](docs/KIMI_CODE.md) for optional Kimi hook `config.toml` snippets.
+
 For direct skill-adapter checks from this plugin folder:
 
 Initialize and persistently activate memory for the current project:

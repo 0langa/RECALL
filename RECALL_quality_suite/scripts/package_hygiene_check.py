@@ -34,6 +34,7 @@ REQUIRED_FILES = [
     "hooks/hooks.json",
     "scripts/recall_skill.py",
     "scripts/kimi_mcp_server.py",
+    "scripts/hook_events.py",
     "skills/save-insight/SKILL.md",
     "skills/retrieve-memory/SKILL.md",
     "skills/define-category/SKILL.md",

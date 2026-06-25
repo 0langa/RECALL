@@ -18,6 +18,18 @@ def run_hook(script: str, payload: dict) -> dict:
     return run_hook_raw(script, json.dumps(payload))
 
 
+def run_hook_with_args(script: str, payload: dict, *args: str) -> dict:
+    completed = subprocess.run(
+        [sys.executable, str(ROOT / "hooks" / "scripts" / script), *args],
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        check=True,
+        cwd=ROOT,
+    )
+    return json.loads(completed.stdout)
+
+
 def run_hook_raw(script: str, raw: str) -> dict:
     completed = subprocess.run(
         [sys.executable, str(ROOT / "hooks" / "scripts" / script)],
@@ -898,6 +910,43 @@ class HookTests(unittest.TestCase):
             self.assertEqual(stop.get("systemMessage"), "RECALL saved 1 memory.")
             result = query_memory(tmp, "does_not_exist", "debug_history")
             self.assertEqual(len(result["results"]), 1)
+
+    def test_kimi_post_tool_use_failure_payload_buffers_provider_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_hook_with_args(
+                "prompt_inspector.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "kimi-session",
+                    "turn_id": "kimi-turn",
+                    "hook_event_name": "UserPromptSubmit",
+                    "prompt": "@recall initialize this project",
+                },
+                "--provider",
+                "kimi",
+            )
+            output = run_hook_with_args(
+                "post_tool_use.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "kimi-session",
+                    "turn_id": "kimi-turn",
+                    "hook_event_name": "PostToolUseFailure",
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "python -m pytest tests/missing.py"},
+                    "error": "failed with AssertionError: missing tests",
+                },
+                "--provider",
+                "kimi",
+            )
+            events = runtime_events(tmp, "kimi-session", "kimi-turn")
+
+            self.assertEqual(output, {"continue": True})
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0]["origin_provider"], "kimi")
+            self.assertEqual(events[0]["capture_channel"], "hook")
+            self.assertEqual(events[0]["exit_code"], 1)
+            self.assertEqual(events[0]["signal"], "test_fail")
 
     def test_post_tool_use_stores_apply_patch_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

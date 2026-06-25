@@ -25,6 +25,7 @@ REQUIRED_PATHS = {
     "skills/using-recall/SKILL.md",
     "skills/define-category/SKILL.md",
     "scripts/kimi_mcp_server.py",
+    "scripts/hook_events.py",
     "scripts/recall_skill.py",
     "scripts/memory_manager.py",
 }

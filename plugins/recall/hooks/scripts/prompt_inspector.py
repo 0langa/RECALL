@@ -10,7 +10,7 @@ from pathlib import Path
 
 import _recall_path  # noqa: F401
 import capture_policy
-from hook_io import additional_context, cwd_from_payload, read_hook_input, root_from_payload
+from hook_io import additional_context, normalize_hook_event, read_hook_input
 import memory_manager
 import config as recall_config
 import observability
@@ -37,11 +37,20 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root")
     parser.add_argument("--category", default="preferences")
+    parser.add_argument("--provider", default="codex")
     args = parser.parse_args()
     payload, raw = read_hook_input()
-    cwd = cwd_from_payload(payload, args.root)
-    resolved_root = root_from_payload(payload, args.root)
-    prompt = str(payload.get("prompt") or raw).strip()
+    event = normalize_hook_event(
+        payload,
+        raw,
+        fallback_event="UserPromptSubmit",
+        provider=args.provider,
+        fallback_root=args.root,
+    )
+    compat_payload = event.compatibility_payload()
+    cwd = event.cwd or event.root
+    resolved_root = event.root
+    prompt = event.prompt.strip()
     if not prompt:
         print(json.dumps({"continue": True}))
         return
@@ -80,13 +89,19 @@ def main() -> None:
     cfg = recall_config.load_config_if_present(root)
     recall_mode = str(cfg.get("recall_mode", "relevant"))
 
-    session_id = str(payload.get("session_id") or "")
-    turn_id = str(payload.get("turn_id") or "")
+    session_id = event.session_id
+    turn_id = event.turn_id
     turn_buffer.mark_active(root, session_id, turn_id, prompt)
     observability.trace(
         root,
         "prompt_activation",
-        {"explicit": explicit_recall, "session_id": session_id, "turn_id": turn_id, "recall_mode": recall_mode},
+        {
+            "explicit": explicit_recall,
+            "session_id": session_id,
+            "turn_id": turn_id,
+            "recall_mode": recall_mode,
+            "origin_provider": event.provider,
+        },
     )
 
     category_match = CATEGORY_RE.search(cue_text) if explicit_recall else None
@@ -125,7 +140,10 @@ def main() -> None:
                 summary=remembered[:220],
                 source="prompt_inspector",
                 status="active",
-                base=capture_policy.claim_metadata(category, remembered),
+                base={
+                    **capture_policy.claim_metadata(category, remembered),
+                    **event.provider_metadata(capture_channel="hook"),
+                },
             ),
             root,
         )
@@ -141,6 +159,7 @@ def main() -> None:
 
     prompt_event = capture_policy.classify_prompt_event(memory_text or cue_text or prompt)
     if prompt_event is not None:
+        prompt_event = {**prompt_event, **event.provider_metadata(capture_channel="hook")}
         turn_buffer.append_event(root, session_id, turn_id, prompt_event)
 
     retrieval_text = memory_text or cue_text or prompt
