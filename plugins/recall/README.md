@@ -133,6 +133,12 @@ python ./scripts/recall_skill.py define-category api_contracts --description "St
 Run tests:
 
 ```bash
+python ./scripts/run_tests.py
+```
+
+Run the same tests sequentially:
+
+```bash
 python -m unittest discover -s tests
 ```
 

@@ -82,7 +82,7 @@ def build(plugin_root: Path, output_dir: Path, python: str, skip_validator: bool
     archive = output_dir / "recall.zip"
     package_root = output_dir / "_package"
 
-    run_checked([python, "-m", "unittest", "discover", "-s", "tests"], plugin_root)
+    run_checked([python, str(plugin_root / "scripts" / "run_tests.py"), "--exclude-smoke"], plugin_root)
 
     validator = default_validator()
     if validator.is_file() and not skip_validator:

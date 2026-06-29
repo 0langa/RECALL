@@ -6,7 +6,7 @@ Run local plugin commands from `<repo-root>/plugins/recall` unless a step explic
 
 ## Local Gates
 
-- [x] `python -m unittest discover -s tests` (124+ tests)
+- [x] `python .\scripts\run_tests.py` (complete parallel unittest suite; use `python -m unittest discover -s tests` for sequential debugging)
 - [x] Persistent activation, greenfield initialization, deactivation, buffered hooks, atomic finalization, idempotency, and relevance calibration are covered.
 - [x] Quick seed benchmark is under 20 seconds and full seed benchmark is under 90 seconds.
 - [x] Corpus migration creates a backup and leaves zero active automatic file-edit/build/test noise records.
