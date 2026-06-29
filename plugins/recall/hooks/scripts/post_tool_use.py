@@ -38,6 +38,29 @@ def exit_code_from_output(output: str) -> int | None:
         return None
 
 
+def unwrap_tool_wrapper_line(line: str) -> list[str]:
+    text = clean_output_line(line)
+    if not text.startswith("{"):
+        return [text] if text else []
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return [text] if text else []
+    if not isinstance(payload, dict) or not isinstance(payload.get("message"), str):
+        return [text] if text else []
+    message = payload["message"].strip()
+    if not message:
+        return []
+    return [clean_output_line(part) for part in message.splitlines() if clean_output_line(part)]
+
+
+def normalized_output_lines(output: str) -> list[str]:
+    lines: list[str] = []
+    for line in output.splitlines():
+        lines.extend(unwrap_tool_wrapper_line(line))
+    return [line for line in lines if line]
+
+
 def compact_tool_response(tool_name: str, command: str | None, output: str) -> str:
     if tool_name == "apply_patch":
         targets = patch_targets(command or "")
@@ -45,7 +68,7 @@ def compact_tool_response(tool_name: str, command: str | None, output: str) -> s
         status = "success" if SUCCESS_RE.search(output) else "completed"
         return f"Tool: apply_patch\nFiles: {target_text}\nResult: {status}"
 
-    lines = [clean_output_line(line) for line in output.splitlines() if clean_output_line(line)]
+    lines = normalized_output_lines(output)
     selected: list[str] = []
     for line in lines:
         if ERROR_RE.search(line) or SUCCESS_RE.search(line) or TEST_RESULT_LINE_RE.search(line):

@@ -31,6 +31,14 @@ class PolicyAndContextTests(unittest.TestCase):
         self.assertNotIn("[](-local)", event["summary"])
         self.assertNotIn("Use RECALL", event["summary"])
 
+    def test_transient_command_prompt_is_not_project_requirement(self) -> None:
+        prompt = (
+            "@recall Run exactly this shell command: uv run pytest -q --tb=short . "
+            "Use shell/Bash only for that command. Do not call RECALL MCP save tools. "
+            "After the command, reply with a one-line summary."
+        )
+        self.assertIsNone(capture_policy.classify_prompt_event(prompt))
+
     def test_replayed_idempotency_key_does_not_create_duplicate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             metadata = memory_manager.build_card_metadata(

@@ -974,6 +974,66 @@ class HookTests(unittest.TestCase):
             self.assertEqual(events[0]["exit_code"], 1)
             self.assertEqual(events[0]["signal"], "test_fail")
 
+    def test_kimi_json_wrapper_failure_finalizes_as_distilled_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_hook_with_args(
+                "prompt_inspector.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "kimi-json-session",
+                    "turn_id": "kimi-json-turn",
+                    "hook_event_name": "UserPromptSubmit",
+                    "prompt": "@recall initialize this project",
+                },
+                "--provider",
+                "kimi",
+            )
+            wrapper = json.dumps(
+                {
+                    "code": "internal",
+                    "message": "error: Failed to spawn: `pytest`\n  Caused by: program not found\nCommand failed with exit code: 2.",
+                    "retryable": False,
+                }
+            )
+            run_hook_with_args(
+                "post_tool_use.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "kimi-json-session",
+                    "turn_id": "kimi-json-turn",
+                    "hook_event_name": "PostToolUseFailure",
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "uv run pytest -q --tb=short"},
+                    "error": wrapper,
+                },
+                "--provider",
+                "kimi",
+            )
+            events = runtime_events(tmp, "kimi-json-session", "kimi-json-turn")
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0]["summary"], "error: Failed to spawn: `pytest`")
+            self.assertNotIn('{"code"', events[0]["details"])
+
+            stop = run_hook_with_args(
+                "stop.py",
+                {
+                    "cwd": tmp,
+                    "session_id": "kimi-json-session",
+                    "turn_id": "kimi-json-turn",
+                    "hook_event_name": "Stop",
+                    "last_assistant_message": "The Kimi pytest command failed because pytest was not available.",
+                },
+                "--provider",
+                "kimi",
+            )
+            self.assertEqual(stop.get("systemMessage"), "RECALL saved 1 memory.")
+            result = query_memory(tmp, "pytest not available", "debug_history")
+            self.assertEqual(len(result["results"]), 1)
+            stored = result["results"][0]["content"]
+            self.assertIn("Failed to spawn", stored)
+            self.assertNotIn('{"code"', stored)
+            self.assertEqual(result["results"][0]["metadata"]["source"], "finalizer")
+
     def test_post_tool_use_stores_apply_patch_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             activate_recall(tmp, "", "turn-patch")

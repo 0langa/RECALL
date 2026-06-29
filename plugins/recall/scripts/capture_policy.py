@@ -57,6 +57,15 @@ ORPHANED_ACTIVATION_SENTENCE_RE = re.compile(
     r"(?i)^\s*(?:please\s+)?use\s+(?:for|in|on)\s+(?:this\s+)?(?:project|repo|repository|folder|workspace)\s*[.!?:;-]*\s*"
 )
 LEADING_MEMORY_PHRASE_RE = re.compile(r"(?i)^\s*(?:remember\s+(?:this|that)\s*[:\-]\s*)")
+TRANSIENT_TASK_CONTROL_RE = re.compile(
+    r"(?i)\b("
+    r"run\s+(?:exactly\s+)?(?:this\s+)?(?:shell\s+)?command|"
+    r"execute\s+(?:exactly\s+)?(?:this\s+)?(?:shell\s+)?command|"
+    r"use\s+(?:shell|bash)\s+only|"
+    r"do\s+not\s+(?:call|use)\s+(?:recall\s+)?(?:mcp|tools?|skills?)|"
+    r"reply\s+(?:only|with|in)\b"
+    r")\b"
+)
 
 
 @dataclass(frozen=True)
@@ -313,6 +322,8 @@ def claim_metadata(category: str, text: str) -> dict[str, str]:
 def classify_prompt_event(prompt: str) -> dict[str, Any] | None:
     clean = normalize_prompt_memory_text(prompt)
     if not clean:
+        return None
+    if TRANSIENT_TASK_CONTROL_RE.search(clean):
         return None
     if CONDITIONAL_COMMAND_MEMORY_RE.search(clean):
         return None

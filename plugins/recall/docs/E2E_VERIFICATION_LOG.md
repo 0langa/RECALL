@@ -121,3 +121,44 @@ Cross-provider checks:
 - Kimi, running in the Codex-written test project, retrieved the Codex memory through hook-injected RECALL context.
 - Codex, running in the Kimi-written test project, retrieved the Kimi memory through hook-injected RECALL context.
 - This confirms Codex and Kimi share project-local `.recall/` memory and use provider metadata as provenance, not as separate memory stores.
+
+## Kimi Tool Wrapper Finalizer Retest
+
+Date: 2026-06-29
+
+Environment:
+
+- Codex install: `recall@recall-local` reinstalled from the repository marketplace into `<home>\.codex\plugins\cache\recall-local\recall\1.0.0`
+- Kimi install: fresh `dist/recall.zip` expanded into `<home>\.kimi-code\plugins\managed\recall`
+- Kimi test project: `<temp>\recall-kimi-wrapperfix2-e2e`
+- Codex test project: `<temp>\recall-codex-wrapperfix-e2e`
+
+Automated verification:
+
+- `python -m unittest discover -s plugins\recall\tests`: pass, 153 tests.
+- `python RECALL_quality_suite\scripts\run_recall_quality_suite.py --repo-root . --quick`: pass.
+- `python build_plugin.py --skip-validator`: pass; package inspection reported 81 entries, no warnings, no errors.
+- `kimi doctor`: pass after installing the rebuilt RECALL copy.
+
+Issue found and fixed:
+
+- Kimi Code can report failed shell tools as JSON envelopes whose `message` field contains the real failure, for example a failed `uv run pytest -q --tb=short .` surfaced as `{"code":"internal","message":"error: Failed to spawn: `pytest`...","retryable":false}`.
+- RECALL now unwraps those envelopes before compacting tool evidence, so finalizer candidates contain the distilled failure text rather than raw provider wrapper JSON.
+- The finalizer service also ignores tool-tagged cards that still copy raw wrapper JSON, which protects the durable store if an agent tries to save the envelope directly.
+- Transient operational prompts such as "Run exactly this shell command" and "Do not call RECALL MCP save tools" are no longer classified as durable project requirements.
+
+Live Kimi checks:
+
+- `kimi -p` in a fresh project with `@recall initialize this project` activated RECALL.
+- A follow-up `kimi -p` prompt ran `uv run pytest -q --tb=short .` through the console; Kimi returned the failed spawn condition for `pytest`.
+- Installed Kimi RECALL `doctor` reported `records: 1`, `index_records: 1`, `index_complete: true`, and no warnings.
+- `review-memory` showed one active `debug_history` record from the finalizer with a `Failed to spawn` summary for `pytest` and tags `tool-use`, `bash`, `failure`, and `tests`.
+- The durable memory content contained `Tool: Bash`, the command, the `Failed to spawn` failure, and `exit_code: 2`; it did not contain `{"code"`, `"retryable"`, or the transient test prompt.
+
+Live Codex checks:
+
+- `codex exec --dangerously-bypass-hook-trust --enable hooks` in a fresh project with `@recall initialize this project` activated RECALL.
+- A follow-up `codex exec` prompt ran the same missing-`pytest` command. The Codex project memory remained free of raw wrapper JSON and did not store the transient command prompt as a requirement.
+- A second `codex exec` prompt with `@recall remember this: requirements: Codex wrapper-fix e2e marker 20260629-1738` saved one explicit requirement through the installed plugin.
+- Installed Codex RECALL `doctor` reported `records: 1`, `index_records: 1`, `index_complete: true`, and no warnings.
+- `review-memory` showed exactly the explicit Codex marker, with no active noise candidates and a signal-to-noise estimate of `1.0`.

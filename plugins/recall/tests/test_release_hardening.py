@@ -174,6 +174,41 @@ class ReleaseHardeningTests(unittest.TestCase):
             self.assertEqual(result["operations"][0]["action"], "saved")
             self.assertEqual(len(list(memory_manager.iter_records(tmp))), 1)
 
+    def test_finalizer_ignores_raw_tool_wrapper_cards(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.activate_project(tmp, activated_by="test")
+            raw_wrapper = (
+                'Tool: Bash\n'
+                'Command: uv run pytest -q --tb=short\n'
+                '{"code":"internal","message":"error: Failed to spawn: `pytest`\\n'
+                '  Caused by: program not found\\nCommand failed with exit code: 2.",'
+                '"retryable":false}\n'
+                'exit_code: 2'
+            )
+            result = apply_finalizer_batch(
+                batch(
+                    "session-a",
+                    "turn-wrapper",
+                    [
+                        {
+                            "op": "save",
+                            "card": {
+                                "category": "debug_history",
+                                "content": raw_wrapper,
+                                "summary": raw_wrapper[:220],
+                                "details": raw_wrapper,
+                                "tags": ["tool-use", "bash", "failure", "tests"],
+                                "explicit_user_evidence": False,
+                            },
+                        }
+                    ],
+                ),
+                tmp,
+            )
+            self.assertEqual(result["operations"][0]["action"], "ignored")
+            self.assertEqual(result["operations"][0]["reason"], "raw_tool_wrapper")
+            self.assertEqual(list(memory_manager.iter_records(tmp)), [])
+
     def test_successful_quiet_finalization_removes_turn_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             recall_config.activate_project(tmp, activated_by="test")

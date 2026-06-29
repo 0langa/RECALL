@@ -116,6 +116,20 @@ def _prepare_card(card: dict[str, Any], session_id: str, turn_id: str) -> dict[s
                 "turn_id": turn_id,
             },
         }
+    if _looks_like_raw_tool_wrapper_card(content, summary, details, normalized_tags):
+        return {
+            "ignored": True,
+            "reason": "raw_tool_wrapper",
+            "category": category,
+            "content": content,
+            "metadata": {
+                "source": "finalizer",
+                "status": "ignored",
+                "reason": "raw_tool_wrapper",
+                "session_id": session_id,
+                "turn_id": turn_id,
+            },
+        }
     metadata = {
         "schema": "recall.turn_card.v1",
         "summary": summary,
@@ -154,6 +168,18 @@ def _looks_like_raw_prompt_card(content: str, summary: str, details: str, tags: 
     marker_count = sum(1 for marker in PROMPT_PLAN_MARKERS if marker in lowered)
     duplicated_prompt = summary and details and summary.strip() == details.strip() and content.startswith(summary[:200])
     return prompt_tagged and (marker_count >= 2 or duplicated_prompt)
+
+
+def _looks_like_raw_tool_wrapper_card(content: str, summary: str, details: str, tags: list[str]) -> bool:
+    """Detect finalizer cards that copied local tool JSON envelopes instead of a distilled fact."""
+
+    combined = f"{content}\n{summary}\n{details}"
+    lowered = combined.casefold()
+    tag_set = {tag.casefold() for tag in tags}
+    tool_tagged = bool(tag_set & {"tool-use", "bash", "failure", "tests"})
+    has_json_wrapper = '{"code":' in lowered and '"message":' in lowered
+    has_tool_prefix = "tool: bash" in lowered or "tool: " in lowered
+    return tool_tagged and has_json_wrapper and has_tool_prefix
 
 
 def _supersede_conflicting_claims(connection, new_id: int, category: str, metadata: dict[str, Any]) -> list[int]:
