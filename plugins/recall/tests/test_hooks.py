@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import contextlib
+import importlib.util
+import io
 import json
+import os
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -14,11 +19,71 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import config as recall_config  # noqa: E402
 
 
+SCRIPT_MODULES: dict[Path, object] = {}
+
+
+def load_script_module(script: Path):
+    cached = SCRIPT_MODULES.get(script)
+    if cached is not None:
+        return cached
+    module_name = f"_recall_test_script_{len(SCRIPT_MODULES)}_{script.stem}"
+    spec = importlib.util.spec_from_file_location(module_name, script)
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    SCRIPT_MODULES[script] = module
+    return module
+
+
+def run_script_in_process(script: Path, args: list[str] | None = None, stdin: str = "") -> str:
+    old_argv = sys.argv[:]
+    old_stdin = sys.stdin
+    old_cwd = Path.cwd()
+    stdout = io.StringIO()
+    script_dir = str(script.parent)
+    inserted_path = False
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
+        inserted_path = True
+    try:
+        sys.argv = [str(script), *(args or [])]
+        sys.stdin = io.StringIO(stdin)
+        os.chdir(ROOT)
+        with contextlib.redirect_stdout(stdout):
+            try:
+                module = load_script_module(script)
+                main = getattr(module, "main", None) if module is not None else None
+                if callable(main):
+                    main()
+                else:
+                    runpy.run_path(str(script), run_name="__main__")
+            except SystemExit as exc:
+                code = exc.code if isinstance(exc.code, int) else 1
+                if code != 0:
+                    raise
+        return stdout.getvalue()
+    finally:
+        os.chdir(old_cwd)
+        sys.stdin = old_stdin
+        sys.argv = old_argv
+        if inserted_path:
+            try:
+                sys.path.remove(script_dir)
+            except ValueError:
+                pass
+
+
 def run_hook(script: str, payload: dict) -> dict:
     return run_hook_raw(script, json.dumps(payload))
 
 
 def run_hook_with_args(script: str, payload: dict, *args: str) -> dict:
+    output = run_script_in_process(ROOT / "hooks" / "scripts" / script, list(args), json.dumps(payload))
+    return json.loads(output)
+
+
+def run_hook_subprocess(script: str, payload: dict, *args: str) -> dict:
     completed = subprocess.run(
         [sys.executable, str(ROOT / "hooks" / "scripts" / script), *args],
         input=json.dumps(payload),
@@ -31,35 +96,32 @@ def run_hook_with_args(script: str, payload: dict, *args: str) -> dict:
 
 
 def run_hook_raw(script: str, raw: str) -> dict:
-    completed = subprocess.run(
-        [sys.executable, str(ROOT / "hooks" / "scripts" / script)],
-        input=raw,
-        text=True,
-        capture_output=True,
-        check=True,
-        cwd=ROOT,
-    )
-    return json.loads(completed.stdout)
+    output = run_script_in_process(ROOT / "hooks" / "scripts" / script, stdin=raw)
+    return json.loads(output)
 
 
 def query_memory(root: str, query: str, category: str) -> dict:
-    completed = subprocess.run(
-        [
-            sys.executable,
-            str(ROOT / "scripts" / "memory_manager.py"),
-            "--root",
-            root,
-            "query",
-            query,
-            "--category",
-            category,
-        ],
-        text=True,
-        capture_output=True,
-        check=True,
-        cwd=ROOT,
-    )
-    return json.loads(completed.stdout)
+    return run_memory_manager(root, "query", query, "--category", category)
+
+
+def run_memory_manager(root: str, *args: str) -> dict:
+    output = run_script_in_process(ROOT / "scripts" / "memory_manager.py", ["--root", root, *args])
+    text = output.strip()
+    if not text:
+        return {}
+    if text.startswith("{") or text.startswith("["):
+        return json.loads(text)
+    return {"output": text}
+
+
+def run_recall_skill(root: str, *args: str) -> dict:
+    output = run_script_in_process(ROOT / "scripts" / "recall_skill.py", ["--root", root, *args])
+    text = output.strip()
+    if not text:
+        return {}
+    if text.startswith("{") or text.startswith("["):
+        return json.loads(text)
+    return {"output": text}
 
 
 def runtime_events(root: str, session_id: str, turn_id: str) -> list[dict]:
@@ -72,19 +134,7 @@ def runtime_events(root: str, session_id: str, turn_id: str) -> list[dict]:
 
 
 def activate_recall(root: str, session_id: str = "", turn_id: str = "", prompt: str | None = None) -> dict:
-    subprocess.run(
-        [
-            sys.executable,
-            str(ROOT / "scripts" / "memory_manager.py"),
-            "--root",
-            root,
-            "init",
-        ],
-        text=True,
-        capture_output=True,
-        check=True,
-        cwd=ROOT,
-    )
+    recall_config.activate_project(root, activated_by="test")
     return run_hook(
         "prompt_inspector.py",
         {
@@ -112,24 +162,7 @@ class HookTests(unittest.TestCase):
             self.assertTrue(output["continue"])
             self.assertEqual(output["hookSpecificOutput"]["hookEventName"], "UserPromptSubmit")
 
-            query = subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts" / "memory_manager.py"),
-                    "--root",
-                    tmp,
-                    "query",
-                    "local memory",
-                    "--category",
-                    "preferences",
-                    "--summary",
-                ],
-                text=True,
-                capture_output=True,
-                check=True,
-                cwd=ROOT,
-            )
-            result = json.loads(query.stdout)
+            result = run_memory_manager(tmp, "query", "local memory", "--category", "preferences", "--summary")
             self.assertIn("local-only", result["summary"])
 
     def test_prompt_inspector_respects_remembered_category_prefix(self) -> None:
@@ -241,51 +274,31 @@ class HookTests(unittest.TestCase):
                 },
             )
 
-            active = subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts" / "recall_skill.py"),
-                    "--root",
-                    tmp,
-                    "review-memory",
-                    "--category",
-                    "requirements",
-                    "--status",
-                    "active",
-                    "--status",
-                    "validated",
-                    "--limit",
-                    "20",
-                ],
-                text=True,
-                capture_output=True,
-                check=True,
-                cwd=ROOT,
-            )
-            active_review = json.loads(active.stdout)["review"]
+            active_review = run_recall_skill(
+                tmp,
+                "review-memory",
+                "--category",
+                "requirements",
+                "--status",
+                "active",
+                "--status",
+                "validated",
+                "--limit",
+                "20",
+            )["review"]
             self.assertEqual(active_review["matched"], 1)
             self.assertIn("docs/release/manual-notes.md", active_review["memories"][0]["summary"])
 
-            superseded = subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts" / "recall_skill.py"),
-                    "--root",
-                    tmp,
-                    "review-memory",
-                    "--category",
-                    "requirements",
-                    "--status",
-                    "superseded",
-                    "--limit",
-                    "20",
-                ],
-                text=True,
-                capture_output=True,
-                check=True,
-                cwd=ROOT,
-            )
-            superseded_review = json.loads(superseded.stdout)["review"]
+            superseded_review = run_recall_skill(
+                tmp,
+                "review-memory",
+                "--category",
+                "requirements",
+                "--status",
+                "superseded",
+                "--limit",
+                "20",
+            )["review"]
             self.assertGreaterEqual(superseded_review["matched"], 1)
 
     def test_prompt_inspector_ignores_incidental_remembered_word(self) -> None:
@@ -304,24 +317,15 @@ class HookTests(unittest.TestCase):
 
     def test_prompt_invocation_injects_additional_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts" / "memory_manager.py"),
-                    "--root",
-                    tmp,
-                    "add",
-                    "project_state",
-                    "RECALL hook tests have a saved project state.",
-                    "--status",
-                    "active",
-                    "--summary",
-                    "RECALL hook tests have a saved project state.",
-                ],
-                check=True,
-                cwd=ROOT,
-                capture_output=True,
-                text=True,
+            run_memory_manager(
+                tmp,
+                "add",
+                "project_state",
+                "RECALL hook tests have a saved project state.",
+                "--status",
+                "active",
+                "--summary",
+                "RECALL hook tests have a saved project state.",
             )
             output = run_hook(
                 "prompt_inspector.py",
@@ -339,15 +343,8 @@ class HookTests(unittest.TestCase):
 
     def test_always_recall_mode_injects_without_explicit_invocation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            memory_manager_cmd = [sys.executable, str(ROOT / "scripts" / "memory_manager.py"), "--root", tmp]
-            subprocess.run(memory_manager_cmd + ["add", "project_state", "Release train is green.", "--status", "active"], check=True, capture_output=True, text=True, cwd=ROOT)
-            subprocess.run(
-                [sys.executable, str(ROOT / "scripts" / "recall_skill.py"), "--root", tmp, "configure-recall", "always"],
-                check=True,
-                capture_output=True,
-                text=True,
-                cwd=ROOT,
-            )
+            run_memory_manager(tmp, "add", "project_state", "Release train is green.", "--status", "active")
+            run_recall_skill(tmp, "configure-recall", "always")
             activate_recall(tmp, "always-session", "always-turn")
 
             output = run_hook("prompt_inspector.py", {"cwd": tmp, "prompt": "What is the release state?"})
@@ -355,57 +352,24 @@ class HookTests(unittest.TestCase):
 
     def test_relevant_recall_mode_ignores_unrelated_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            subprocess.run(
-                [sys.executable, str(ROOT / "scripts" / "memory_manager.py"), "--root", tmp, "add", "architecture", "SQLite stores project memory."],
-                check=True,
-                capture_output=True,
-                text=True,
-                cwd=ROOT,
-            )
-            subprocess.run(
-                [sys.executable, str(ROOT / "scripts" / "recall_skill.py"), "--root", tmp, "configure-recall", "relevant"],
-                check=True,
-                capture_output=True,
-                text=True,
-                cwd=ROOT,
-            )
+            run_memory_manager(tmp, "add", "architecture", "SQLite stores project memory.")
+            run_recall_skill(tmp, "configure-recall", "relevant")
 
             output = run_hook("prompt_inspector.py", {"cwd": tmp, "prompt": "Write a limerick about clouds."})
             self.assertEqual(output, {"continue": True})
 
     def test_source_blind_category_prompt_receives_project_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts" / "recall_skill.py"),
-                    "--root",
-                    tmp,
-                    "initialize-project",
-                ],
-                text=True,
-                capture_output=True,
-                check=True,
-                cwd=ROOT,
-            )
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts" / "recall_skill.py"),
-                    "--root",
-                    tmp,
-                    "save-insight",
-                    "requirements",
-                    "Generated release notes must stay in docs/manual-release-notes.md.",
-                    "--summary",
-                    "Generated release notes must stay in docs/manual-release-notes.md.",
-                    "--status",
-                    "validated",
-                ],
-                text=True,
-                capture_output=True,
-                check=True,
-                cwd=ROOT,
+            run_recall_skill(tmp, "initialize-project")
+            run_recall_skill(
+                tmp,
+                "save-insight",
+                "requirements",
+                "Generated release notes must stay in docs/manual-release-notes.md.",
+                "--summary",
+                "Generated release notes must stay in docs/manual-release-notes.md.",
+                "--status",
+                "validated",
             )
             output = run_hook(
                 "prompt_inspector.py",
@@ -426,47 +390,29 @@ class HookTests(unittest.TestCase):
 
     def test_prompt_invocation_excludes_superseded_when_active_context_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts" / "memory_manager.py"),
-                    "--root",
-                    tmp,
-                    "add",
-                    "requirements",
-                    "Old startup requirement should not appear.",
-                    "--summary",
-                    "Old startup requirement.",
-                    "--tag",
-                    "startup",
-                    "--status",
-                    "superseded",
-                ],
-                check=True,
-                cwd=ROOT,
-                capture_output=True,
-                text=True,
+            run_memory_manager(
+                tmp,
+                "add",
+                "requirements",
+                "Old startup requirement should not appear.",
+                "--summary",
+                "Old startup requirement.",
+                "--tag",
+                "startup",
+                "--status",
+                "superseded",
             )
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts" / "memory_manager.py"),
-                    "--root",
-                    tmp,
-                    "add",
-                    "requirements",
-                    "Current startup requirement should appear.",
-                    "--summary",
-                    "Current startup requirement.",
-                    "--tag",
-                    "startup",
-                    "--status",
-                    "active",
-                ],
-                check=True,
-                cwd=ROOT,
-                capture_output=True,
-                text=True,
+            run_memory_manager(
+                tmp,
+                "add",
+                "requirements",
+                "Current startup requirement should appear.",
+                "--summary",
+                "Current startup requirement.",
+                "--tag",
+                "startup",
+                "--status",
+                "active",
             )
 
             output = run_hook(
@@ -487,22 +433,13 @@ class HookTests(unittest.TestCase):
 
     def test_session_start_is_quiet_even_with_memories(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts" / "memory_manager.py"),
-                    "--root",
-                    tmp,
-                    "add",
-                    "project_state",
-                    "SessionStart should not inject this automatically.",
-                    "--summary",
-                    "SessionStart should not inject this automatically.",
-                ],
-                check=True,
-                cwd=ROOT,
-                capture_output=True,
-                text=True,
+            run_memory_manager(
+                tmp,
+                "add",
+                "project_state",
+                "SessionStart should not inject this automatically.",
+                "--summary",
+                "SessionStart should not inject this automatically.",
             )
             output = run_hook(
                 "session_start.py",
@@ -674,20 +611,7 @@ class HookTests(unittest.TestCase):
 
     def test_pre_compact_uses_event_fields_not_raw_envelope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts" / "recall_skill.py"),
-                    "--root",
-                    tmp,
-                    "configure-capture",
-                    "standard",
-                ],
-                text=True,
-                capture_output=True,
-                check=True,
-                cwd=ROOT,
-            )
+            run_recall_skill(tmp, "configure-capture", "standard")
             activate_recall(tmp, "", "turn-123")
             output = run_hook(
                 "pre_compact.py",
@@ -709,20 +633,7 @@ class HookTests(unittest.TestCase):
 
     def test_pre_compact_empty_payload_is_noop(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts" / "recall_skill.py"),
-                    "--root",
-                    tmp,
-                    "configure-capture",
-                    "standard",
-                ],
-                text=True,
-                capture_output=True,
-                check=True,
-                cwd=ROOT,
-            )
+            run_recall_skill(tmp, "configure-capture", "standard")
             activate_recall(tmp, "", "turn-empty")
             output = run_hook(
                 "pre_compact.py",

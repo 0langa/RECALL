@@ -130,13 +130,19 @@ Define a custom category:
 python ./scripts/recall_skill.py define-category api_contracts --description "Stable API shapes and compatibility promises." --weight 1.4
 ```
 
-Run tests:
+Run the complete local unit suite:
 
 ```bash
 python ./scripts/run_tests.py
 ```
 
-Run the same tests sequentially:
+Profile hook test methods:
+
+```bash
+python ./scripts/run_tests.py --pattern test_hooks.py --profile-methods --profile-target test_hooks.py
+```
+
+Run the same unit tests sequentially for debugging:
 
 ```bash
 python -m unittest discover -s tests
@@ -146,6 +152,12 @@ Run the end-to-end smoke harness:
 
 ```bash
 python ./scripts/smoke_recall.py --json
+```
+
+Run the broader quality suite from the repository root:
+
+```bash
+python RECALL_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick
 ```
 
 ## Local Install
@@ -169,6 +181,12 @@ Cross-platform Python:
 
 ```bash
 python ./scripts/build_plugin.py
+```
+
+For CI package jobs that already depend on passing unit and smoke jobs:
+
+```bash
+python ./scripts/build_plugin.py --skip-tests --skip-smoke
 ```
 
 Convenience wrappers:

@@ -7,7 +7,7 @@
 - Added provider-neutral hook event normalization so Codex and Kimi-shaped hook payloads feed the same capture and finalization path.
 - Normalized Kimi Code JSON tool-failure envelopes before finalizer capture and added a finalizer backstop that ignores raw wrapper cards.
 - Suppressed transient task-control prompts so operational `@recall` test instructions do not become durable project requirements.
-- Added a parallel unittest runner and wired package builds to avoid duplicating the smoke harness during the unit phase.
+- Added a parallel unittest runner with hook method profiling, faster in-process hook tests, split CI gates, and timed package build steps.
 - Documented optional Kimi Code hook setup with `~/.kimi-code/config.toml` snippets.
 - Added provider provenance metadata support for public memory writes, including `origin_provider`, `origin_agent`, session/turn, workspace, branch, commit, capture channel, and provider applicability fields.
 - Updated package/build/quality gates to require Kimi artifacts and reject `.recall/` runtime data in release packages.

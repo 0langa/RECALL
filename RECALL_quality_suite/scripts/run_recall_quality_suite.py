@@ -124,7 +124,7 @@ def main() -> None:
     if not args.skip_existing_unit:
         gate_specs.append({
             "name": "existing_unit_tests",
-            "cmd": [sys.executable, "-m", "unittest", "discover", "-s", "tests"],
+            "cmd": [sys.executable, str(plugin_root / "scripts" / "run_tests.py"), "--exclude-smoke", "--json"],
             "cwd": plugin_root,
             "env": env,
         })

@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import zipfile
 from pathlib import Path
 
@@ -28,10 +29,18 @@ INCLUDE = [
 ]
 
 
-def run_checked(args: list[str], cwd: Path) -> None:
-    completed = subprocess.run(args, cwd=cwd)
+def run_checked(name: str, args: list[str], cwd: Path, timeout: int) -> None:
+    started = time.perf_counter()
+    print(f"[build] {name}: start")
+    try:
+        completed = subprocess.run(args, cwd=cwd, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        elapsed = time.perf_counter() - started
+        raise SystemExit(f"[build] {name}: timed out after {elapsed:.2f}s: {' '.join(args)}") from exc
+    elapsed = time.perf_counter() - started
     if completed.returncode != 0:
-        raise SystemExit(f"Command failed with exit code {completed.returncode}: {' '.join(args)}")
+        raise SystemExit(f"[build] {name}: failed after {elapsed:.2f}s with exit code {completed.returncode}: {' '.join(args)}")
+    print(f"[build] {name}: pass in {elapsed:.2f}s")
 
 
 def remove_cache_artifacts(root: Path) -> None:
@@ -74,7 +83,15 @@ def default_validator() -> Path:
     return Path.home() / ".codex" / "skills" / ".system" / "plugin-creator" / "scripts" / "validate_plugin.py"
 
 
-def build(plugin_root: Path, output_dir: Path, python: str, skip_validator: bool) -> Path:
+def build(
+    plugin_root: Path,
+    output_dir: Path,
+    python: str,
+    skip_validator: bool,
+    skip_tests: bool,
+    skip_smoke: bool,
+    step_timeout: int,
+) -> Path:
     plugin_root = plugin_root.resolve()
     if not output_dir.is_absolute():
         output_dir = plugin_root / output_dir
@@ -82,24 +99,29 @@ def build(plugin_root: Path, output_dir: Path, python: str, skip_validator: bool
     archive = output_dir / "recall.zip"
     package_root = output_dir / "_package"
 
-    run_checked([python, str(plugin_root / "scripts" / "run_tests.py"), "--exclude-smoke"], plugin_root)
+    if not skip_tests:
+        run_checked("unit tests", [python, str(plugin_root / "scripts" / "run_tests.py"), "--exclude-smoke"], plugin_root, step_timeout)
 
     validator = default_validator()
     if validator.is_file() and not skip_validator:
-        run_checked([python, str(validator), str(plugin_root)], plugin_root)
+        run_checked("plugin validator", [python, str(validator), str(plugin_root)], plugin_root, step_timeout)
     elif not skip_validator:
         print(f"Warning: plugin validator not found at {validator}; skipping validator gate.", file=sys.stderr)
 
-    run_checked([python, str(plugin_root / "scripts" / "smoke_recall.py"), "--json"], plugin_root)
+    if not skip_smoke:
+        run_checked("smoke harness", [python, str(plugin_root / "scripts" / "smoke_recall.py"), "--json"], plugin_root, step_timeout)
 
+    started = time.perf_counter()
+    print("[build] package zip: start")
     copy_package_tree(plugin_root, package_root)
     try:
         zip_tree(package_root, archive)
     finally:
         if package_root.exists():
             shutil.rmtree(package_root)
+    print(f"[build] package zip: pass in {time.perf_counter() - started:.2f}s")
 
-    run_checked([python, str(plugin_root / "scripts" / "inspect_package.py"), str(archive)], plugin_root)
+    run_checked("package inspection", [python, str(plugin_root / "scripts" / "inspect_package.py"), str(archive)], plugin_root, step_timeout)
     print(f"Built {archive}")
     return archive
 
@@ -110,9 +132,20 @@ def main() -> None:
     parser.add_argument("--output-dir", default="dist")
     parser.add_argument("--python", default=os.environ.get("PYTHON", sys.executable))
     parser.add_argument("--skip-validator", action="store_true")
+    parser.add_argument("--skip-tests", action="store_true", help="Skip unit tests. Intended only for CI package jobs that depend on the unit job.")
+    parser.add_argument("--skip-smoke", action="store_true", help="Skip smoke harness. Intended only for CI package jobs that depend on the smoke job.")
+    parser.add_argument("--step-timeout", type=int, default=600, help="Seconds before an individual build gate times out.")
     args = parser.parse_args()
 
-    build(Path(args.plugin_root), Path(args.output_dir), args.python, args.skip_validator)
+    build(
+        Path(args.plugin_root),
+        Path(args.output_dir),
+        args.python,
+        args.skip_validator,
+        args.skip_tests,
+        args.skip_smoke,
+        args.step_timeout,
+    )
 
 
 if __name__ == "__main__":

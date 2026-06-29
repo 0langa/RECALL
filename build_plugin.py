@@ -15,6 +15,9 @@ def main() -> None:
     parser.add_argument("--output-dir", default=str(root / "dist"))
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--skip-validator", action="store_true")
+    parser.add_argument("--skip-tests", action="store_true")
+    parser.add_argument("--skip-smoke", action="store_true")
+    parser.add_argument("--step-timeout", type=int, default=600)
     args = parser.parse_args()
 
     command = [
@@ -29,6 +32,11 @@ def main() -> None:
     ]
     if args.skip_validator:
         command.append("--skip-validator")
+    if args.skip_tests:
+        command.append("--skip-tests")
+    if args.skip_smoke:
+        command.append("--skip-smoke")
+    command.extend(["--step-timeout", str(args.step_timeout)])
     completed = subprocess.run(command, cwd=root)
     raise SystemExit(completed.returncode)
 
