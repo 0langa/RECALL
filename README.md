@@ -13,6 +13,7 @@ The installable plugin lives in [`plugins/recall`](plugins/recall/). It contains
 - Captures explicit "remember this" requests and useful development outcomes.
 - Stores structured memory categories such as `decisions`, `requirements`, `risks`, `commands`, and `debug_history`.
 - Supports review, confirmation, supersession, merge, and archival of memory cards.
+- Exposes seven public skills: `using-recall`, `retrieve-memory`, `save-insight`, `review-memory`, `manage-memory`, `define-category`, and `memory-hygiene`.
 - Uses SQLite by default, with JSONL storage available through config.
 - Builds and validates as a portable Codex plugin zip on Windows, macOS, and Linux.
 - Exposes a Kimi Code plugin manifest and MCP server wrapper over the same memory engine.
@@ -133,6 +134,9 @@ Archive low-value automatic command noise without deleting history:
 python ./scripts/recall_skill.py archive-noise
 python ./scripts/recall_skill.py archive-noise --apply --limit 50
 ```
+
+Lifecycle and cleanup commands such as `confirm-memory`, `supersede-memory`, `edit-memory`, `delete-memory`, and `archive-noise` are intentionally grouped under the `manage-memory` skill instead of being separate public skills.
+Use `memory-hygiene` first when the right routing or cleanup action is unclear.
 
 More usage and support commands are documented in [`plugins/recall/README.md`](plugins/recall/README.md) and [`plugins/recall/docs/INSTALL.md`](plugins/recall/docs/INSTALL.md).
 

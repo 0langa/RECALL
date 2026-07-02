@@ -8,11 +8,11 @@ RECALL is local-first project memory for Codex, Kimi Code, and Claude Code. It s
 - Kimi Code plugin manifest at `kimi.plugin.json`, with `using-recall` session guidance and a local MCP server wrapper.
 - Claude Code plugin manifest at `.claude-plugin/plugin.json`, reusing the same skills, hooks, and MCP server.
 - Shared project-local memory across Codex, Kimi, and Claude Code, with provider metadata used for provenance rather than separate stores.
-- Compact skill surface for saving memory, retrieval, review, category definition, and maintenance.
+- Compact seven-skill surface for saving memory, retrieval, review, category definition, maintenance, and hygiene planning.
 - Project-local configuration in `.recall/memory_config.json`, or legacy `.codex_memory/memory_config.json` when that store already exists.
 - SQLite storage by default, with JSONL support available through config.
 - Deterministic local embeddings, a project-local `vector_index.bin`, and weighted retrieval with no network calls.
-- Rebuildable vector index and backend diagnostics through `rebuild-index`, `doctor`, and `repair`.
+- Backend diagnostics and repair through `doctor` and `repair`.
 - Heuristic summarization for compact context injection.
 - Plugin-bundled lifecycle hooks in `hooks/hooks.json`, matching Codex's default plugin hook discovery path.
 - Unit tests for config and memory storage.
@@ -65,6 +65,10 @@ details.
 
 For direct skill-adapter checks from this plugin folder:
 
+The examples below assume the current directory is the installed plugin root or the source plugin root, so `./scripts/recall_skill.py` resolves. If the active shell is in a project repository, first `cd` to the plugin root or invoke the adapter by absolute path and pass `--root <project-root>`.
+
+RECALL exposes seven public skills: `using-recall`, `retrieve-memory`, `save-insight`, `review-memory`, `manage-memory`, `define-category`, and `memory-hygiene`. Lifecycle and cleanup adapter commands such as `confirm-memory`, `supersede-memory`, `merge-memories`, `edit-memory`, `delete-memory`, and `archive-noise` are intentionally grouped under `manage-memory` instead of being separate skill folders. Use `memory-hygiene` when routing, cleanup planning, staleness, duplicates, or current-truth conflicts need policy before mutation.
+
 Initialize and persistently activate memory for the current project:
 
 ```bash
@@ -86,13 +90,22 @@ Retrieve memories:
 python ./scripts/recall_skill.py retrieve-memory "local backend choice" --summary
 ```
 
-Developer/support maintenance commands are available through the internal backend script, but they are not the public plugin workflow.
+Developer/support maintenance commands are available through the public adapter and grouped under the relevant skill workflow; lower-level backend modules are not the public plugin workflow.
 
 Review what RECALL thinks matters:
 
 ```bash
 python ./scripts/recall_skill.py review-memory --limit 20
 python ./scripts/recall_skill.py audit-memory --limit 20
+```
+
+Plan safe memory hygiene before mutation:
+
+```bash
+python ./scripts/recall_skill.py route-memory "Release notes must stay in docs/manual-release-notes.md."
+python ./scripts/recall_skill.py hygiene-scan --limit 80
+python ./scripts/recall_skill.py hygiene-plan --scope project
+python ./scripts/recall_skill.py hygiene-apply --safe
 ```
 
 Preview and archive old automatic hook noise:

@@ -226,6 +226,89 @@ class RecallSkillAdapterTests(unittest.TestCase):
             self.assertEqual(applied["archived"], 1)
             self.assertEqual(archived["review"]["memories"][0]["id"], noisy["id"])
 
+    def test_memory_hygiene_commands_return_stable_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = run_skill(
+                tmp,
+                "save-insight",
+                "requirements",
+                "Release checks must pass before tagging.",
+                "--summary",
+                "Release checks gate tags.",
+                "--status",
+                "active",
+            )
+            duplicate = run_skill(
+                tmp,
+                "save-insight",
+                "requirements",
+                "Release checks must pass before tagging.",
+                "--summary",
+                "Release checks gate tags.",
+                "--status",
+                "active",
+            )
+
+            routed = run_skill(tmp, "route-memory", "Release notes must stay in docs/manual-release-notes.md.")
+            scan = run_skill(tmp, "hygiene-scan", "--limit", "20")
+            plan = run_skill(tmp, "hygiene-plan", "--scope", "project")
+            applied = run_skill(tmp, "hygiene-apply", "--safe")
+
+            self.assertEqual(routed["route"], "repo_docs")
+            self.assertEqual(scan["action"], "hygiene-scan")
+            self.assertEqual(plan["action"], "hygiene-plan")
+            self.assertIn("proposals", plan)
+            self.assertTrue(any(item["id"] == duplicate["id"] and item["proposed_action"] == "merge" for item in plan["proposals"]))
+            self.assertEqual(applied["action"], "hygiene-apply")
+            self.assertTrue(any(item.get("id") == duplicate["id"] and item.get("applied") for item in applied["applied"]))
+            self.assertNotEqual(first["id"], duplicate["id"])
+
+    def test_reconcile_current_truth_command_plans_claim_conflict(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            old = run_skill(
+                tmp,
+                "save-insight",
+                "project_state",
+                "Latest Kimi score is 90.12.",
+                "--summary",
+                "Kimi score was 90.12.",
+                "--status",
+                "active",
+                "--confidence",
+                "0.7",
+                "--claim-key",
+                "recall.kimi.standard_average",
+                "--claim-value",
+                "90.12",
+            )
+            new = run_skill(
+                tmp,
+                "save-insight",
+                "project_state",
+                "Latest Kimi score is 95.91.",
+                "--summary",
+                "Kimi score is 95.91.",
+                "--status",
+                "validated",
+                "--confidence",
+                "0.95",
+                "--importance",
+                "0.95",
+                "--trust",
+                "0.95",
+                "--claim-key",
+                "recall.kimi.standard_average",
+                "--claim-value",
+                "95.91",
+            )
+
+            report = run_skill(tmp, "reconcile-current-truth", "--claim-key", "recall.kimi.standard_average")
+
+            self.assertEqual(report["action"], "reconcile-current-truth")
+            self.assertEqual(report["proposals"][0]["id"], old["id"])
+            self.assertEqual(report["proposals"][0]["details"]["winner_id"], new["id"])
+            self.assertTrue(report["proposals"][0]["safe_to_apply"])
+
     def test_audit_memory_surfaces_noise_candidates_and_quality_metrics(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             noisy = run_skill(

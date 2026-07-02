@@ -16,6 +16,7 @@ from typing import Any
 
 import config as recall_config
 import corpus_migration
+import memory_hygiene
 import memory_noise
 import memory_review
 import memory_manager
@@ -368,6 +369,30 @@ def handle_archive_noise(args: argparse.Namespace, root: Path | None) -> None:
     print_json(memory_noise.archive_noise(root, apply=args.apply, limit=args.limit))
 
 
+def handle_hygiene_scan(args: argparse.Namespace, root: Path | None) -> None:
+    print_json(memory_hygiene.hygiene_scan(root, limit=args.limit))
+
+
+def handle_hygiene_plan(args: argparse.Namespace, root: Path | None) -> None:
+    print_json(memory_hygiene.hygiene_plan(root, limit=args.limit, scope=args.scope))
+
+
+def handle_hygiene_apply(args: argparse.Namespace, root: Path | None) -> None:
+    print_json(memory_hygiene.hygiene_apply(root, safe=args.safe, limit=args.limit))
+
+
+def handle_route_memory(args: argparse.Namespace, root: Path | None) -> None:
+    print_json(memory_hygiene.route_memory(args.candidate_fact))
+
+
+def handle_reconcile_current_truth(args: argparse.Namespace, root: Path | None) -> None:
+    print_json(memory_hygiene.reconcile_current_truth(root, claim_key=args.claim_key))
+
+
+def handle_refresh_source_backed(args: argparse.Namespace, root: Path | None) -> None:
+    print_json(memory_hygiene.refresh_source_backed(root, limit=args.limit))
+
+
 def handle_confirm_memory(args: argparse.Namespace, root: Path | None) -> None:
     record = memory_manager.confirm_record(args.id, root, args.source_session)
     print_json({"action": "confirm-memory", "id": record.id, "metadata": record.metadata})
@@ -604,6 +629,32 @@ def main() -> None:
     archive_noise.add_argument("--apply", action="store_true", help="Archive matched noise. Omit for dry-run.")
     archive_noise.add_argument("--limit", type=int, help="Maximum matched memories to review or archive.")
     archive_noise.set_defaults(handler=handle_archive_noise)
+
+    hygiene_scan = subparsers.add_parser("hygiene-scan")
+    hygiene_scan.add_argument("--limit", type=int)
+    hygiene_scan.set_defaults(handler=handle_hygiene_scan)
+
+    hygiene_plan = subparsers.add_parser("hygiene-plan")
+    hygiene_plan.add_argument("--scope", default="project", choices=["project"])
+    hygiene_plan.add_argument("--limit", type=int)
+    hygiene_plan.set_defaults(handler=handle_hygiene_plan)
+
+    hygiene_apply = subparsers.add_parser("hygiene-apply")
+    hygiene_apply.add_argument("--safe", action="store_true", required=True)
+    hygiene_apply.add_argument("--limit", type=int)
+    hygiene_apply.set_defaults(handler=handle_hygiene_apply)
+
+    route_memory = subparsers.add_parser("route-memory")
+    route_memory.add_argument("candidate_fact")
+    route_memory.set_defaults(handler=handle_route_memory)
+
+    reconcile_current_truth = subparsers.add_parser("reconcile-current-truth")
+    reconcile_current_truth.add_argument("--claim-key", required=True)
+    reconcile_current_truth.set_defaults(handler=handle_reconcile_current_truth)
+
+    refresh_source_backed = subparsers.add_parser("refresh-source-backed")
+    refresh_source_backed.add_argument("--limit", type=int)
+    refresh_source_backed.set_defaults(handler=handle_refresh_source_backed)
 
     confirm = subparsers.add_parser("confirm-memory")
     confirm.add_argument("id", type=int)

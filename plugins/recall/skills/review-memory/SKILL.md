@@ -25,6 +25,8 @@ Do not use this skill to create or mutate memory directly. It is an inspection a
 
 Use the public RECALL adapter:
 
+Run these examples from the installed/source plugin root so `./scripts/recall_skill.py` resolves. If the shell is in the active project repository, do not look for `./scripts` there; use the adapter's absolute path and pass `--root <project-root>` when needed.
+
 ```bash
 python ./scripts/recall_skill.py review-memory --limit 20
 python ./scripts/recall_skill.py audit-memory --limit 20

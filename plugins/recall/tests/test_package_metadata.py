@@ -61,7 +61,7 @@ class PackageMetadataTests(unittest.TestCase):
     def test_manifest_public_surface_metadata_is_present(self) -> None:
         payload = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
         interface = payload["interface"]
-        self.assertEqual(payload["version"], "1.0.0")
+        self.assertEqual(payload["version"], "1.1.0")
         self.assertEqual(payload["homepage"], "https://github.com/0langa/RECALL")
         self.assertEqual(payload["repository"], "https://github.com/0langa/RECALL")
         self.assertEqual(interface["websiteURL"], "https://github.com/0langa/RECALL")
@@ -132,12 +132,13 @@ class PackageMetadataTests(unittest.TestCase):
         expected = {
             "define-category",
             "manage-memory",
+            "memory-hygiene",
             "retrieve-memory",
             "review-memory",
             "save-insight",
             "using-recall",
         }
-        self.assertEqual(len(skill_names), 6)
+        self.assertEqual(len(skill_names), 7)
         self.assertEqual(skill_names, expected)
 
     def test_workflow_examples_cover_core_memory_cards(self) -> None:

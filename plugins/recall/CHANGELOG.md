@@ -1,9 +1,14 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 - 2026-07-02
 
+- Added `memory-hygiene` public skill and adapter surface (`route-memory`, `hygiene-scan`, `hygiene-plan`, `hygiene-apply --safe`, `reconcile-current-truth`, `refresh-source-backed`) as RECALL's policy brain for candidate routing, cleanup planning, and safe non-destructive lifecycle maintenance.
+- Expanded the public skill surface from six to seven skills and documented that lifecycle mutation commands stay grouped under `manage-memory`.
+- Clarified plugin-root vs project-root adapter invocation in every SKILL.md so `./scripts/recall_skill.py` examples resolve correctly across Codex, Claude Code, and Kimi Code.
+- Added claude-code adapter tests and a metadata contract test that pins the seven-skill public surface.
 - Added provider-neutral `.recall/` storage for new projects while preserving existing `.codex_memory/` stores as legacy authoritative memory.
 - Added Kimi Code plugin support with `kimi.plugin.json`, `using-recall` session guidance, and a local stdio MCP server over the shared RECALL core.
+- Added Claude Code plugin support with `.claude-plugin/plugin.json`, shared skills, shared hooks, and the shared local MCP server.
 - Added provider-neutral hook event normalization so Codex and Kimi-shaped hook payloads feed the same capture and finalization path.
 - Normalized Kimi Code JSON tool-failure envelopes before finalizer capture and added a finalizer backstop that ignores raw wrapper cards.
 - Suppressed transient task-control prompts so operational `@recall` test instructions do not become durable project requirements.

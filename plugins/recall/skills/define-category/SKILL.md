@@ -13,6 +13,8 @@ RECALL is local-only project memory. Category definitions are stored in the acti
 
 Use this skill as the public RECALL category-management interface. When shell execution is needed, run the bundled skill adapter from the installed plugin root or source plugin root. Treat lower-level backend scripts as internal support code, not as the user-facing RECALL workflow.
 
+All `python ./scripts/recall_skill.py ...` examples assume the current directory is the plugin root. If the shell is in the active project repository, do not look for `./scripts` there; locate the installed/source plugin root or use an absolute adapter path, then pass `--root <project-root>` when needed.
+
 ## Contract
 
 This skill receives a category-design request and returns one normalized category definition:

@@ -533,9 +533,8 @@ Implemented on 2026-06-09:
 - Added the public `save-turn-card` adapter in `scripts/recall_skill.py` for finalizer-written structured cards.
 - `save-turn-card` accepts JSON from `--file` or `--stdin`, validates required fields, rejects secret-like text, and stores cards with `recall.turn_card.v1` metadata.
 - Finalizer request packets now list `save-turn-card` plus lifecycle commands as the allowed write/update surface.
-- Added discoverable skills for the memory-control surface: `save-turn-card`, `review-memory`, `confirm-memory`, `resolve-memory`, `stale-memory`, `supersede-memory`, `merge-memories`, `prune-memory`, `doctor-memory`, and `repair-memory`.
-- Added explicit user-control skills `edit-memory` and `delete-memory`; deletion requires `--confirm DELETE-<id>`.
-- The plugin now exposes 15 skills total, covering manual save/retrieve/category work plus finalizer, lifecycle, edit, delete, and health control.
+- Historical note: an earlier design proposed separate discoverable skills for `save-turn-card`, lifecycle, edit, delete, and health operations.
+- Current shipped surface after the hygiene update: the plugin exposes seven public skill folders (`using-recall`, `retrieve-memory`, `save-insight`, `review-memory`, `manage-memory`, `define-category`, and `memory-hygiene`). Lifecycle, edit/delete, finalizer, cleanup, and health operations are adapter commands grouped under `manage-memory`, `memory-hygiene`, or internal hook/finalizer workflows.
 - Moved this internal research guide to repo-level `docs/` so it remains available without bloating the installable plugin package.
 
 Verification run:

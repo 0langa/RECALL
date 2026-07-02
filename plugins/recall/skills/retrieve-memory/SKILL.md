@@ -13,6 +13,8 @@ RECALL is local-only project memory. Read from the active project's RECALL memor
 
 Use this skill as the public RECALL retrieval interface. When shell execution is needed, run the bundled skill adapter from the installed plugin root or source plugin root. Treat lower-level backend scripts as internal support code, not as the user-facing RECALL workflow.
 
+All `python ./scripts/recall_skill.py ...` examples assume the current directory is the plugin root. If the shell is in the active project repository, do not look for `./scripts` there; locate the installed/source plugin root or use an absolute adapter path, then pass `--root <project-root>` when needed.
+
 ## Contract
 
 This skill receives a focused lookup need and returns relevant memory context with enough

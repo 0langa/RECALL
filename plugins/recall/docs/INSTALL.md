@@ -74,6 +74,8 @@ live verification notes.
 
 If retrieval ever looks stale, first verify through the same bundled skill adapter the installed plugin uses:
 
+Run these examples from the installed/source plugin root so `./scripts/recall_skill.py` resolves. If your shell is in the active project instead, use the adapter's absolute path and pass `--root <project-root>`.
+
 ```bash
 python ./scripts/recall_skill.py retrieve-memory "current project context" --summary
 python ./scripts/recall_skill.py doctor
@@ -85,9 +87,11 @@ If `doctor` reports repairable index issues, use the safe adapter action:
 python ./scripts/recall_skill.py repair
 ```
 
-For developer/support diagnostics, the internal backend script still exposes lower-level maintenance commands such as `rebuild-index`. Those commands are not the normal end-user workflow.
+For developer/support diagnostics, lower-level backend modules remain internal support plumbing. They are not the normal end-user workflow.
 
 To review and clean up project memory from the same public adapter used by bundled skills:
+
+The public plugin surface is seven skills. Lifecycle and cleanup commands such as `confirm-memory`, `resolve-memory`, `supersede-memory`, `merge-memories`, `prune-memory`, `edit-memory`, `delete-memory`, and `archive-noise` live under the `manage-memory` skill rather than separate skill folders. Use `memory-hygiene` before mutation when the right routing or cleanup action is unclear.
 
 ```bash
 python ./scripts/recall_skill.py review-memory --limit 20
@@ -99,6 +103,14 @@ python ./scripts/recall_skill.py prune-memory <id> --note "<why this was archive
 ```
 
 Pruning is non-destructive; it archives the memory rather than deleting project data.
+
+To plan and safely apply hygiene:
+
+```bash
+python ./scripts/recall_skill.py hygiene-scan --limit 80
+python ./scripts/recall_skill.py hygiene-plan --scope project
+python ./scripts/recall_skill.py hygiene-apply --safe
+```
 
 If a support session needs to normalize category names after manual config edits, run:
 

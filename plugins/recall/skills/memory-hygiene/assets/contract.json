@@ -1,0 +1,33 @@
+{
+  "skill": "memory-hygiene",
+  "kind": "hygiene-boundary",
+  "owns": [
+    "candidate routing",
+    "cleanup planning",
+    "safe non-destructive hygiene apply",
+    "staleness and duplicate policy",
+    "current-truth reconciliation planning"
+  ],
+  "hands_off": {
+    "new durable fact capture": "save-insight",
+    "focused lookup": "retrieve-memory",
+    "inspection-only reports": "review-memory",
+    "known-id lifecycle mutation": "manage-memory",
+    "category taxonomy": "define-category",
+    "hard deletion": "manage-memory delete-memory with explicit confirmation"
+  },
+  "safe_actions": [
+    "stale",
+    "supersede",
+    "merge",
+    "prune",
+    "refresh_source",
+    "needs_confirmation"
+  ],
+  "forbidden_without_user_confirmation": [
+    "delete",
+    "hard delete",
+    "merge near-duplicates",
+    "resolve ambiguous conflicts"
+  ]
+}

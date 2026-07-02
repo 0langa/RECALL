@@ -36,6 +36,8 @@ If the user did not provide IDs and the state is unclear, retrieve the IDs first
 
 Use `recall_skill.py` only:
 
+Run these examples from the installed/source plugin root so `./scripts/recall_skill.py` resolves. If the shell is in the active project repository, do not look for `./scripts` there; use the adapter's absolute path and pass `--root <project-root>` when needed. Lifecycle, edit/delete, cleanup, and repair commands are intentionally grouped in this one skill instead of separate public skill folders.
+
 ```bash
 python ./scripts/recall_skill.py configure-capture minimal
 python ./scripts/recall_skill.py configure-capture off
