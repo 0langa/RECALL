@@ -1,10 +1,10 @@
 # RECALL
 
-Local-first project memory for Codex and Kimi Code.
+Local-first project memory for Codex, Kimi Code, and Claude Code.
 
 RECALL gives coding agents durable project context without sending memory to a hosted service. It stores decisions, requirements, risks, commands, debugging history, and session summaries inside the active project under `.recall/`, while continuing to read existing `.codex_memory/` stores for backward compatibility.
 
-The installable plugin lives in [`plugins/recall`](plugins/recall/). It contains the shared RECALL core, the Codex plugin manifest/hooks, and a Kimi Code plugin manifest/MCP adapter.
+The installable plugin lives in [`plugins/recall`](plugins/recall/). It contains the shared RECALL core, the Codex plugin manifest/hooks, a Kimi Code plugin manifest/MCP adapter, and a Claude Code plugin manifest that reuses the same skills, hooks, and MCP server.
 
 ## What RECALL Does
 
@@ -16,7 +16,8 @@ The installable plugin lives in [`plugins/recall`](plugins/recall/). It contains
 - Uses SQLite by default, with JSONL storage available through config.
 - Builds and validates as a portable Codex plugin zip on Windows, macOS, and Linux.
 - Exposes a Kimi Code plugin manifest and MCP server wrapper over the same memory engine.
-- Shares one project-local memory store across Codex and Kimi; provider metadata records provenance without forking memory.
+- Exposes a Claude Code plugin manifest (`.claude-plugin/plugin.json`) over the same skills, hooks, and MCP server — no separate engine.
+- Shares one project-local memory store across Codex, Kimi, and Claude Code; provider metadata records provenance without forking memory.
 
 RECALL does not use a hosted database or network embedding service. It is designed as a local project assistant, not a team memory server.
 
@@ -61,6 +62,23 @@ Optional Kimi hook setup lives in [`plugins/recall/docs/KIMI_CODE.md`](plugins/r
 The hook path is optional but verified: Kimi `UserPromptSubmit` content-part
 payloads are normalized before RECALL handles `@recall remember this:` and
 retrieval prompts.
+
+## Install For Claude Code
+
+From a local checkout, add a local marketplace and install:
+
+```text
+claude plugin marketplace add <path-to-RECALL>/plugins/recall
+claude plugin install recall@recall-local
+```
+
+RECALL's Claude Code manifest (`.claude-plugin/plugin.json`) reuses the
+existing `./skills/` and declares the same local MCP server pattern as the
+Kimi integration. `hooks/hooks.json` (already written in Claude Code's
+native hook schema) is loaded automatically by convention and is
+intentionally not declared in the manifest — no new engine code was added. See
+[`plugins/recall/docs/CLAUDE_CODE.md`](plugins/recall/docs/CLAUDE_CODE.md)
+for details.
 
 ## Build The Plugin Zip
 

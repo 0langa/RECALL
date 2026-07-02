@@ -1,0 +1,13 @@
+{
+  "name": "recall-local",
+  "description": "Local marketplace for installing the RECALL plugin from this checkout.",
+  "owner": {
+    "name": "RECALL contributors"
+  },
+  "plugins": [
+    {
+      "name": "recall",
+      "source": "./"
+    }
+  ]
+}

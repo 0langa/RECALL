@@ -28,7 +28,18 @@ class PackageMetadataTests(unittest.TestCase):
             for group in matcher_groups:
                 for hook in group["hooks"]:
                     self.assertEqual(hook["type"], "command")
-                    self.assertIn("${PLUGIN_ROOT}", hook["command"])
+                    # Claude Code sets ${CLAUDE_PLUGIN_ROOT}, not ${PLUGIN_ROOT}
+                    # (Codex's convention) — Claude Code leaves PLUGIN_ROOT
+                    # unset entirely, which previously caused hook commands to
+                    # resolve to a bogus path (confirmed live: an unset
+                    # ${PLUGIN_ROOT} expanded to empty in Git Bash, and MSYS
+                    # path translation turned the resulting leading "/" into
+                    # the Git-for-Windows install root). Both variables must
+                    # be supported so Codex (sets PLUGIN_ROOT) and Claude Code
+                    # (sets CLAUDE_PLUGIN_ROOT) both resolve correctly from
+                    # this one shared file.
+                    self.assertIn("${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}", hook["command"])
+                    self.assertIn("os.environ.get('CLAUDE_PLUGIN_ROOT')", hook["commandWindows"])
                     self.assertIn("os.environ['PLUGIN_ROOT']", hook["commandWindows"])
                     self.assertNotIn("%PLUGIN_ROOT%", hook["commandWindows"])
 
@@ -82,6 +93,24 @@ class PackageMetadataTests(unittest.TestCase):
         self.assertEqual(server["cwd"], "./")
         self.assertEqual(server["args"], ["./scripts/kimi_mcp_server.py"])
         self.assertTrue((ROOT / "scripts" / "kimi_mcp_server.py").is_file())
+
+    def test_claude_code_manifest_reuses_shared_skills_hooks_and_mcp(self) -> None:
+        # Full manifest field assertions (mcpServers path shape, provider env)
+        # live in tests/test_claude_code_adapter.py to avoid duplicate,
+        # divergence-prone assertions across two files.
+        payload = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        self.assertEqual(payload["name"], "recall")
+        self.assertEqual(payload["skills"], "./skills/")
+        # hooks/hooks.json is intentionally NOT declared: Claude Code loads
+        # it automatically by convention, and an explicit "hooks" field
+        # pointing at the same path fails plugin load with "Duplicate hooks
+        # file detected" (verified via `claude plugin install`).
+        self.assertNotIn("hooks", payload)
+        self.assertNotIn("commands", payload)
+        self.assertIn("recall", payload["mcpServers"])
+        self.assertTrue((ROOT / "scripts" / "kimi_mcp_server.py").is_file())
+        self.assertTrue((ROOT / "hooks" / "hooks.json").is_file())
+        self.assertTrue((ROOT / "docs" / "CLAUDE_CODE.md").is_file())
 
     def test_cross_platform_python_builder_is_present(self) -> None:
         self.assertTrue((REPO_ROOT / "build_plugin.py").is_file())
@@ -201,6 +230,64 @@ class PackageMetadataTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
             env["PLUGIN_ROOT"] = str(ROOT)
+            for event_name, matcher_groups in hooks.items():
+                command = matcher_groups[0]["hooks"][0]["commandWindows"]
+                payload = {**payloads[event_name], "cwd": tmp}
+                completed = subprocess.run(
+                    [
+                        "powershell",
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-Command",
+                        command,
+                    ],
+                    input=json.dumps(payload),
+                    text=True,
+                    capture_output=True,
+                    cwd=ROOT,
+                    env=env,
+                )
+                self.assertEqual(completed.returncode, 0, f"{event_name}: {completed.stderr}")
+                output = json.loads(completed.stdout)
+                self.assertTrue(output["continue"], event_name)
+
+    @unittest.skipUnless(os.name == "nt", "Windows hook command regression only runs on Windows.")
+    def test_windows_hook_commands_run_with_claude_plugin_root_and_no_plugin_root(self) -> None:
+        """Regression test for a live bug: Claude Code sets CLAUDE_PLUGIN_ROOT,
+        not PLUGIN_ROOT (Codex's variable). With PLUGIN_ROOT left completely
+        unset (as Claude Code actually leaves it), hooks must still resolve
+        correctly using CLAUDE_PLUGIN_ROOT alone.
+        """
+        hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+        payloads = {
+            "SessionStart": {"hook_event_name": "SessionStart"},
+            "UserPromptSubmit": {
+                "hook_event_name": "UserPromptSubmit",
+                "prompt": "remember this: commandWindows regression test",
+            },
+            "PostToolUse": {
+                "hook_event_name": "PostToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": "python -m unittest discover -s tests"},
+                "tool_response": {"exit_code": 0, "stdout": "Ran 1 test in 0.1s\nOK", "stderr": ""},
+            },
+            "PreCompact": {
+                "hook_event_name": "PreCompact",
+                "trigger": "manual",
+                "turn_id": "claude-plugin-root-regression",
+                "summary": "Claude Code plugin root regression checkpoint.",
+            },
+            "Stop": {
+                "hook_event_name": "Stop",
+                "turn_id": "claude-plugin-root-regression",
+                "last_assistant_message": "Claude Code plugin root regression completed.",
+            },
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env.pop("PLUGIN_ROOT", None)
+            env["CLAUDE_PLUGIN_ROOT"] = str(ROOT)
             for event_name, matcher_groups in hooks.items():
                 command = matcher_groups[0]["hooks"][0]["commandWindows"]
                 payload = {**payloads[event_name], "cwd": tmp}

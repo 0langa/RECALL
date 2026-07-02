@@ -1,0 +1,31 @@
+{
+  "name": "recall",
+  "version": "1.0.0",
+  "description": "Local-first project memory for Claude Code, shared with Codex and Kimi Code stores.",
+  "author": {
+    "name": "RECALL contributors"
+  },
+  "homepage": "https://github.com/0langa/RECALL",
+  "repository": "https://github.com/0langa/RECALL",
+  "license": "Apache-2.0",
+  "keywords": [
+    "memory",
+    "recall",
+    "local-first",
+    "claude-code",
+    "context"
+  ],
+  "skills": "./skills/",
+  "mcpServers": {
+    "recall": {
+      "command": "python",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/scripts/kimi_mcp_server.py"
+      ],
+      "cwd": "${CLAUDE_PLUGIN_ROOT}",
+      "env": {
+        "RECALL_DEFAULT_PROVIDER": "claude-code"
+      }
+    }
+  }
+}

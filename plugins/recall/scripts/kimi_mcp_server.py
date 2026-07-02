@@ -28,6 +28,20 @@ def resolve_root(arguments: Json) -> Path | None:
     return Path(str(raw)).expanduser().resolve() if raw else None
 
 
+def resolve_provider() -> str:
+    """Identify which MCP client is running this adapter.
+
+    This server is shared verbatim between the Kimi and Claude Code plugin
+    manifests; each manifest sets RECALL_DEFAULT_PROVIDER in the server's env
+    block so writes are stamped with correct provenance instead of always
+    reading "kimi". Default stays "kimi" for any caller that omits the env
+    var, preserving prior behavior.
+    """
+    raw = os.environ.get("RECALL_DEFAULT_PROVIDER", "kimi")
+    provider = str(raw).strip().lower()
+    return provider or "kimi"
+
+
 def content_response(payload: Json) -> Json:
     return {
         "content": [
@@ -149,8 +163,9 @@ def call_context_packet(arguments: Json) -> Json:
 
 def call_save_insight(arguments: Json) -> Json:
     root = resolve_root(arguments)
+    provider = resolve_provider()
     metadata = memory_manager.provider_metadata(
-        origin_provider="kimi",
+        origin_provider=provider,
         origin_agent=arguments.get("origin_agent"),
         source_session=arguments.get("source_session"),
         source_turn=arguments.get("source_turn"),
@@ -167,7 +182,7 @@ def call_save_insight(arguments: Json) -> Json:
             summary=arguments.get("summary"),
             details=arguments.get("details"),
             tags=list(arguments.get("tag") or []),
-            source="kimi_mcp",
+            source=f"{provider}_mcp",
             status=str(arguments.get("status") or "active"),
             importance=arguments.get("importance"),
             confidence=arguments.get("confidence"),
@@ -193,7 +208,7 @@ def call_initialize_project(arguments: Json) -> Json:
     root = resolve_root(arguments)
     if root is None:
         raise ValueError("initialize_project requires root.")
-    cfg = recall_config.activate_project(root, activated_by="kimi_mcp")
+    cfg = recall_config.activate_project(root, activated_by=f"{resolve_provider()}_mcp")
     return {"action": "initialize-project", "root": str(root), "activation": cfg["activation"]}
 
 
