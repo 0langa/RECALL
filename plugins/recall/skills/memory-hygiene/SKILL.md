@@ -7,11 +7,11 @@ description: Use this skill when deciding whether candidate context belongs in R
 
 Use this skill as RECALL's policy brain for memory quality. It routes candidate facts to the right durable surface, plans cleanup, and applies only safe non-destructive lifecycle changes.
 
-RECALL remains local-only. Work in the active project's `.recall/` store, or the legacy `.codex_memory/` store when present. Do not store or repeat secrets.
+RECALL is local-only project memory. Work in the active project's `.recall/` store, or the legacy `.codex_memory/` store when present. Do not store or repeat secrets, credentials, tokens, private keys, passwords, or sensitive personal data.
 
 ## Boundary
 
-RECALL now exposes seven public skills:
+RECALL exposes seven public skills:
 
 - `save-insight`: create new durable memory.
 - `retrieve-memory`: targeted lookup.
@@ -21,7 +21,7 @@ RECALL now exposes seven public skills:
 - `using-recall`: session usage guidance.
 - `memory-hygiene`: routing, cleanup planning, safe automatic maintenance, and staleness/conflict policy.
 
-Use `memory-hygiene` before mutation when the correct action is not already obvious. Hand exact ID-based lifecycle changes to `manage-memory` when the user already gave the action and IDs.
+Use `memory-hygiene` before mutation when the correct action is not already obvious. Hand exact ID-based lifecycle changes to `manage-memory` when the user already gave the action and IDs. Do not create new memories from this skill; hand new writes to `save-insight`.
 
 ## Execution Path
 
@@ -42,7 +42,18 @@ Use the contract asset as the quick boundary check:
 {"asset":"assets/contract.json","kind":"hygiene-boundary"}
 ```
 
-Read `references/hygiene-policy.md` when a routing or cleanup decision is ambiguous.
+Read `references/hygiene-policy.md` when a routing or cleanup decision is ambiguous. Read `references/routing-decision-tree.md` for step-by-step routing calls. Read `references/examples.md` for worked scan/plan/apply outputs.
+
+## Contract
+
+| Field | Required | Meaning |
+|---|---:|---|
+| `candidate_fact` | for `route-memory` | free text of a candidate durable fact |
+| `claim_key` | for `reconcile-current-truth` | mutually exclusive claim slot to resolve |
+| `scope` | for `hygiene-plan` | `project` (only value currently supported) |
+| `--safe` | for `hygiene-apply` | required flag; refuses destructive changes |
+| `--limit` | optional | cap the number of records inspected per pass |
+| `result` | yes | JSON summary of proposals, inspected count, safe/apply status |
 
 ## Workflow
 
@@ -52,27 +63,6 @@ Read `references/hygiene-policy.md` when a routing or cleanup decision is ambigu
 4. Use `hygiene-apply --safe` only for high-confidence non-destructive changes.
 5. Leave risky conflicts, near-duplicates, deletions, and ambiguous scope decisions for user confirmation.
 6. Use `manage-memory` for explicit ID-based edits, deletion, or user-approved lifecycle work.
-
-## Output Shape
-
-Plans return JSON-like summaries:
-
-```json
-{
-  "action": "hygiene-plan",
-  "inspected": 80,
-  "proposals": [
-    {
-      "id": 42,
-      "proposed_action": "stale",
-      "confidence": 0.91,
-      "reason": "source_path no longer exists",
-      "safe_to_apply": true
-    }
-  ],
-  "requires_confirmation": [17]
-}
-```
 
 ## Safe Actions
 
@@ -102,6 +92,89 @@ Never hard-delete from this skill. If deletion is explicit, use `manage-memory` 
 | Conflicting claim key | pick validated/high-trust winner only when clear |
 | Weak preference without evidence | mark `needs_confirmation` |
 
+## Examples
+
+Route a candidate fact:
+
+```bash
+python ./scripts/recall_skill.py route-memory "Release notes must stay in docs/manual-release-notes.md."
+```
+
+```json
+{"action":"route-memory","target":"repo_docs","reason":"candidate belongs in project docs, not memory"}
+```
+
+Scan then plan then safe-apply:
+
+```bash
+python ./scripts/recall_skill.py hygiene-scan --limit 80
+python ./scripts/recall_skill.py hygiene-plan --scope project --limit 80
+python ./scripts/recall_skill.py hygiene-apply --safe --limit 20
+```
+
+Reconcile a conflicting current-truth claim:
+
+```bash
+python ./scripts/recall_skill.py reconcile-current-truth --claim-key recall.kimi.standard_average
+```
+
+## Inputs
+
+Required: candidate fact for `route-memory`; claim key for `reconcile-current-truth`; `--safe` flag for `hygiene-apply`. Optional: `--limit`, `--scope`. Reject requests to run destructive actions from this skill; reject secret-shaped candidate facts before routing.
+
+## Output Format
+
+Plans return JSON-like summaries:
+
+```json
+{
+  "action": "hygiene-plan",
+  "inspected": 80,
+  "proposals": [
+    {
+      "id": 42,
+      "proposed_action": "stale",
+      "confidence": 0.91,
+      "reason": "source_path no longer exists",
+      "safe_to_apply": true
+    }
+  ],
+  "requires_confirmation": [17]
+}
+```
+
+`hygiene-apply --safe` returns per-record outcomes:
+
+```json
+{"action":"hygiene-apply","applied":[{"id":42,"outcome":"stale"}],"skipped":[{"id":17,"reason":"needs_confirmation"}]}
+```
+
+`route-memory` returns a single target:
+
+```json
+{"action":"route-memory","target":"recall_memory","reason":"durable cross-session decision"}
+```
+
+## Ownership Boundaries
+
+| Request | This skill action | Handoff |
+|---|---|---|
+| "should this go into memory?" | route candidate | none |
+| "clean up noisy memory" | plan + safe apply | `manage-memory` for destructive follow-ups |
+| "delete memory 42" | refuse from this skill | `manage-memory` `delete-memory --confirm` |
+| "save this decision" | refuse; not a writer | `save-insight` |
+| "show me all conflicts" | do not audit inventory | `review-memory` |
+| "make a new category" | do not design taxonomy | `define-category` |
+
+## Edge Cases
+
+- Ambiguous scope: propose `needs_confirmation`, never guess between recall memory and repo docs.
+- Near-duplicates with different provenance: report both, require confirmation before merge.
+- Source-backed record whose file moved but still exists at the new path: refresh source, do not stale.
+- Weak preference with no evidence: mark `needs_confirmation`, keep the record.
+- Validated claim conflicting with a hypothesis claim: supersede hypothesis only when evidence lineage is clean.
+- Secret-shaped candidate text: reject at `route-memory`, do not persist.
+
 ## Safety
 
 - Treat current repository evidence as stronger than old memory.
@@ -110,9 +183,19 @@ Never hard-delete from this skill. If deletion is explicit, use `manage-memory` 
 - Do not silently edit memory content to match new truth.
 - If unsure, report `needs_confirmation`.
 
+## Troubleshooting
+
+- `hygiene-apply` refuses without `--safe`: this is intentional; do not remove the guard.
+- Adapter path errors: run from installed/source plugin root, or use absolute path plus `--root`.
+- Missing proposals for an obvious stale record: rerun `hygiene-scan --limit <higher>` to widen the window.
+- Persistent conflicts on the same claim key: hand to `manage-memory resolve-conflict`.
+- Route target keeps returning `current_chat_only` for a fact you want saved: strengthen the candidate wording with evidence, then rerun `route-memory`.
+
 ## Related
 
-- [Hygiene policy](references/hygiene-policy.md)
+- [Hygiene policy](references/hygiene-policy.md) for full routing and cleanup rules.
+- [Routing decision tree](references/routing-decision-tree.md) for step-by-step routing calls.
+- [Worked examples](references/examples.md) for scan/plan/apply outputs.
 - [Manage Memory](../manage-memory/SKILL.md) for exact mutation by ID.
 - [Review Memory](../review-memory/SKILL.md) for inspection-only reporting.
 - [Save Insight](../save-insight/SKILL.md) for new durable facts.

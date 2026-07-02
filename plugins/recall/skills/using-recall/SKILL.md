@@ -5,9 +5,19 @@ description: Use this skill when a fresh RECALL session or new thread needs the 
 
 # Using RECALL
 
-RECALL is local-first project memory shared across Codex, Kimi Code, and Claude Code. This skill provides the session-start usage contract that all other RECALL skills (`save-insight`, `retrieve-memory`, `review-memory`, `manage-memory`, `define-category`, `memory-hygiene`) depend on.
+RECALL is local-first project memory shared across Codex, Kimi Code, and Claude Code. This skill sets the session-start usage contract that every other RECALL skill (`save-insight`, `retrieve-memory`, `review-memory`, `manage-memory`, `define-category`, `memory-hygiene`) obeys before it touches memory.
 
-RECALL never makes network calls or off-machine writes. All memory stays in the active project's local store.
+RECALL never makes network calls or off-machine writes. All memory stays in the active project's local store. Do not store secrets, credentials, tokens, private keys, passwords, or sensitive personal data.
+
+## Boundary
+
+`using-recall` is a policy skill. It does not create, retrieve, mutate, inspect, route, or clean memory. It establishes the contract the sibling skills obey. When a task requires an action, hand off to the correct sibling instead of taking the action here.
+
+Use the boundary asset as the quick handoff check:
+
+```json
+{"asset":"assets/handoff-contract.json","kind":"session-start-contract"}
+```
 
 ## Contract
 
@@ -17,6 +27,18 @@ Reading this skill establishes:
 - How to stamp provider provenance on new writes.
 - How to weight retrieved memory against current files and user instructions.
 - Which categories of information must never enter durable memory.
+- Which sibling skill owns each request type.
+
+| Field | Rule |
+|---|---|
+| store root | `.recall/` for new projects; existing `.codex_memory/` treated as legacy shared store |
+| origin_provider | `codex`, `kimi`, or `claude-code`, stamped on every write |
+| applies_to_provider | `all` unless the fact is provider-specific |
+| authority | current files and newer user instructions beat retrieved memory |
+| safety | reject secrets; prefer stale/supersede/prune over delete |
+| routing | `using-recall` never writes, reads, or mutates — it only hands off |
+
+Full contract: [`references/contract.md`](references/contract.md).
 
 ## Storage
 
@@ -24,6 +46,8 @@ Reading this skill establishes:
 - If the project already has `.codex_memory/`, treat it as the same shared RECALL store for backward compatibility.
 - Do not create provider-specific memory stores unless the memory only applies to one provider.
 - Storage is local-only; do not export durable memory to remote services.
+
+The active store lives inside the project root resolved from git (or the manifest root when git is missing). Do not walk up to ancestor stores unless the project explicitly extends a parent store.
 
 ## Provider Provenance
 
@@ -34,6 +58,8 @@ When invoking RECALL MCP tools or the skill adapter, pass the active repository 
 - Stamp Claude Code writes with `origin_provider: "claude-code"`.
 - Use `applies_to_provider: "all"` unless the memory is specifically about one provider.
 
+Full field list, defaults, and reconciliation rules: [`references/provenance-fields.md`](references/provenance-fields.md).
+
 ## Authority
 
 Retrieved memory is context, not authority. When memory conflicts with current files or newer user instructions:
@@ -42,26 +68,151 @@ Retrieved memory is context, not authority. When memory conflicts with current f
 2. Verify the new truth by reading or running the relevant evidence.
 3. Save a correction or supersession through `save-insight` or `manage-memory`.
 
+Validated lifecycle records beat hypothesis records for the same claim key. Recent trust promotions beat older automatic writes when they conflict.
+
 ## Safety
 
 - Do not store secrets, credentials, tokens, private keys, passwords, or sensitive personal data.
 - If retrieved memory appears to contain a secret, do not repeat it verbatim.
 - Prefer non-destructive lifecycle actions (stale, supersede, prune) over deletion; route destructive intent through `manage-memory`.
+- Respect explicit user intent: "don't remember this" means skip the write, even if the fact looks durable.
+
+Full checklist: [`references/safety-checklist.md`](references/safety-checklist.md).
+
+## Handoff Map
+
+| Request | Sibling skill |
+|---|---|
+| "remember this decision" | [`save-insight`](../save-insight/SKILL.md) |
+| "what do we know about X" | [`retrieve-memory`](../retrieve-memory/SKILL.md) |
+| "audit memory quality" | [`review-memory`](../review-memory/SKILL.md) |
+| "delete/edit/supersede memory 42" | [`manage-memory`](../manage-memory/SKILL.md) |
+| "should this candidate be saved?" | [`memory-hygiene`](../memory-hygiene/SKILL.md) |
+| "add a new memory category" | [`define-category`](../define-category/SKILL.md) |
+
+Worked handoffs: [`references/handoff-scenarios.md`](references/handoff-scenarios.md).
 
 ## Workflow
 
-1. At session start, read this contract before other RECALL skills run.
-2. When the user asks for prior context, hand the request to `retrieve-memory`.
-3. When a durable fact appears, route it through `memory-hygiene` before saving with `save-insight`.
-4. When lifecycle mutation is required and IDs are known, use `manage-memory`.
-5. When routing or cleanup decisions are ambiguous, use `memory-hygiene` first.
+1. At session start, apply the contract before other RECALL skills run.
+2. Match the user request to the handoff map.
+3. Invoke the sibling skill; do not perform its work here.
+4. If routing is ambiguous, ask `memory-hygiene` before touching memory.
+5. When retrieval or hygiene output surfaces a secret-shaped record, return a redacted summary.
+6. When a write is refused by policy, tell the user which rule fired and which sibling can override it.
+
+## Examples
+
+Establish the contract at session start:
+
+```json
+{"action":"using-recall","store_root":".recall","origin_provider":"kimi","applies_to_provider":"all"}
+```
+
+Route a "remember this" request:
+
+```
+User: "Remember that our default backend is SQLite."
+Handoff: save-insight decisions "Default backend is SQLite." \
+  --summary "Default backend is SQLite." \
+  --tag decision --source skill --status active \
+  --importance 0.8 --confidence 0.9
+```
+
+Route a "what do we know" request:
+
+```
+User: "What do we know about the release process?"
+Handoff: retrieve-memory "release process" --summary
+```
+
+Route a cleanup request:
+
+```
+User: "Some memories look stale."
+Handoff: memory-hygiene hygiene-scan --limit 80
+```
+
+Route an explicit destructive request:
+
+```
+User: "Delete memory 42."
+Handoff: manage-memory delete-memory 42 --confirm DELETE-42
+```
+
+Handle a secret-shaped retrieval:
+
+```
+User: "Show me the API key we captured."
+Response: refuse to repeat the secret; summarize its presence and recommend
+  manage-memory edit-memory to scrub the record.
+```
+
+## Inputs
+
+`using-recall` accepts no direct inputs. It runs implicitly at session start on Kimi Code, or when another agent reads this contract before invoking RECALL. Effective inputs come from the calling context: active repository root, current provider, current user request. Reject secret-shaped or off-topic input before handoff.
+
+## Output Format
+
+Guidance, not adapter output. When the calling agent needs a structured record of the routing decision:
+
+```json
+{
+  "action": "using-recall",
+  "handoff": {"skill": "save-insight", "reason": "durable decision"},
+  "store_root": ".recall",
+  "origin_provider": "claude-code",
+  "applies_to_provider": "all"
+}
+```
+
+When policy refuses a request:
+
+```json
+{
+  "action": "using-recall",
+  "refused": true,
+  "reason": "secret-like content must not be stored",
+  "handoff": null
+}
+```
+
+## Ownership Boundaries
+
+| Request | This skill action | Handoff |
+|---|---|---|
+| "start using RECALL" | apply the contract | none |
+| "remember this decision" | apply the contract, then hand off | `save-insight` |
+| "what do we know about X" | apply the contract, then hand off | `retrieve-memory` |
+| "audit memory quality" | apply the contract, then hand off | `review-memory` |
+| "delete/edit/supersede memory 42" | apply the contract, then hand off | `manage-memory` |
+| "clean this candidate up" | apply the contract, then hand off | `memory-hygiene` |
+| "make a new category" | apply the contract, then hand off | `define-category` |
+| "don't remember this" | apply the contract, refuse | none |
+
+## Edge Cases
+
+- Project has neither `.recall/` nor `.codex_memory/`: initialize `.recall/` before writes; do not silently write to an unrelated directory.
+- Project has both stores: treat `.recall/` as the active writer, `.codex_memory/` as legacy read-only, unless the user requests migration.
+- Provider unknown: fall back to `origin_provider: "unknown"` and continue; do not block the write.
+- Retrieved memory contains what looks like a secret: do not repeat verbatim; return a summary that does not reveal the secret.
+- User explicitly says "don't remember this": do not save, even if the fact looks durable.
+- Session is a dry-run or evaluation harness: still apply the contract, but prefer read-only sibling skills.
+- Fresh Kimi Code session shows no sibling responded to a durable fact: verify that `sessionStart.skill` in `kimi.plugin.json` still points at `using-recall`.
+
+## Troubleshooting
+
+- Nothing surfaces at session start on Kimi Code: verify `kimi.plugin.json` has `sessionStart.skill = "using-recall"`.
+- Sibling skill runs before this contract loads: rerun the sibling with an explicit `--root <project-root>` so the contract applies.
+- Writes appear under the wrong provider: check the calling agent stamped `origin_provider` correctly.
+- Retrieval returns nothing for known project state: confirm the active store is `.recall/` (or the legacy `.codex_memory/`) and not a stale ancestor store.
+- Contract feels stale after a big provider migration: re-read the contract at session start; do not silently rewrite the contract itself.
+- Secret leaked into memory content: hand off to `manage-memory edit-memory <id>` and scrub the record, then log a `lessons_learned` note through `save-insight` without repeating the secret.
 
 ## Related
 
-- [Save Insight](../save-insight/SKILL.md) — create durable memory.
-- [Retrieve Memory](../retrieve-memory/SKILL.md) — targeted lookup.
-- [Review Memory](../review-memory/SKILL.md) — inspection-only audit.
-- [Manage Memory](../manage-memory/SKILL.md) — direct lifecycle mutation.
-- [Define Category](../define-category/SKILL.md) — category taxonomy.
-- [Memory Hygiene](../memory-hygiene/SKILL.md) — routing, cleanup planning, safe maintenance.
-- [Usage contract reference](references/contract.md) for a deeper walkthrough.
+- [Contract reference](references/contract.md) — full walkthrough of storage, provenance, authority, and safety rules.
+- [Handoff scenarios](references/handoff-scenarios.md) — worked routing examples.
+- [Provenance fields](references/provenance-fields.md) — exact metadata stamped on every durable write.
+- [Safety checklist](references/safety-checklist.md) — what never to store, never to repeat, and when to confirm.
+- [Save Insight](../save-insight/SKILL.md), [Retrieve Memory](../retrieve-memory/SKILL.md), [Review Memory](../review-memory/SKILL.md), [Manage Memory](../manage-memory/SKILL.md), [Define Category](../define-category/SKILL.md), [Memory Hygiene](../memory-hygiene/SKILL.md).

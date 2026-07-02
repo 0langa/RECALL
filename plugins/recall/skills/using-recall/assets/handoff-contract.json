@@ -1,0 +1,32 @@
+{
+  "kind": "session-start-contract",
+  "skill": "using-recall",
+  "store": {
+    "active": ".recall/",
+    "legacy": ".codex_memory/",
+    "network_calls": false,
+    "off_machine_writes": false
+  },
+  "provenance": {
+    "origin_provider": ["codex", "kimi", "claude-code", "unknown"],
+    "applies_to_provider_default": "all",
+    "capture_channel": ["hook", "mcp", "skill_adapter", "manual"]
+  },
+  "authority": {
+    "order": ["current_files", "user_instructions", "retrieved_memory"],
+    "lifecycle_winner": ["validated", "hypothesis"]
+  },
+  "safety": {
+    "reject_categories": ["secret", "credential", "token", "private_key", "password"],
+    "prefer_lifecycle_over_delete": true,
+    "respect_dont_remember": true
+  },
+  "routing": {
+    "save_new_fact": "save-insight",
+    "look_up_fact": "retrieve-memory",
+    "inspect_state": "review-memory",
+    "mutate_by_id": "manage-memory",
+    "route_or_clean": "memory-hygiene",
+    "taxonomy": "define-category"
+  }
+}
