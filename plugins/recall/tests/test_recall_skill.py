@@ -463,6 +463,71 @@ class RecallSkillAdapterTests(unittest.TestCase):
             self.assertIn("secret-like", completed.stderr)
             self.assertEqual(result["results"], [])
 
+    def test_save_insight_rejects_secret_like_content(self) -> None:
+        payloads = [
+            "AWS access key AKIAIOSFODNN7EXAMPLE with secret wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            "Database password is HardCap@2026SuperSecret to unlock the build cache.",
+            "Auth token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIn0.4pcPyMD09olPSyXnrXCjTwXyr4BsezdI1AVTmud2fU4",
+            "Use api_key=sk-proj-abc123xyz789supersecret for the build service.",
+            "GitHub token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            for content in payloads:
+                result = run_skill(
+                    tmp,
+                    "save-insight",
+                    "decisions",
+                    content,
+                    "--summary",
+                    "should be rejected",
+                    "--source",
+                    "skill",
+                )
+                self.assertEqual(result["result"], "rejected", content)
+                self.assertEqual(result["category"], None, content)
+                self.assertIn("secret", result["reason"])
+            retrieval = run_skill(tmp, "retrieve-memory", "AKIA AWS token password")
+            self.assertEqual(retrieval["results"], [])
+
+    def test_save_insight_accepts_clean_content_after_secret_rejection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            rejected = run_skill(
+                tmp,
+                "save-insight",
+                "decisions",
+                "AWS access key AKIAIOSFODNN7EXAMPLE.",
+                "--summary",
+                "should be rejected",
+                "--source",
+                "skill",
+            )
+            self.assertEqual(rejected["result"], "rejected")
+            saved = run_skill(
+                tmp,
+                "save-insight",
+                "decisions",
+                "Use CMake presets for build config.",
+                "--summary",
+                "CMake presets",
+                "--source",
+                "skill",
+            )
+            self.assertEqual(saved["action"], "save-insight")
+            self.assertEqual(saved["category"], "decisions")
+
+    def test_route_memory_rejects_broader_secret_shapes(self) -> None:
+        secrets = [
+            "AWS access key AKIAIOSFODNN7EXAMPLE should be kept safe.",
+            "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.4pcPyMD09olPSyXnrXCjTwXyr4BsezdI1AVTmud2fU4 issued.",
+            "GitHub token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 rotate soon.",
+            "Password is HardCap@2026SuperSecret rotate quarterly.",
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            for text in secrets:
+                result = run_skill(tmp, "route-memory", text)
+                self.assertEqual(result["route"], "reject", text)
+                self.assertEqual(result["confidence"], 1.0, text)
+
 
 if __name__ == "__main__":
     unittest.main()

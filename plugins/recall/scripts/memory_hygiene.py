@@ -16,6 +16,7 @@ from embedder import tokenize
 import memory_lifecycle
 import memory_noise
 from services import provenance_service
+import security
 import storage
 
 
@@ -177,7 +178,7 @@ def route_memory(candidate_fact: str) -> dict[str, Any]:
             "reason": "empty candidate has no durable content",
             "follow_up": "none",
         }
-    if re.search(r"(?i)(api[_-]?key|secret|token|password|private key)\s*[:=]", text):
+    if security.contains_secret(text):
         return {
             "action": "route-memory",
             "route": "reject",

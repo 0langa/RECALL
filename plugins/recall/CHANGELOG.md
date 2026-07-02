@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1 - 2026-07-02
+
+- Fixed `save-insight` silently accepting secret-shaped content (AWS keys, JWTs, GitHub tokens, verbal `password is X` phrasing). The adapter now returns `{"result":"rejected","reason":"secret-like content must not be stored"}` and refuses to persist the record.
+- Broadened `SECRET_PATTERNS` to cover `AKIA*`/`ASIA*` AWS access keys, 40-char AWS secret keys, JWT triples, GitHub/GitLab tokens, verbal password/token assignments, and `-----BEGIN PRIVATE KEY-----` blocks.
+- Routed `route-memory` secret detection through the shared broadened pattern set so credential-shaped candidates return `"route":"reject"` at 1.0 confidence.
+- Added regression tests covering AWS/JWT/GitHub/password rejection through both `save-insight` and `route-memory`.
+
 ## 1.1.0 - 2026-07-02
 
 - Added `memory-hygiene` public skill and adapter surface (`route-memory`, `hygiene-scan`, `hygiene-plan`, `hygiene-apply --safe`, `reconcile-current-truth`, `refresh-source-backed`) as RECALL's policy brain for candidate routing, cleanup planning, and safe non-destructive lifecycle maintenance.

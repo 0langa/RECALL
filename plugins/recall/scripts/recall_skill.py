@@ -20,6 +20,7 @@ import memory_hygiene
 import memory_noise
 import memory_review
 import memory_manager
+import security
 from models import ContextPacketRequest, ReviewRequest
 from services.health_service import review_memory
 from services import provenance_service
@@ -161,6 +162,14 @@ def save_turn_card(card: dict[str, Any], root: Path | None) -> dict[str, Any]:
 def handle_save_insight(args: argparse.Namespace, root: Path | None) -> None:
     if bool(args.claim_key) != bool(args.claim_value):
         raise ValueError("--claim-key and --claim-value must be provided together.")
+    if security.contains_secret(args.content, args.summary, args.details):
+        print_json({
+            "action": "save-insight",
+            "result": "rejected",
+            "reason": "secret-like content must not be stored",
+            "category": None,
+        })
+        return
     metadata_base = {}
     if args.source_path:
         metadata_base.update(provenance_service.describe_file(root or Path.cwd(), args.source_path))
