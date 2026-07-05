@@ -149,6 +149,25 @@ class RetrievalFlagTests(unittest.TestCase):
             tight_response = retrieval.query("main branch release", root=tmp, limit=5)
             self.assertEqual(tight_response["results"][0]["flag"], "needs_verification")
 
+    def test_raw_secrets_in_legacy_store_are_redacted_on_read(self) -> None:
+        import sqlite3
+
+        with tempfile.TemporaryDirectory() as tmp:
+            record = seed(tmp, "commands", "Deploy authenticates against the staging service.", "active")
+            secret_content = "Deploy uses api_key = sk-proj-LEGACYRAWSECRETABCDEFGHIJ to authenticate."
+            connection = sqlite3.connect(storage.db_path(tmp))
+            try:
+                connection.execute("UPDATE memories SET content = ? WHERE id = ?", (secret_content, record.id))
+                connection.commit()
+            finally:
+                connection.close()
+
+            for verbose in (False, True):
+                response = retrieval.query("deploy authenticate", root=tmp, limit=5, verbose=verbose)
+                item = next(entry for entry in response["results"] if entry["id"] == record.id)
+                self.assertNotIn("sk-proj-LEGACYRAWSECRET", item["content"])
+                self.assertIn("[REDACTED]", item["content"])
+
     def test_current_only_store_reports_clean_health(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             seed(tmp, "commands", "Run unit tests with python -m pytest tests -q.", "active")

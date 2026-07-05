@@ -1,0 +1,26 @@
+{
+  "name": "release_prep",
+  "description": "Release hardening against a store with planted conflicts and a bad pack: stresses hygiene, conflict alerts, and diagnostics.",
+  "store": {"tier": "working", "golden": true, "flagged": true, "conflicts": true, "bad_pack": true},
+  "turns": [
+    {
+      "prompt": "We want to cut a release; what is our current branch policy?",
+      "should_inject": true,
+      "stop_text": ""
+    },
+    {
+      "prompt": "Run the release build.",
+      "should_inject": false,
+      "tools": [
+        {"tool_name": "Bash", "command": "python scripts/build.py --package", "output": "build: pass\npackage: pass\nexit_code: 0"}
+      ],
+      "stop_text": "Release build and package pass."
+    },
+    {
+      "prompt": "Requirement: exported reports must be reproducible byte for byte across rebuilds.",
+      "should_inject": true,
+      "precompact": true,
+      "stop_text": "Requirement recorded: reproducible byte-for-byte report exports."
+    }
+  ]
+}

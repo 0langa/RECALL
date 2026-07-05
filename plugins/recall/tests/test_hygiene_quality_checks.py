@@ -240,6 +240,33 @@ class HygieneQualityCheckTests(unittest.TestCase):
             plan = memory_hygiene.hygiene_plan(tmp)
             self.assertGreaterEqual(len(plan["proposals"]), 25)
 
+    def test_explicit_declaration_preference_needs_no_decision_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            declared = seed_raw(
+                tmp,
+                "preferences",
+                "User wants migration scripts reviewed as dry-run output before apply.",
+                {
+                    "source": "skill", "status": "active",
+                    "preference_key": "migration.review_style",
+                    "preference_evidence_type": "explicit_declaration",
+                },
+            )
+            observed_without_decision = seed_raw(
+                tmp,
+                "preferences",
+                "User seems to prefer squash merges based on recent activity.",
+                {
+                    "source": "skill", "status": "active",
+                    "preference_key": "merge.style",
+                    "preference_evidence_type": "accepted_edit",
+                },
+            )
+            plan = memory_hygiene.hygiene_plan(tmp)
+            flagged = {p["id"] for p in plan["proposals"] if p["proposed_action"] == "needs_confirmation"}
+            self.assertNotIn(declared.id, flagged)
+            self.assertIn(observed_without_decision.id, flagged)
+
     def test_good_store_produces_no_proposals(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory_manager.add_record(

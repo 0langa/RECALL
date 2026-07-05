@@ -1,0 +1,13 @@
+{
+  "mode": "light",
+  "description": "Fast check (<~60s): fixed overhead, injection gate, retrieval smoke, dedup+secret smoke, key latencies, determinism hash.",
+  "seed": 1337,
+  "scenarios": ["bugfix_loop", "casual_chatter"],
+  "sessions_per_scenario": 1,
+  "turn_limit": null,
+  "phases": {"static": true, "scenarios": true, "probes": true, "long_run": false},
+  "probe_scenario": "bugfix_loop",
+  "probe_limit": 5,
+  "long_run": null,
+  "judge": {"emit": false, "max_per_rubric": 0}
+}

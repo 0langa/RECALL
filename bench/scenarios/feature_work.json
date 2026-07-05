@@ -1,0 +1,38 @@
+{
+  "name": "feature_work",
+  "description": "Feature implementation against a mature store: prior decisions matter, most prompts are project-relevant.",
+  "store": {"tier": "mature", "golden": true, "flagged": true},
+  "turns": [
+    {
+      "prompt": "Start implementing the report footer; check what requirements exist for report generation output.",
+      "should_inject": true,
+      "tools": [
+        {"tool_name": "Write", "command": "src/report_footer.py", "output": "ok"}
+      ],
+      "stop_text": "Implemented the report footer with the UTC generation timestamp requirement."
+    },
+    {
+      "prompt": "How does the ingest gateway distribute work to workers here?",
+      "should_inject": true,
+      "stop_text": ""
+    },
+    {
+      "prompt": "Run the unit tests for the footer.",
+      "should_inject": false,
+      "tools": [
+        {"tool_name": "Bash", "command": "python -m pytest tests/test_report_footer.py -q", "output": "3 passed\nexit_code: 0"}
+      ],
+      "stop_text": "Footer tests pass."
+    },
+    {
+      "prompt": "Translate the word butterfly into five languages.",
+      "should_inject": false,
+      "stop_text": ""
+    },
+    {
+      "prompt": "Before we tag: is the ledger table safe to compact, or are there storage constraints?",
+      "should_inject": true,
+      "stop_text": ""
+    }
+  ]
+}

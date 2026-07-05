@@ -10,6 +10,7 @@ from typing import Any
 import config as recall_config
 from embedder import cosine, embed, tokenize
 import index_store
+import security
 import storage
 from summarizer import summarize_records
 
@@ -323,13 +324,15 @@ def query(
     results = []
     for record in ranked[:limit]:
         flag, flag_reason = health_flag(record, aging_days)
+        # Defense in depth: writes redact, but legacy/imported stores can hold
+        # raw secret-shaped content — never emit it through retrieval.
         item: dict[str, Any] = {
             "id": record.id,
             "category": record.category,
             "timestamp": record.timestamp,
             "score": round(record.score, 4),
-            "content": record.content,
-            "metadata": record.metadata,
+            "content": security.redact_text(record.content),
+            "metadata": security.redact_value(record.metadata),
             "flag": flag,
         }
         if flag_reason:

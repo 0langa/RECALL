@@ -1,0 +1,13 @@
+{
+  "mode": "normal",
+  "description": "Everyday evaluation: all decision-driving metrics incl. hygiene fixtures, conflicts, medium long-run growth.",
+  "seed": 1337,
+  "scenarios": ["bugfix_loop", "feature_work", "casual_chatter", "release_prep"],
+  "sessions_per_scenario": 2,
+  "turn_limit": null,
+  "phases": {"static": true, "scenarios": true, "probes": true, "long_run": true},
+  "probe_scenario": "release_prep",
+  "probe_limit": 5,
+  "long_run": {"scenario": "aging_project", "sessions": 20},
+  "judge": {"emit": false, "max_per_rubric": 8}
+}

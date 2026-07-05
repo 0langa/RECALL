@@ -1,0 +1,34 @@
+{
+  "name": "bugfix_loop",
+  "description": "Debugging session: failing tests, error output, eventual fix. Stresses PostToolUse capture and failure-shaped injection.",
+  "store": {"tier": "working", "golden": true, "flagged": true},
+  "turns": [
+    {
+      "prompt": "The websocket reconnect test is flaky again, can you investigate?",
+      "should_inject": true,
+      "tools": [
+        {"tool_name": "Bash", "command": "python -m pytest tests/test_reconnect.py -q", "output": "FAILED tests/test_reconnect.py::test_retry - TimeoutError\nexit_code: 1"}
+      ],
+      "stop_text": "Found the failing reconnect test; the retry path times out without jitter."
+    },
+    {
+      "prompt": "Ok apply the jitter fix and rerun.",
+      "should_inject": false,
+      "tools": [
+        {"tool_name": "Edit", "command": "src/reconnect.py", "output": "ok"},
+        {"tool_name": "Bash", "command": "python -m pytest tests/test_reconnect.py -q", "output": "1 passed\nexit_code: 0"}
+      ],
+      "stop_text": "Decision: reconnect retries now use 0-300ms jitter; test passes."
+    },
+    {
+      "prompt": "Great. What was the accepted compression default for the export pipeline again?",
+      "should_inject": true,
+      "stop_text": ""
+    },
+    {
+      "prompt": "Write a haiku about rubber ducks.",
+      "should_inject": false,
+      "stop_text": ""
+    }
+  ]
+}

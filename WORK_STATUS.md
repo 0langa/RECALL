@@ -1,5 +1,83 @@
 # WORK_STATUS — Lifecycle Quality Implementation Pass (2026-07-05)
 
+## Batch 3 plan — RECALL benchmark/eval system (user-aligned 2026-07-05)
+
+Goal: measure token cost, quality, latency, and agent compliance of RECALL,
+provider-local, deterministic core with optional (never auto-run) LLM judging.
+
+User decisions: full build in one pass; live LLM judging NEVER executed by the
+building agent (deliver judge system + manual run instructions); CI light-mode
+job non-blocking first; v1.3.0 pushed+tagged first (done, marketplace bumped).
+
+Architecture (repo-root `bench/`, NOT shipped in plugin zip):
+- Layer 1 (engine, deterministic): scenario turn scripts drive real hooks via
+  stdin JSON + MCP server via stdio JSON-RPC + adapter CLI; recorder journals
+  every agent-visible emission tagged by channel taxonomy (from
+  token_usage_surfaces.md); metrics engine computes token/quality/latency/
+  consistency; JSON+markdown reports; baselines + delta thresholds.
+- Layer 2 (agent compliance, opt-in): sandboxed fixture project + task set;
+  calling agent is the test subject; graded by artifacts (store diff, debug
+  traces, emission journal) against per-task rubrics; tasks never reveal
+  expected RECALL behavior.
+- Judge (opt-in, two-phase): harness emits judge_tasks.jsonl from a recorded
+  run; any agent scores them; harness validates + aggregates. No API calls.
+- Modes = presets over one config system: light (<~30s), normal, complete.
+- Token estimator: local heuristic consistent with summarizer; absolute
+  accuracy secondary, version-over-version deltas primary.
+- Store tiers: fresh / working (~50) / mature (~500); legacy tier = optional
+  user-supplied old store path.
+
+Key metrics per mode: see conversation lists (fixed-vs-marginal token split,
+injection confusion matrix, retrieval P/R@k + flag correctness, dedup rates,
+hygiene detection/FP, secret leak sweep, latency p50/p95, determinism hash,
+long-run growth curves).
+
+Batch 3 status (2026-07-05): BUILT. `bench/` with recall_bench package
+(channels/tokens/recorder/drivers/store_fabricator/scenarios/engine/probes/
+metrics/baseline/report/judge/compliance), 5 scenario scripts, 3 presets,
+10 compliance tasks, 14 harness unit tests, CI bench-light non-blocking job,
+baseline bench/baselines/v1.3.0.json. Determinism verified (same seed ==
+same emission hash). Judge emission verified file-only; LLM judging never
+executed here per user instruction — manual instructions in bench/README.md.
+
+FINDING FIXED DURING BUILD: read-path secret leak. Write path redacts, but
+retrieval and review emitted raw secret-shaped content from legacy stores
+verbatim. First normal-mode bench run caught it (3 leaks). Fixed in
+retrieval.query (redact content + metadata on emit) and memory_review
+compact_text; pinned by test_retrieval_flags::test_raw_secrets_in_legacy_
+store_are_redacted_on_read. Leak sweep now CLEAN.
+
+Bench fabrication artifacts fixed: now-relative deterministic timestamps
+(FIXED_EPOCH aged every fabricated snapshot past the 45d window → hygiene
+false positives), injection-gate labels restricted to session 1 of normal
+scenarios (from session 2 on the store has legitimately learned repeated
+prompts; long-run replays excluded entirely), flag probes use limit 20
+(retired-status score penalties bury superseded cards below top-10 by
+design), golden preference card carries explicit_declaration evidence.
+
+SECOND ENGINE FINDING FIXED: hygiene demanded decision_id for every
+preference while the write contract (preference_service) accepts
+explicit_declaration without one — legitimately saved explicit preferences
+were flagged needs_confirmation forever. Aligned _preference_proposal with
+the write contract; pinned by test_explicit_declaration_preference_needs_
+no_decision_id.
+
+v1.3.0 baseline numbers (bench/baselines/v1.3.0.json, seed 1337):
+fixed overhead 5752 est tokens/session; marginal 236.1 est tokens/turn;
+20-turn session ≈ 10474 est tokens ≈ $0.031 at $3/M input. Retrieval golden
+hit rate 1.0 (MRR 1.0); flag correctness 1.0; conflict marking correct;
+dedup + secret rejection + safe-apply redaction all pass; leak sweep CLEAN;
+hygiene detection 6/7 (the exact-duplicate PAIR yields one merge proposal —
+the kept primary is correctly not proposed; known probe accounting).
+
+OPEN FINDING (baseline-documented, candidate improvement): injection gate
+accuracy 0.684 on virgin stores — 5 false injections mostly from re-injecting
+context the SAME session just learned (e.g. turn 2 re-injects the failure
+saved on turn 1). Candidate fix: session-recency suppression in the relevance
+gate (skip injection when top hits were written this session). Improvements
+will show as baseline delta.
+
+
 Goal: make RECALL a dependable memory layer that guides, enforces, and verifies
 memory behavior for Codex, Claude Code, and Kimi Code without per-session user steering.
 

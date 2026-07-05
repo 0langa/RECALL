@@ -301,7 +301,13 @@ def _preference_proposal(record: storage.MemoryRecord) -> HygieneProposal | None
     if record.category != "preferences" or not _is_current(record):
         return None
     metadata = record.metadata or {}
-    has_evidence = bool(metadata.get("preference_key") and metadata.get("preference_evidence_type") and metadata.get("decision_id"))
+    evidence_type = str(metadata.get("preference_evidence_type") or "").strip().lower()
+    # Mirror the write contract (services/preference_service.py): an explicit
+    # user declaration needs no decision_id; observed decisions do.
+    has_evidence = bool(metadata.get("preference_key")) and (
+        evidence_type == "explicit_declaration"
+        or bool(evidence_type and metadata.get("decision_id"))
+    )
     if has_evidence:
         return None
     return HygieneProposal(

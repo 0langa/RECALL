@@ -1,0 +1,13 @@
+{
+  "mode": "complete",
+  "description": "Release-grade sweep: every scenario, mature tier, extended long-run, judge task emission on (scoring still manual).",
+  "seed": 1337,
+  "scenarios": ["bugfix_loop", "feature_work", "casual_chatter", "release_prep", "aging_project"],
+  "sessions_per_scenario": 3,
+  "turn_limit": null,
+  "phases": {"static": true, "scenarios": true, "probes": true, "long_run": true},
+  "probe_scenario": "release_prep",
+  "probe_limit": 5,
+  "long_run": {"scenario": "aging_project", "sessions": 50},
+  "judge": {"emit": true, "max_per_rubric": 12}
+}

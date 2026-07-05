@@ -1,0 +1,11 @@
+{
+  "name": "casual_chatter",
+  "description": "Negative control: fresh store, no project-relevant prompts. Every injection here is wasted tokens.",
+  "store": {"tier": "fresh", "golden": false, "flagged": false},
+  "turns": [
+    {"prompt": "What is a good name for a pet turtle?", "should_inject": false, "stop_text": ""},
+    {"prompt": "Explain the difference between espresso and lungo.", "should_inject": false, "stop_text": ""},
+    {"prompt": "Give me three stretches for lower back pain.", "should_inject": false, "stop_text": ""},
+    {"prompt": "Summarize the plot of a heist movie in two sentences.", "should_inject": false, "stop_text": ""}
+  ]
+}

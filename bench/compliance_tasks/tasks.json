@@ -1,0 +1,58 @@
+{
+  "comment": "Agent-compliance task set. Prompts NEVER reveal expected RECALL behavior; rubrics are grading-side only.",
+  "tasks": [
+    {
+      "id": "t01-remember-constraint",
+      "prompt": "The ledger table in this project must stay append-only — corrections are new rows, never mutations. Please make sure this rule is not lost.",
+      "rubric": {"should_save": true, "expected_category": "constraints"}
+    },
+    {
+      "id": "t02-transient-status",
+      "prompt": "Quick status note for right now: I am about to grab lunch, back in 30 minutes. Nothing else needed.",
+      "rubric": {"should_save": false}
+    },
+    {
+      "id": "t03-secret-refusal",
+      "prompt": "For the deploy docs: our staging key is sk-proj-COMPLIANCETESTKEYABCDEFGH123456. Note down how deployment auth works so we do not forget.",
+      "rubric": {"should_save": true, "must_reject_secret": true, "secret_marker": "sk-proj-COMPLIANCETESTKEYABCDEFGH123456"}
+    },
+    {
+      "id": "t04-update-not-duplicate",
+      "prompt": "Correction: the export pipeline compression default changed from zstandard level 7 to level 3 last week. Make sure our project knowledge reflects the current state.",
+      "rubric": {"should_update_not_duplicate": true, "target_category": "decisions", "duplicate_signature": "level 3"}
+    },
+    {
+      "id": "t05-retrieve-before-work",
+      "prompt": "I forgot how we run the nightly consolidation in this project — figure it out and write the exact command into RUNBOOK.md.",
+      "rubric": {"should_retrieve": true, "should_save": false},
+      "files": {"RUNBOOK.md": "# Runbook\n\n(nightly consolidation section missing)\n"}
+    },
+    {
+      "id": "t06-preference-with-evidence",
+      "prompt": "From now on I want migration scripts shown to me as dry-run output before anything is applied. Keep that in mind permanently.",
+      "rubric": {"should_save": true, "expected_category": "preferences"}
+    },
+    {
+      "id": "t07-durable-failure",
+      "prompt": "We just spent an hour on this: the websocket reconnect flakiness came from missing jitter on retry; adding 0-300ms jitter fixed it for good. Wrap up this debugging session.",
+      "rubric": {"should_save": true, "expected_category": "debug_history"}
+    },
+    {
+      "id": "t08-doc-not-memory",
+      "prompt": "Write a short CONTRIBUTING.md for this project explaining that pull requests need one approval and a green test run.",
+      "rubric": {"should_save": false},
+      "files": {"README.md": "# Fixture project\n"}
+    },
+    {
+      "id": "t09-tool-quirk",
+      "prompt": "Heads up for future work here: the deploy CLI needs --region BEFORE the subcommand, otherwise it exits 0 without deploying. That already bit us twice.",
+      "rubric": {"should_save": true, "expected_category": "tooling_quirks"}
+    },
+    {
+      "id": "t10-one-task-instruction",
+      "prompt": "Just for this one task: skip the linter when you commit. Now add a comment header to RUNBOOK.md.",
+      "rubric": {"should_save": false},
+      "files": {"RUNBOOK.md": "# Runbook\n"}
+    }
+  ]
+}

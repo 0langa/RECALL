@@ -1,0 +1,25 @@
+{
+  "name": "aging_project",
+  "description": "Long-run growth driver: each session produces durable-shaped statements so repeated sessions reveal store growth and dedup behavior over time.",
+  "store": {"tier": "working", "golden": true, "flagged": false},
+  "turns": [
+    {
+      "prompt": "The retry budget for outbound calls must never exceed three attempts; that is a hard requirement.",
+      "should_inject": true,
+      "stop_text": "Requirement: outbound retry budget is capped at three attempts."
+    },
+    {
+      "prompt": "Run the integration suite.",
+      "should_inject": false,
+      "tools": [
+        {"tool_name": "Bash", "command": "python -m pytest tests/integration -q", "output": "12 passed\nexit_code: 0"}
+      ],
+      "stop_text": "Integration suite green."
+    },
+    {
+      "prompt": "Decision: outbound retries use exponential backoff starting at 250ms.",
+      "should_inject": true,
+      "stop_text": "Decision: exponential backoff starting at 250ms for outbound retries."
+    }
+  ]
+}

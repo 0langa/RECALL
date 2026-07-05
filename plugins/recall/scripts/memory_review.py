@@ -10,6 +10,7 @@ from typing import Any
 
 import config as recall_config
 import memory_noise
+import security
 from services import lifecycle_service
 import storage
 
@@ -57,7 +58,8 @@ def compact_text(record: storage.MemoryRecord, max_chars: int = 180) -> str:
     else:
         details = record.metadata.get("details") if isinstance(record.metadata, dict) else None
         text = details if isinstance(details, str) and details.strip() else record.content
-    text = " ".join(text.split())
+    # Legacy/imported stores may hold raw secrets; never surface them in review output.
+    text = " ".join(security.redact_text(text).split())
     if len(text) > max_chars:
         return text[: max_chars - 14].rstrip() + " [truncated]"
     return text
