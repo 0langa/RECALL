@@ -140,10 +140,57 @@ def weighted_lexical_score(query_text: str, record: storage.MemoryRecord) -> flo
     return score
 
 
-def normalized_lexical_overlap(query_text: str, record: storage.MemoryRecord) -> float:
-    """Return a stable 0..1 overlap used by automatic-injection gating."""
+GATE_STOPWORDS = frozenset(
+    "the and for with that this from into onto over under are is was were been being have has had "
+    "will would should could must may might can not all any each when where which while there their "
+    "them they its our your you use used using also than then such only more most some does did what "
+    "how why who whom about after before again against because between during under above below off "
+    "out own same too very just now here once more please okay ok run make give want need lets let".split()
+)
 
-    return min(1.0, weighted_lexical_score(query_text, record))
+
+def gate_tokens(text: str) -> set[str]:
+    """Stopword-filtered, naively singularized tokens for gate matching only.
+
+    The plural strip ("reports" -> "report") closes real match gaps between
+    prompts and cards; crude, but gate-local so ranking is unaffected.
+    """
+    tokens = set()
+    for token in tokenize(text):
+        if token in GATE_STOPWORDS:
+            continue
+        if len(token) > 3 and token.endswith("s") and not token.endswith("ss"):
+            token = token[:-1]
+        tokens.add(token)
+    return tokens
+
+
+def normalized_lexical_overlap(query_text: str, record: storage.MemoryRecord) -> float:
+    """Stable 0..1 overlap used by automatic-injection gating.
+
+    Stopword-filtered: without this, function words shared with almost every
+    card ("the", "into", "five") let generic memories cross the injection
+    threshold on unrelated prompts, and dilute genuinely matching prompts.
+    Ranking scores are intentionally NOT filtered — this affects the gate only.
+    """
+    query_tokens = gate_tokens(query_text)
+    if not query_tokens:
+        return 0.0
+    metadata = record.metadata or {}
+    score = 0.0
+    fields: list[tuple[float, str]] = [(0.35, record.content)]
+    for weight, key in ((0.9, "summary"), (0.65, "details")):
+        value = metadata.get(key)
+        if isinstance(value, str):
+            fields.append((weight, value))
+    tags = metadata.get("tags")
+    if isinstance(tags, list):
+        fields.append((1.0, " ".join(str(tag) for tag in tags)))
+    for weight, text in fields:
+        content_tokens = gate_tokens(text)
+        if content_tokens:
+            score += weight * (len(query_tokens & content_tokens) / len(query_tokens))
+    return min(1.0, score)
 
 
 def source_blind_memory_request(query_text: str) -> bool:

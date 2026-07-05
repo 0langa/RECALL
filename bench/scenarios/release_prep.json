@@ -10,7 +10,7 @@
     },
     {
       "prompt": "Run the release build.",
-      "should_inject": false,
+      "should_inject": true,
       "tools": [
         {"tool_name": "Bash", "command": "python scripts/build.py --package", "output": "build: pass\npackage: pass\nexit_code: 0"}
       ],

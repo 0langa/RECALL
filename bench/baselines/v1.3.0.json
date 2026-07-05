@@ -1,7 +1,7 @@
 {
   "meta": {
     "bench_schema_version": 1,
-    "emission_hash": "cb54c872ceb75a2e7853478f9264da040d8c8b40399d263f6a02fb6a64852423",
+    "emission_hash": "98d30b74327a62be490403e543af56086e2ee6dde9cbbdac1aa697b44f890d7c",
     "journal": "C:\\Users\\Julius\\source\\repos\\RECALL\\bench\\runs\\complete-1337\\journal.jsonl",
     "judge_tasks": {
       "path": "C:\\Users\\Julius\\source\\repos\\RECALL\\bench\\runs\\complete-1337\\judge_tasks.jsonl",
@@ -21,43 +21,43 @@
   },
   "metrics": {
     "injection_gate": {
-      "accuracy": 0.6842,
-      "false_inject": 5,
+      "accuracy": 0.8947,
+      "false_inject": 1,
       "false_suppress": 1,
       "labeled_turns": 19,
       "true_inject": 8,
-      "true_suppress": 5
+      "true_suppress": 9
     },
     "latency": {
       "hook.post_tool_use": {
         "count": 71,
-        "max_ms": 471.31,
-        "p50_ms": 170.49,
-        "p95_ms": 274.23
+        "max_ms": 298.24,
+        "p50_ms": 157.47,
+        "p95_ms": 235.23
       },
       "hook.pre_compact": {
         "count": 3,
-        "max_ms": 198.92,
-        "p50_ms": 191.53,
-        "p95_ms": 198.92
+        "max_ms": 214.08,
+        "p50_ms": 161.71,
+        "p95_ms": 214.08
       },
       "hook.prompt_inspector": {
         "count": 207,
-        "max_ms": 922.4,
-        "p50_ms": 321.72,
-        "p95_ms": 559.21
+        "max_ms": 614.75,
+        "p50_ms": 309.92,
+        "p95_ms": 470.13
       },
       "hook.session_start": {
         "count": 65,
-        "max_ms": 383.37,
-        "p50_ms": 180.54,
-        "p95_ms": 274.75
+        "max_ms": 311.46,
+        "p50_ms": 173.07,
+        "p95_ms": 281.08
       },
       "hook.stop": {
         "count": 207,
-        "max_ms": 1459.43,
-        "p50_ms": 263.68,
-        "p95_ms": 649.55
+        "max_ms": 1250.73,
+        "p50_ms": 255.19,
+        "p95_ms": 647.74
       }
     },
     "quality": {
@@ -241,8 +241,8 @@
     "tokens": {
       "conditional_static_est_tokens": 38745,
       "fixed_overhead_per_session_est_tokens": 5752,
-      "marginal_per_turn_est_tokens": 236.1,
-      "marginal_total_est_tokens": 44627,
+      "marginal_per_turn_est_tokens": 236.9,
+      "marginal_total_est_tokens": 42643,
       "per_channel": {
         "mcp_initialize_instructions": {
           "chars": 1061,
@@ -257,9 +257,9 @@
           "fixed": true
         },
         "prompt_injection": {
-          "chars": 176814,
-          "count": 189,
-          "est_tokens": 44255,
+          "chars": 168888,
+          "count": 178,
+          "est_tokens": 42271,
           "fixed": false
         },
         "session_start_context": {
@@ -318,10 +318,10 @@
         }
       },
       "price_per_million_used": 3.0,
-      "projected_session_cost_usd_20_turns": 0.031422,
-      "projected_session_est_tokens_20_turns": 10474,
+      "projected_session_cost_usd_20_turns": 0.03147,
+      "projected_session_est_tokens_20_turns": 10490,
       "sessions_measured": 66,
-      "turns_measured": 189
+      "turns_measured": 180
     }
   }
 }

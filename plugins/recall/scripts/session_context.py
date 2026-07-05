@@ -87,12 +87,34 @@ def render_grouped(records: list[dict[str, Any]], token_budget: int, historical:
     return "\n".join(output)
 
 
+def written_this_session(record: dict[str, Any], session_id: str) -> bool:
+    raw_metadata = record.get("metadata")
+    metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
+    return session_id in (
+        str(metadata.get("session_id") or ""),
+        str(metadata.get("source_session") or ""),
+    )
+
+
+def drop_session_records(records: list[dict[str, Any]], session_id: str | None) -> list[dict[str, Any]]:
+    """Session-recency suppression for automatic injection.
+
+    Cards written in the current session are already in the agent's
+    conversation; re-injecting them is pure token waste. Explicit retrieval
+    is not filtered — when the agent asks, it gets everything.
+    """
+    if not session_id:
+        return records
+    return [record for record in records if not written_this_session(record, session_id)]
+
+
 def build_session_context(
     root: str | Path | None,
     query: str,
     limit: int,
     token_budget: int | None = None,
     exclude_categories: list[str] | None = None,
+    exclude_session_id: str | None = None,
 ) -> str:
     cfg = recall_config.load_config(root)
     budget = min(int(token_budget or cfg.get("token_budget", 1200)), 900)
@@ -104,7 +126,7 @@ def build_session_context(
         root=root,
         statuses=ACTIVE_STATUSES,
     )
-    records = cap_records(active.get("results", []))[:limit]
+    records = cap_records(drop_session_records(active.get("results", []), exclude_session_id))[:limit]
     if records:
         return render_grouped(records, budget)
 
@@ -116,5 +138,5 @@ def build_session_context(
         root=root,
         statuses=HISTORICAL_STATUSES,
     )
-    historical_records = cap_records(historical.get("results", []))[:limit]
+    historical_records = cap_records(drop_session_records(historical.get("results", []), exclude_session_id))[:limit]
     return render_grouped(historical_records, budget, historical=True)

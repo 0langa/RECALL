@@ -195,7 +195,15 @@ def main() -> None:
     observability.trace(root, "retrieval_gate", {**assessment, "excluded_categories": exclusions})
 
     if should_retrieve and capture_policy.persistent_memory_exists(root):
-        context = session_context.build_session_context(root, retrieval_text, 8, exclude_categories=exclusions)
+        context = session_context.build_session_context(
+            root,
+            retrieval_text,
+            8,
+            exclude_categories=exclusions,
+            # Automatic injection skips cards written this session (the agent
+            # already has them in context); explicit @recall gets everything.
+            exclude_session_id=None if explicit_recall else session_id,
+        )
         conflicts = lifecycle_service.find_conflicts(root)
         if conflicts:
             context = (context + "\nRECALL alert: unresolved current-truth conflicts require review.").strip()

@@ -5,7 +5,7 @@
   "turns": [
     {
       "prompt": "The retry budget for outbound calls must never exceed three attempts; that is a hard requirement.",
-      "should_inject": true,
+      "should_inject": false,
       "stop_text": "Requirement: outbound retry budget is capped at three attempts."
     },
     {

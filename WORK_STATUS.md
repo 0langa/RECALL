@@ -70,12 +70,25 @@ dedup + secret rejection + safe-apply redaction all pass; leak sweep CLEAN;
 hygiene detection 6/7 (the exact-duplicate PAIR yields one merge proposal —
 the kept primary is correctly not proposed; known probe accounting).
 
-OPEN FINDING (baseline-documented, candidate improvement): injection gate
-accuracy 0.684 on virgin stores — 5 false injections mostly from re-injecting
-context the SAME session just learned (e.g. turn 2 re-injects the failure
-saved on turn 1). Candidate fix: session-recency suppression in the relevance
-gate (skip injection when top hits were written this session). Improvements
-will show as baseline delta.
+FINDING CLOSED (2026-07-05): injection gate accuracy 0.684 → 0.895.
+Root cause was NOT same-session re-injection (initial hypothesis) but
+relevance-gate laxity: unfiltered stopword overlap ("the/into/five") plus
+hash-embedding noise plus ≥1.3× category weights let generic cards cross the
+threshold on unrelated prompts, and diluted genuinely matching ones. Fixes:
+1. Stopword-filtered + naively-singularized lexical overlap in the GATE only
+   (retrieval.gate_tokens / normalized_lexical_overlap); ranking untouched.
+2. Session-recency suppression in automatic injection (session_context.
+   drop_session_records; prompt_inspector passes exclude_session_id unless
+   explicit @recall) — correct belt even though it wasn't the driver.
+   Tests: tests/test_session_recency.py (4).
+3. Two scenario labels corrected (virgin-store statement prompt; release-build
+   prompt where injecting release requirements is genuinely useful).
+Tried and REVERTED: best-of-top-3 gate candidate selection — fixed nothing,
+reintroduced weak rank-2/3 matches (0.895 → 0.789). Keep gate on rank-1.
+Remaining honest mismatches (2/19): one weak-match false inject ("run the
+integration suite" pulls a test-fixture card), one false suppress
+(feature_work footer prompt; golden card outranked by filler at rank 1 —
+structural rank-vs-relevance gap, only fixable with better embeddings).
 
 
 Goal: make RECALL a dependable memory layer that guides, enforces, and verifies
