@@ -253,6 +253,7 @@ def handle_retrieve_memory(args: argparse.Namespace, root: Path | None) -> None:
             limit=args.limit,
             root=root,
             summarize=args.summary,
+            verbose=args.verbose,
         )
     )
 
@@ -636,6 +637,11 @@ def main() -> None:
     retrieve.add_argument("--status", action="append", default=[])
     retrieve.add_argument("--limit", type=int, default=8)
     retrieve.add_argument("--summary", action="store_true")
+    retrieve.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Include full metadata per result. Default is compact, token-lean output.",
+    )
     retrieve.set_defaults(handler=handle_retrieve_memory)
 
     define = subparsers.add_parser("define-category")

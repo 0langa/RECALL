@@ -201,7 +201,7 @@ FLAG_NEEDS_VERIFICATION = "needs_verification"
 FLAG_CONFLICTING = "conflicting"
 
 
-def health_flag(record: storage.MemoryRecord) -> tuple[str, str | None]:
+def health_flag(record: storage.MemoryRecord, aging_days: float = SNAPSHOT_AGING_DAYS) -> tuple[str, str | None]:
     """Classify a record's trustworthiness for retrieval output."""
     status = record_status(record)
     if status == "stale":
@@ -213,11 +213,36 @@ def health_flag(record: storage.MemoryRecord) -> tuple[str, str | None]:
     if status == "hypothesis":
         return FLAG_NEEDS_VERIFICATION, "unconfirmed hypothesis; verify before trusting"
     age_days = max(0.0, (datetime.now(timezone.utc) - recency_timestamp(record)).total_seconds() / 86400)
-    if record.category in SNAPSHOT_CATEGORIES and age_days > SNAPSHOT_AGING_DAYS:
+    if record.category in SNAPSHOT_CATEGORIES and age_days > aging_days:
         return FLAG_NEEDS_VERIFICATION, (
             f"point-in-time snapshot is {int(age_days)} days old; verify it still holds"
         )
     return FLAG_CURRENT, None
+
+
+def compact_result(item: dict[str, Any]) -> dict[str, Any]:
+    """Token-lean result shape for agent-facing surfaces.
+
+    Keeps what an agent needs to act (identity, trust signals, text) and drops
+    the metadata blob (fingerprints, session ids, provenance internals), which
+    dominates injected token cost. Full metadata stays available via verbose.
+    """
+    metadata = item.get("metadata") or {}
+    compact: dict[str, Any] = {
+        "id": item["id"],
+        "category": item["category"],
+        "timestamp": item["timestamp"],
+        "score": item["score"],
+        "flag": item.get("flag", FLAG_CURRENT),
+        "content": item["content"],
+    }
+    if item.get("flag_reason"):
+        compact["flag_reason"] = item["flag_reason"]
+    for key in ("status", "summary", "source"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value:
+            compact[key] = value
+    return compact
 
 
 def mark_conflicts(results: list[dict[str, Any]]) -> None:
@@ -269,8 +294,10 @@ def query(
     root: str | Path | None = None,
     summarize: bool = False,
     statuses: list[str] | None = None,
+    verbose: bool = True,
 ) -> dict[str, Any]:
     cfg = recall_config.load_config(root)
+    aging_days = float(cfg.get("staleness", {}).get("retrieval_aging_days", SNAPSHOT_AGING_DAYS))
     include_set = {recall_config.normalize_category(value) for value in categories} if categories else None
     exclude_set = (
         {recall_config.normalize_category(value) for value in exclude_categories}
@@ -295,7 +322,7 @@ def query(
     ranked.sort(key=lambda item: (item.score, parse_timestamp(item.timestamp), item.id), reverse=True)
     results = []
     for record in ranked[:limit]:
-        flag, flag_reason = health_flag(record)
+        flag, flag_reason = health_flag(record, aging_days)
         item: dict[str, Any] = {
             "id": record.id,
             "category": record.category,
@@ -309,9 +336,13 @@ def query(
             item["flag_reason"] = flag_reason
         results.append(item)
     mark_conflicts(results)
-    response: dict[str, Any] = {"query": query_text, "results": results, "health": health_summary(results)}
-    if summarize:
-        response["summary"] = summarize_records(results, cfg["token_budget"])
+    health = health_summary(results)
+    summary_text = summarize_records(results, cfg["token_budget"]) if summarize else None
+    if not verbose:
+        results = [compact_result(item) for item in results]
+    response: dict[str, Any] = {"query": query_text, "results": results, "health": health}
+    if summary_text is not None:
+        response["summary"] = summary_text
     return response
 
 

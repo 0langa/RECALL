@@ -103,7 +103,7 @@ class RecallSkillAdapterTests(unittest.TestCase):
                 "--summary",
             )
             self.assertIn("webhook payload shape", result["summary"])
-            self.assertEqual(result["results"][0]["metadata"]["source"], "skill")
+            self.assertEqual(result["results"][0]["source"], "skill")
 
     def test_support_actions_return_valid_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -168,8 +168,12 @@ class RecallSkillAdapterTests(unittest.TestCase):
                 "--applies-to-provider",
                 "all",
             )
-            retrieved = run_skill(tmp, "retrieve-memory", "provider-neutral memory", "--category", "decisions")
+            retrieved = run_skill(tmp, "retrieve-memory", "provider-neutral memory", "--category", "decisions", "--verbose")
             metadata = retrieved["results"][0]["metadata"]
+
+            compact = run_skill(tmp, "retrieve-memory", "provider-neutral memory", "--category", "decisions")
+            self.assertNotIn("metadata", compact["results"][0])
+            self.assertIn("flag", compact["results"][0])
 
             self.assertEqual(saved["category"], "decisions")
             self.assertEqual(metadata["origin_provider"], "kimi")
@@ -459,7 +463,7 @@ class RecallSkillAdapterTests(unittest.TestCase):
             )
 
             saved = run_skill(tmp, "save-turn-card", "--file", str(card_path))
-            result = run_skill(tmp, "retrieve-memory", "Stop finalizer continuation", "--category", "decisions")
+            result = run_skill(tmp, "retrieve-memory", "Stop finalizer continuation", "--category", "decisions", "--verbose")
 
             self.assertEqual(saved["action"], "save-turn-card")
             self.assertEqual(saved["result"], "saved")

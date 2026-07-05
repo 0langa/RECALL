@@ -19,6 +19,9 @@ from hook_io import additional_context, normalize_hook_event, read_hook_input
 import storage
 
 
+MAX_INJECTED_CHARS = 2000
+
+
 def store_overview(root: str) -> str:
     counts: dict[str, int] = {}
     total = 0
@@ -56,7 +59,12 @@ def main() -> None:
     overview = store_overview(root)
     if overview:
         parts.append(overview)
-    print(json.dumps(additional_context("SessionStart", "\n".join(parts))))
+    text = "\n".join(parts)
+    # Hard cap the injected context so RECALL never dominates per-session
+    # token cost (~2000 chars ≈ 500 tokens).
+    if len(text) > MAX_INJECTED_CHARS:
+        text = text[: MAX_INJECTED_CHARS - 1].rstrip() + "…"
+    print(json.dumps(additional_context("SessionStart", text)))
 
 
 if __name__ == "__main__":

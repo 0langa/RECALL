@@ -94,10 +94,13 @@ summary, or context-packet token budget.
 ## Output Format
 
 Returns JSON with relevant IDs, categories, statuses, sources, per-result health flags, and a
-health summary. Context packets also report estimated tokens, score components, and omitted count.
+health summary. Output is compact by default to keep injected token cost low: each result carries
+id, category, timestamp, score, flag, content, and status/summary/source when present. Pass
+`--verbose` (adapter) or `verbose: true` (MCP) only when full provenance metadata is needed.
+Context packets also report estimated tokens, score components, and omitted count.
 
 ```json
-{"query":"current storage decision","results":[{"id":12,"category":"decisions","score":1.04,"flag":"current"}],"health":{"flag_counts":{"current":1}}}
+{"query":"current storage decision","results":[{"id":12,"category":"decisions","score":1.04,"flag":"current","status":"active"}],"health":{"flag_counts":{"current":1}}}
 ```
 
 ## Examples

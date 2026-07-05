@@ -98,6 +98,57 @@ class RetrievalFlagTests(unittest.TestCase):
             self.assertEqual(item["flag"], "needs_verification")
             self.assertIn("days old", item["flag_reason"])
 
+    def test_compact_results_drop_metadata_but_keep_trust_signals(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            metadata = memory_manager.build_card_metadata(
+                summary="SQLite is the default backend.",
+                source="skill",
+                status="active",
+                base={"recall_fingerprint": "a" * 64, "origin_provider": "kimi"},
+            )
+            memory_manager.add_record("decisions", "Use SQLite as the default backend.", metadata, tmp)
+
+            compact = retrieval.query("default backend", root=tmp, verbose=False)
+            item = compact["results"][0]
+            self.assertNotIn("metadata", item)
+            self.assertEqual(item["flag"], "current")
+            self.assertEqual(item["status"], "active")
+            self.assertEqual(item["summary"], "SQLite is the default backend.")
+            self.assertIn("health", compact)
+
+            verbose = retrieval.query("default backend", root=tmp, verbose=True)
+            self.assertIn("metadata", verbose["results"][0])
+            self.assertEqual(verbose["results"][0]["metadata"]["origin_provider"], "kimi")
+
+    def test_retrieval_aging_threshold_is_configurable(self) -> None:
+        import config as recall_config
+
+        with tempfile.TemporaryDirectory() as tmp:
+            record = seed(tmp, "project_state", "Main branch is green and release tagged.", "active")
+            aged_metadata = dict(record.metadata or {})
+            aged_metadata["last_confirmed"] = (
+                datetime.now(timezone.utc) - timedelta(days=10)
+            ).isoformat(timespec="seconds")
+            storage.update_record(
+                record.id,
+                category=record.category,
+                content=record.content,
+                metadata=aged_metadata,
+                embedding=record.embedding,
+                root=tmp,
+            )
+
+            # 10 days old: current under the 30-day default...
+            default_response = retrieval.query("main branch release", root=tmp, limit=5)
+            self.assertEqual(default_response["results"][0]["flag"], "current")
+
+            # ...but needs verification once the project tightens the window.
+            cfg = recall_config.load_config(tmp)
+            cfg["staleness"]["retrieval_aging_days"] = 5
+            recall_config.save_config(cfg, tmp)
+            tight_response = retrieval.query("main branch release", root=tmp, limit=5)
+            self.assertEqual(tight_response["results"][0]["flag"], "needs_verification")
+
     def test_current_only_store_reports_clean_health(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             seed(tmp, "commands", "Run unit tests with python -m pytest tests -q.", "active")

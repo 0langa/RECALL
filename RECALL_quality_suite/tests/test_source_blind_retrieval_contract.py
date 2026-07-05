@@ -153,7 +153,7 @@ class SourceBlindRetrievalReadinessTests(unittest.TestCase):
             self.assertTrue(any(item["category"] == "decisions" for item in active["results"]))
             self.assertNotIn("transformer-grade semantic retrieval should be the default", active["summary"])
             self.assertEqual(len(superseded["results"]), 1)
-            self.assertIn("superseded", superseded["results"][0]["metadata"]["status"])
+            self.assertIn("superseded", superseded["results"][0]["status"])
 
     def test_source_free_implementation_plan_query_surfaces_tasks_risks_and_commands(self) -> None:
         with temp_project() as project:

@@ -88,6 +88,18 @@ class McpSaveTests(unittest.TestCase):
             self.assertEqual(second["id"], first["id"])
             self.assertIn("update_memory", second["next_action"])
 
+    def test_retrieve_memory_is_compact_by_default_and_verbose_on_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            call_tool(
+                "save_insight",
+                {"root": tmp, "category": "decisions", "content": "Use SQLite as the default backend."},
+            )
+            compact = call_tool("retrieve_memory", {"root": tmp, "query_text": "default backend"})
+            self.assertNotIn("metadata", compact["results"][0])
+            self.assertIn("flag", compact["results"][0])
+            verbose = call_tool("retrieve_memory", {"root": tmp, "query_text": "default backend", "verbose": True})
+            self.assertIn("metadata", verbose["results"][0])
+
     def test_preference_save_without_evidence_teaches_recovery(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             ignored = call_tool(

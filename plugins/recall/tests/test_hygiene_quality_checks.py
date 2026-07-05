@@ -199,6 +199,47 @@ class HygieneQualityCheckTests(unittest.TestCase):
                 [p for p in plan["proposals"] if p["id"] == lonely.id and p["proposed_action"] == "review_doc_duplicate"]
             )
 
+    def test_snapshot_stale_days_is_configurable(self) -> None:
+        import config as recall_config
+
+        with tempfile.TemporaryDirectory() as tmp:
+            snapshot = seed_raw(
+                tmp,
+                "project_state",
+                "Release 1.2 is in progress on the main branch with all gates green.",
+                {"source": "skill", "status": "active"},
+                days_ago=10,
+            )
+            # 10 days old: fine under the 45-day default.
+            plan = memory_hygiene.hygiene_plan(tmp)
+            self.assertFalse([p for p in plan["proposals"] if p["id"] == snapshot.id and p["proposed_action"] == "stale"])
+
+            cfg = recall_config.load_config(tmp)
+            cfg["staleness"]["snapshot_stale_days"] = 5
+            recall_config.save_config(cfg, tmp)
+            plan = memory_hygiene.hygiene_plan(tmp)
+            self.assertTrue([p for p in plan["proposals"] if p["id"] == snapshot.id and p["proposed_action"] == "stale"])
+
+    def test_hygiene_scan_caps_listed_proposals(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for index in range(25):
+                seed_raw(
+                    tmp,
+                    "lessons_learned",
+                    f"fixed the bug {index}",
+                    {"source": "skill", "status": "active"},
+                )
+            scan = memory_hygiene.hygiene_scan(tmp)
+            self.assertLessEqual(len(scan["proposals"]), memory_hygiene.SCAN_MAX_LISTED_PROPOSALS)
+            self.assertGreater(scan["omitted_proposals"], 0)
+            self.assertIn("hygiene-plan", scan["proposals_note"])
+            # Counts and candidate ids stay complete despite the display cap.
+            self.assertEqual(sum(scan["counts"].values()), len(scan["candidate_ids"]))
+            self.assertGreaterEqual(len(scan["candidate_ids"]), 25)
+            # The uncapped detail view still lists everything.
+            plan = memory_hygiene.hygiene_plan(tmp)
+            self.assertGreaterEqual(len(plan["proposals"]), 25)
+
     def test_good_store_produces_no_proposals(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory_manager.add_record(

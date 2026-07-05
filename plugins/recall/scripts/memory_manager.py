@@ -366,8 +366,9 @@ def query(
     root: str | Path | None = None,
     summarize: bool = False,
     statuses: list[str] | None = None,
+    verbose: bool = True,
 ) -> dict[str, Any]:
-    return retrieval.query(query_text, categories, exclude_categories, limit, root, summarize, statuses)
+    return retrieval.query(query_text, categories, exclude_categories, limit, root, summarize, statuses, verbose)
 
 
 def rebuild_index(root: str | Path | None = None) -> dict[str, Any]:

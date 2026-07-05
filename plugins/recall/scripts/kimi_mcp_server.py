@@ -87,6 +87,10 @@ TOOLS: list[Json] = [
                 "status": {"type": "array", "items": {"type": "string"}},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 20},
                 "summary": {"type": "boolean"},
+                "verbose": {
+                    "type": "boolean",
+                    "description": "Include full metadata per result. Default false: compact, token-lean results.",
+                },
             },
             ["query_text"],
         ),
@@ -246,6 +250,7 @@ def call_retrieve_memory(arguments: Json) -> Json:
         root=root,
         summarize=bool(arguments.get("summary")),
         statuses=list(arguments.get("status") or []),
+        verbose=bool(arguments.get("verbose")),
     )
 
 

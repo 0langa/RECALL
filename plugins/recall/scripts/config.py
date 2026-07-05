@@ -212,6 +212,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "token_budget": 1200,
     "recency_days": None,
+    "staleness": {
+        "snapshot_stale_days": 45,
+        "retrieval_aging_days": 30,
+    },
     "embedding_model": "local-hash-v1",
     "summarizer_model": "heuristic-v1",
     "categories": DEFAULT_CATEGORIES,
@@ -400,6 +404,16 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
         "minimum_score": float(relevance.get("minimum_score", 0.75)),
         "minimum_lexical_overlap": float(relevance.get("minimum_lexical_overlap", 0.15)),
     }
+    staleness = merged.get("staleness") if isinstance(merged.get("staleness"), dict) else {}
+    merged["staleness"] = {}
+    for key, default in (("snapshot_stale_days", 45.0), ("retrieval_aging_days", 30.0)):
+        try:
+            value = float(staleness.get(key, default))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"staleness.{key} must be numeric.") from exc
+        if value <= 0:
+            raise ValueError(f"staleness.{key} must be positive.")
+        merged["staleness"][key] = value
 
     for name, details in categories.items():
         normalized = normalize_category(name)

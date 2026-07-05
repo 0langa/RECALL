@@ -493,11 +493,14 @@ def _vague_proposal(record: storage.MemoryRecord) -> HygieneProposal | None:
     return None
 
 
-def _snapshot_age_proposal(record: storage.MemoryRecord) -> HygieneProposal | None:
+def _snapshot_age_proposal(
+    record: storage.MemoryRecord,
+    stale_days: float = SNAPSHOT_STALE_DAYS,
+) -> HygieneProposal | None:
     if record.category not in SNAPSHOT_CATEGORIES or not _is_current(record):
         return None
     age_days = _record_age_days(record)
-    if age_days <= SNAPSHOT_STALE_DAYS:
+    if age_days <= stale_days:
         return None
     return HygieneProposal(
         record.id,
@@ -598,6 +601,9 @@ def _doc_duplicate_proposals(
 
 
 def _single_record_proposals(records: list[storage.MemoryRecord], root: str | Path | None) -> list[HygieneProposal]:
+    stale_days = float(
+        recall_config.load_config_if_present(root).get("staleness", {}).get("snapshot_stale_days", SNAPSHOT_STALE_DAYS)
+    )
     proposals: list[HygieneProposal] = []
     for record in records:
         for proposal in (
@@ -607,7 +613,7 @@ def _single_record_proposals(records: list[storage.MemoryRecord], root: str | Pa
             _preference_proposal(record),
             _raw_log_proposal(record),
             _vague_proposal(record),
-            _snapshot_age_proposal(record),
+            _snapshot_age_proposal(record, stale_days),
             _metadata_gap_proposal(record),
         ):
             if proposal is not None:
@@ -672,6 +678,9 @@ def hygiene_plan(
     }
 
 
+SCAN_MAX_LISTED_PROPOSALS = 20
+
+
 def hygiene_scan(root: str | Path | None = None, *, limit: int | None = None) -> dict[str, Any]:
     plan = hygiene_plan(root, limit=limit)
     counts: dict[str, int] = {}
@@ -684,14 +693,22 @@ def hygiene_scan(root: str | Path | None = None, *, limit: int | None = None) ->
         next_action = f"{plan['safe_to_apply_count']} safe repair(s) available; run hygiene-apply --safe"
     elif plan["requires_confirmation"]:
         next_action = "only review-required proposals remain; inspect the listed ids and fix them via manage-memory"
+    # Token diet: scan is the agent-facing audit entry, so cap the listed
+    # proposals; counts and candidate_ids stay complete, and hygiene-plan
+    # remains the uncapped detail view.
+    listed = plan["proposals"][:SCAN_MAX_LISTED_PROPOSALS]
+    omitted = len(plan["proposals"]) - len(listed)
     response = {
         "action": "hygiene-scan",
         "inspected": plan["inspected"],
         "candidate_ids": [proposal["id"] for proposal in plan["proposals"] if proposal["id"] is not None],
         "counts": counts,
-        "proposals": plan["proposals"],
+        "proposals": listed,
+        "omitted_proposals": omitted,
         "requires_confirmation": plan["requires_confirmation"],
     }
+    if omitted:
+        response["proposals_note"] = f"{omitted} proposal(s) omitted for brevity; run hygiene-plan for the full list"
     if next_action:
         response["next_action"] = next_action
     return response
