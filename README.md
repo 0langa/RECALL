@@ -13,6 +13,9 @@ The installable plugin lives in [`plugins/recall`](plugins/recall/). It contains
 - Captures explicit "remember this" requests and useful development outcomes.
 - Stores structured memory categories such as `decisions`, `requirements`, `risks`, `commands`, and `debug_history`.
 - Supports review, confirmation, supersession, merge, and archival of memory cards.
+- Exposes a deterministic lifecycle contract (retrieve before work, save/skip rules, source authority order) through the MCP server, session-start hooks, and the skill adapter — the same rules on every provider.
+- Flags retrieval results as current, stale, superseded, deprecated, needs-verification, or conflicting so agents know what to trust.
+- Detects duplicates at save time and confirms the existing card instead of appending; hygiene finds stored secrets, raw logs, vague cards, aged snapshots, and conflicts, and applies safe repairs.
 - Exposes seven public skills: `using-recall`, `retrieve-memory`, `save-insight`, `review-memory`, `manage-memory`, `define-category`, and `memory-hygiene`.
 - Uses SQLite by default, with JSONL storage available through config.
 - Builds and validates as a portable Codex plugin zip on Windows, macOS, and Linux.

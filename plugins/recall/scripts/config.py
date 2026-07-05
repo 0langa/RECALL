@@ -15,55 +15,181 @@ from typing import Any
 
 DEFAULT_CATEGORIES: dict[str, dict[str, Any]] = {
     "decisions": {
-        "description": "Architectural choices, library selections, design rationale, and trade-offs.",
+        "description": "Accepted architectural choices, library selections, design rationale, and trade-offs.",
         "weight": 1.2,
+        "examples": [
+            "Chose SQLite over JSONL as default backend because WAL supports concurrent hooks.",
+            "Rejected background daemon design; hooks must stay stateless.",
+        ],
+        "non_examples": [
+            "A design idea still under discussion (save as risks/open instead).",
+            "A decision fully documented in an ADR file (repo docs win).",
+        ],
+        "update_rule": "When a decision is reversed, supersede the old card with the new decision; never edit history in place.",
     },
     "constraints": {
-        "description": "Hard rules such as banned patterns, dependency pins, naming conventions, and security rules.",
+        "description": "Hard rules: banned patterns, dependency pins, naming conventions, security/privacy rules, external service limits.",
         "weight": 1.4,
+        "examples": [
+            "Never store secrets or tokens in memory or fixtures.",
+            "Provider API rate limit: max 2 requests/second against the staging service.",
+        ],
+        "non_examples": [
+            "Style preferences (use preferences).",
+            "Temporary workarounds (use debug_history or risks).",
+        ],
+        "update_rule": "Constraints rarely expire; when one is lifted, deprecate the card and state what replaced it.",
     },
     "debug_history": {
-        "description": "Bugs, error patterns, failed attempts, root causes, fixes, and commands that worked.",
+        "description": "Recurring failures and fixes: bugs, error patterns, root causes, failed attempts, working repairs.",
         "weight": 1.1,
+        "examples": [
+            "pytest hangs on Windows when run without --exclude-smoke; use run_tests.py wrapper.",
+            "Build fails with 'Duplicate hooks file detected' if hooks are declared in the Claude manifest.",
+        ],
+        "non_examples": [
+            "One-off typo fixes with no future value.",
+            "Raw stack traces or full logs (summarize root cause + fix instead).",
+        ],
+        "update_rule": "If a documented failure no longer reproduces after a fix, mark the card resolved.",
     },
     "preferences": {
-        "description": "User or project preferences, coding style, formatting rules, and workflow expectations.",
+        "description": "Durable user or project preferences: coding style, formatting, workflow expectations.",
         "weight": 1.0,
+        "examples": [
+            "User wants commit messages in imperative mood without emoji.",
+            "Project prefers pathlib over os.path in new code.",
+        ],
+        "non_examples": [
+            "A one-task instruction ('for this PR, skip tests').",
+            "Drafts or unconfirmed style ideas.",
+        ],
+        "update_rule": "Preferences need evidence (accepted/rejected decision); update the existing card when a preference changes.",
     },
     "tasks": {
-        "description": "Completed work, open TODOs, milestones, and current implementation status.",
+        "description": "Open TODOs, milestones, deferred ideas, and current implementation status.",
         "weight": 1.0,
+        "examples": [
+            "Deferred: semantic repo-doc duplication check in hygiene (heuristic only today).",
+            "Milestone: v1.2 requires manifest parity test in CI.",
+        ],
+        "non_examples": [
+            "Fine-grained scratch checklists for the current turn.",
+            "Completed work already visible in git history.",
+        ],
+        "update_rule": "Close or archive tasks when done; stale open tasks should be re-confirmed or pruned.",
     },
     "session_summaries": {
         "description": "Compressed summaries of prior sessions to maintain continuity across context resets.",
         "weight": 0.9,
+        "examples": [
+            "2026-07-05 session: implemented retrieval health flags and hygiene secret scan; tests green.",
+        ],
+        "non_examples": [
+            "Full transcripts or chat logs.",
+            "Generic checkpoints like 'session done'.",
+        ],
+        "update_rule": "Old summaries lose value fast; hygiene may archive summaries older than the retention window.",
     },
     "project_state": {
         "description": (
             "Current repository status, active branch, pending refactors, known broken areas, "
-            "and checkpoints."
+            "and checkpoints. Point-in-time snapshots that age quickly."
         ),
         "weight": 1.3,
+        "examples": [
+            "Release 1.1.1 shipped; main is clean; marketplace consumes RECALL as submodule.",
+        ],
+        "non_examples": [
+            "Stable architecture facts (use architecture).",
+            "Anything derivable from `git status` right now.",
+        ],
+        "update_rule": "Snapshots supersede prior snapshots on the same claim; hygiene flags snapshots older than the staleness window for review.",
     },
     "architecture": {
         "description": "Stable system structure, module responsibilities, data flows, and overall system design.",
         "weight": 1.3,
+        "examples": [
+            "One MCP server (kimi_mcp_server.py) serves both Claude Code and Kimi; provider comes from RECALL_DEFAULT_PROVIDER.",
+        ],
+        "non_examples": [
+            "Current branch or WIP refactors (use project_state).",
+            "Structure fully documented in README (repo docs win).",
+        ],
+        "update_rule": "When structure changes, update or supersede the existing card; conflicting architecture cards must be reconciled.",
     },
     "commands": {
-        "description": "Verified commands for building, testing, linting, and running the project.",
+        "description": "Verified commands for building, testing, linting, and running the project, with their gotchas.",
         "weight": 1.1,
+        "examples": [
+            "Unit tests: cd plugins/recall && python -m pytest tests/ -x -q (~2.5 min).",
+            "recall_skill.py requires --root BEFORE the subcommand.",
+        ],
+        "non_examples": [
+            "Every command that was ever run (only verified, reusable ones).",
+            "Command output dumps.",
+        ],
+        "update_rule": "If a stored command fails, mark the card stale and save the corrected command as its replacement.",
     },
     "lessons_learned": {
         "description": "Reusable insights from prior mistakes or successful fixes that guide future development.",
         "weight": 1.1,
+        "examples": [
+            "Editing generated provider files directly causes drift; always change the source of truth and regenerate.",
+        ],
+        "non_examples": [
+            "Restating documentation.",
+            "Vague morals without an actionable rule.",
+        ],
+        "update_rule": "Merge overlapping lessons into one strong card instead of accumulating variants.",
     },
     "requirements": {
         "description": "Explicit user requirements and acceptance criteria that must be met.",
         "weight": 1.5,
+        "examples": [
+            "RECALL must stay local-first: no cloud storage, telemetry, or hosted sync.",
+        ],
+        "non_examples": [
+            "Implementation ideas (use decisions or tasks).",
+            "Requirements copied verbatim from a spec file in the repo.",
+        ],
+        "update_rule": "Requirements change only on explicit user instruction; supersede, do not silently edit.",
     },
     "risks": {
-        "description": "Known fragile areas, performance bottlenecks, and security-sensitive code paths.",
+        "description": "Known fragile areas, performance bottlenecks, security-sensitive paths, and open risks.",
         "weight": 1.4,
+        "examples": [
+            "Hook payload drift against live Codex payloads is an open compatibility risk.",
+        ],
+        "non_examples": [
+            "Resolved incidents (move to debug_history or lessons_learned).",
+        ],
+        "update_rule": "Re-confirm risks periodically; resolve or supersede when mitigated.",
+    },
+    "tooling_quirks": {
+        "description": "Provider- and tool-specific quirks: agent client behavior, plugin loading rules, CLI flag surprises.",
+        "weight": 1.1,
+        "examples": [
+            "Claude Code auto-loads hooks/hooks.json by convention; declaring it in the manifest breaks plugin load.",
+            "Kimi manifest supports startupTimeoutMs; Claude Code rejects unknown manifest fields.",
+        ],
+        "non_examples": [
+            "General project commands (use commands).",
+            "Quirks already documented in provider docs bundled with the repo.",
+        ],
+        "update_rule": "Stamp applies_to_provider; re-verify after provider version upgrades and mark stale when behavior changes.",
+    },
+    "integrations": {
+        "description": "External service constraints and facts: APIs, marketplaces, submodules, CI services this project depends on.",
+        "weight": 1.2,
+        "examples": [
+            "Downstream marketplace consumes RECALL as a git submodule; version pins live in plugins.json and marketplace.json.",
+        ],
+        "non_examples": [
+            "Secrets, tokens, or connection strings (never store).",
+            "Internal module wiring (use architecture).",
+        ],
+        "update_rule": "External services change without notice; treat cards older than the staleness window as needing verification.",
     },
 }
 
@@ -286,10 +412,24 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(f"Category `{normalized}` weight must be numeric.") from exc
         if weight <= 0:
             raise ValueError(f"Category `{normalized}` weight must be greater than zero.")
-        merged["categories"][normalized] = {
+        validated_category: dict[str, Any] = {
             "description": description,
             "weight": weight,
         }
+        for guidance_key in ("examples", "non_examples"):
+            values = details.get(guidance_key)
+            if isinstance(values, list):
+                cleaned = [str(item) for item in values if str(item).strip()]
+                if cleaned:
+                    validated_category[guidance_key] = cleaned
+        update_rule = details.get("update_rule")
+        if isinstance(update_rule, str) and update_rule.strip():
+            validated_category["update_rule"] = update_rule.strip()
+        default_details = DEFAULT_CATEGORIES.get(normalized, {})
+        for guidance_key in ("examples", "non_examples", "update_rule"):
+            if guidance_key not in validated_category and guidance_key in default_details:
+                validated_category[guidance_key] = deepcopy(default_details[guidance_key])
+        merged["categories"][normalized] = validated_category
 
     token_budget = int(merged.get("token_budget", 1200))
     if token_budget < 100:
@@ -310,13 +450,23 @@ def add_category(
     description: str | None = None,
     weight: float = 1.0,
     raw_root: str | Path | None = None,
+    *,
+    examples: list[str] | None = None,
+    non_examples: list[str] | None = None,
+    update_rule: str | None = None,
 ) -> dict[str, Any]:
     config = load_config(raw_root)
     normalized = normalize_category(name)
-    config["categories"][normalized] = {
-        "description": description or f"Custom category `{normalized}`.",
-        "weight": float(weight),
-    }
+    existing = dict(config["categories"].get(normalized, {}))
+    existing["description"] = description or existing.get("description") or f"Custom category `{normalized}`."
+    existing["weight"] = float(weight)
+    if examples:
+        existing["examples"] = [str(item) for item in examples if str(item).strip()]
+    if non_examples:
+        existing["non_examples"] = [str(item) for item in non_examples if str(item).strip()]
+    if update_rule and update_rule.strip():
+        existing["update_rule"] = update_rule.strip()
+    config["categories"][normalized] = existing
     save_config(config, raw_root)
     return config["categories"][normalized]
 
@@ -363,6 +513,41 @@ def activate_project(
     config.setdefault("observability_mode", "quiet")
     save_config(config, root)
     return config
+
+
+GITIGNORE_ENTRIES = (".recall/", ".codex_memory/")
+
+
+def ensure_gitignore_entries(raw_root: str | Path | None = None) -> dict[str, Any]:
+    """Ensure local-only memory directories are ignored by git.
+
+    Appends missing entries to the project `.gitignore` (creating it when the
+    project is a git repository). Never rewrites existing content.
+    """
+
+    root = project_root(raw_root)
+    gitignore = root / ".gitignore"
+    if not gitignore.exists() and not (root / ".git").exists():
+        return {"path": str(gitignore), "added": [], "present": [], "skipped": "not a git repository"}
+    existing_lines: list[str] = []
+    if gitignore.exists():
+        existing_lines = gitignore.read_text(encoding="utf-8", errors="replace").splitlines()
+    normalized = {line.strip().rstrip("/") for line in existing_lines if line.strip() and not line.strip().startswith("#")}
+    added: list[str] = []
+    present: list[str] = []
+    for entry in GITIGNORE_ENTRIES:
+        if entry.rstrip("/") in normalized:
+            present.append(entry)
+        else:
+            added.append(entry)
+    if added:
+        joined = "\n".join(added)
+        prefix = ""
+        if existing_lines and existing_lines[-1].strip():
+            prefix = "\n"
+        with gitignore.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write(f"{prefix}{joined}\n")
+    return {"path": str(gitignore), "added": added, "present": present}
 
 
 def deactivate_project(raw_root: str | Path) -> dict[str, Any]:

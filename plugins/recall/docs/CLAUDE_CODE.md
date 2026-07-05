@@ -36,14 +36,19 @@ stdio JSON-RPC adapter over the RECALL core (`memory_manager.py`,
 `services/*`). It is reused as-is for Claude Code — no new server was written.
 It exposes:
 
-- `retrieve_memory`
-- `context_packet`
-- `save_insight`
-- `review_memory`
-- `initialize_project`
+- `retrieve_memory` — retrieval with per-result health flags and a `health` summary
+- `context_packet` — token-budgeted context for session starts
+- `save_insight` — durable writes with secret rejection and duplicate teaching
+- `review_memory` — read-only inventory and health
+- `update_memory` — lifecycle ops: update, confirm, stale, deprecate, supersede, merge, resolve, prune
+- `memory_hygiene` — route candidate facts; scan/plan/apply-safe store repairs
+- `memory_contract` — the canonical lifecycle contract and category guidance
+- `initialize_project` — activation, gitignore coverage, contract, first workflow
 
 Pass the active repository root as `root`. Claude Code-originated MCP writes
 are stamped with `origin_provider: "claude-code"` and `capture_channel: "mcp"`.
+The MCP `initialize` handshake also returns the compact contract as server
+`instructions`, so agents receive the lifecycle rules without any skill read.
 
 ## Hooks
 

@@ -54,6 +54,15 @@ RECALL currently believes rather than answer a focused query, hand the task to `
 
 Use the returned memories as context, not as unquestioned truth. Prefer active structured memory cards with matching categories, tags, and status. If a recalled item conflicts with the current repository state or newer user instructions, prefer the newer source and save the correction.
 
+Every result carries a `flag` and the response carries a `health` block:
+
+- `current` — trust normally, still below repository truth.
+- `stale`, `needs_verification` — verify against the repository before acting.
+- `superseded`, `deprecated` — do not act on it; follow the replacement.
+- `conflicting` — memories disagree on the same claim; reconcile through `memory-hygiene` before answering.
+
+When `health.next_action` is present, follow it before treating the results as sufficient.
+
 Apply a sufficiency check before answering from memory:
 
 - Enough memory: relevant active records answer the specific question and include usable IDs, status, or provenance.
@@ -84,11 +93,11 @@ summary, or context-packet token budget.
 
 ## Output Format
 
-Returns JSON with relevant IDs, categories, statuses, sources, and concise current context.
-Context packets also report estimated tokens, score components, and omitted count.
+Returns JSON with relevant IDs, categories, statuses, sources, per-result health flags, and a
+health summary. Context packets also report estimated tokens, score components, and omitted count.
 
 ```json
-{"query":"current storage decision","results":[{"id":12,"category":"decisions","score":1.04}]}
+{"query":"current storage decision","results":[{"id":12,"category":"decisions","score":1.04,"flag":"current"}],"health":{"flag_counts":{"current":1}}}
 ```
 
 ## Examples

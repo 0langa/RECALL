@@ -47,6 +47,15 @@ python ./scripts/recall_skill.py list-categories
 python ./scripts/recall_skill.py define-category <category> --description "<description>" --weight <weight>
 ```
 
+Add deterministic usage guidance whenever the category will be reused — agents pick categories
+correctly when each carries examples, non-examples, and an update rule:
+
+```bash
+python ./scripts/recall_skill.py define-category <category> --description "<description>" --weight <weight> \
+  --example "<memory that belongs here>" --non-example "<memory that does not>" \
+  --update-rule "<how cards in this category age or get superseded>"
+```
+
 7. Return the normalized category and explain whether this was a new category or a refinement.
 8. When a proposed category overlaps an existing one, reuse or refine the existing category instead of creating a synonym.
 

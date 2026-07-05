@@ -61,7 +61,7 @@ class PackageMetadataTests(unittest.TestCase):
     def test_manifest_public_surface_metadata_is_present(self) -> None:
         payload = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
         interface = payload["interface"]
-        self.assertEqual(payload["version"], "1.1.1")
+        self.assertEqual(payload["version"], "1.2.0")
         self.assertEqual(payload["homepage"], "https://github.com/0langa/RECALL")
         self.assertEqual(payload["repository"], "https://github.com/0langa/RECALL")
         self.assertEqual(interface["websiteURL"], "https://github.com/0langa/RECALL")
@@ -153,7 +153,9 @@ class PackageMetadataTests(unittest.TestCase):
             archive = Path(tmp) / "recall.zip"
             with zipfile.ZipFile(archive, "w") as package:
                 package.writestr(".codex-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
+                package.writestr(".claude-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
                 package.writestr("kimi.plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
+                package.writestr("scripts/contract.py", "print('ok')\n")
                 package.writestr("hooks/hooks.json", "{}")
                 package.writestr("skills/save-insight/SKILL.md", "# Save")
                 package.writestr("skills/retrieve-memory/SKILL.md", "# Retrieve")
@@ -177,7 +179,9 @@ class PackageMetadataTests(unittest.TestCase):
             archive = Path(tmp) / "recall.zip"
             with zipfile.ZipFile(archive, "w") as package:
                 package.writestr(".codex-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
+                package.writestr(".claude-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
                 package.writestr("kimi.plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
+                package.writestr("scripts/contract.py", "print('ok')\n")
                 package.writestr("hooks/hooks.json", "{}")
                 package.writestr("skills/save-insight/SKILL.md", "# Save")
                 package.writestr("skills/retrieve-memory/SKILL.md", "# Retrieve")

@@ -70,11 +70,28 @@ class SkillCliContractTests(unittest.TestCase):
             self.assertTrue(doctor["report"]["index_complete"])
             self.assertEqual(doctor["report"]["warnings"], [])
 
-    def test_secret_like_content_is_redacted_through_public_adapter(self) -> None:
+    def test_secret_like_content_is_rejected_through_public_adapter(self) -> None:
         with temp_project() as project:
-            run_json(skill_cmd(project, "save-insight", "debug_history", "Deployment failed with api_key=dummy-secret-value", "--source", "quality-suite"))
+            saved = run_json(skill_cmd(project, "save-insight", "debug_history", "Deployment failed with api_key=dummy-secret-value", "--source", "quality-suite"))
+            self.assertEqual(saved["result"], "rejected")
+            self.assertIn("secret", saved["reason"])
             result = run_json(skill_cmd(project, "retrieve-memory", "deployment api key", "--category", "debug_history"))
-            self.assertIn("[REDACTED]", result["results"][0]["content"])
+            self.assertEqual(result["results"], [])
+
+    def test_secret_like_content_in_legacy_store_is_redacted_on_read(self) -> None:
+        with temp_project() as project:
+            run_json(memory_cmd(
+                project,
+                "add",
+                "debug_history",
+                "Deployment failed with api_key=dummy-secret-value",
+                "--source",
+                "quality-suite",
+                "--status",
+                "active",
+            ))
+            result = run_json(skill_cmd(project, "retrieve-memory", "deployment failed", "--category", "debug_history"))
+            self.assertGreaterEqual(len(result["results"]), 1)
             self.assertNotIn("dummy-secret-value", result["results"][0]["content"])
 
     def test_status_filter_selects_current_memory(self) -> None:
@@ -92,9 +109,11 @@ class SkillCliContractTests(unittest.TestCase):
 
     def test_review_and_audit_surface_memory_quality_signals(self) -> None:
         with temp_project() as project:
-            noisy = run_json(skill_cmd(
+            # Seed noise through the trusted manager path: skill saves that
+            # declare hook sources are gated by the auto-capture policy now.
+            noisy = run_json(memory_cmd(
                 project,
-                "save-insight",
+                "add",
                 "commands",
                 "Tool: Bash Command: Get-Content README.md Result: completed",
                 "--summary",

@@ -56,8 +56,11 @@ Prefer one of RECALL's built-in categories:
 - `lessons_learned`
 - `requirements`
 - `risks`
+- `tooling_quirks`
+- `integrations`
 
-Custom categories are allowed. If a category does not exist, RECALL auto-creates it with a default weight and records a warning in metadata. After auto-creation, recommend refining the category with `define-category` when the category will be reused.
+Each built-in category carries examples, non-examples, and an update rule; inspect them with
+`list-categories` or the `contract` command when unsure which slot fits. Custom categories are allowed. If a category does not exist, RECALL auto-creates it with a default weight and records a warning in metadata. After auto-creation, recommend refining the category with `define-category` when the category will be reused.
 
 ## Memory Card Shape
 
@@ -93,10 +96,14 @@ Use `--source-path` when a claim comes from a project file. Use `--claim-key` an
 must include durable evidence through `--preference-key`,
 `--preference-evidence-type`, and `--decision-id`.
 
-5. If the write reveals an existing conflicting current-truth claim, save only the verified
+5. Read the response `result` and `next_action`. Duplicate-shaped saves return
+`updated_existing` (the existing card was confirmed, nothing appended); near-duplicates return
+`saved_related` with a merge suggestion; low-value or evidence-lacking writes return `ignored`
+with a recovery hint. Follow the `next_action` instead of retrying the same save.
+6. If the write reveals an existing conflicting current-truth claim, save only the verified
 new record and hand conflict resolution to `manage-memory`; do not run lifecycle commands
 from this skill.
-6. If the category is missing but clearly reusable, save with the auto-created category and
+7. If the category is missing but clearly reusable, save with the auto-created category and
 recommend refining it with `define-category`; do not design the taxonomy here.
 
 ## Examples

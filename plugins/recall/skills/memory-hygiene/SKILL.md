@@ -68,12 +68,17 @@ Read `references/hygiene-policy.md` when a routing or cleanup decision is ambigu
 
 Safe automatic changes are non-destructive:
 
-- `stale`: current repo evidence invalidates a memory.
+- `redact_secret`: secret-shaped content in an existing card is redacted in place (highest priority; policy says secrets must never be stored).
+- `stale`: current repo evidence invalidates a memory, or a point-in-time snapshot (`project_state`, `session_summaries`, `integrations`, `tooling_quirks`) aged past the staleness window.
 - `supersede`: validated current-truth claim clearly wins.
 - `merge`: exact duplicate joins an older primary record.
-- `prune`: low-value noise is archived.
+- `prune`: low-value noise or a raw log/output dump is archived.
 - `refresh_source`: source-backed memory still matches its file.
 - `needs_confirmation`: weak preference or ambiguous memory is kept but demoted.
+
+Review-only findings (never auto-applied): `review_near_duplicate`, `review_vague`
+(memory too vague to act on), and `review_metadata` (missing source/status provenance).
+Scan output includes a `next_action` telling you the correct follow-up.
 
 Never hard-delete from this skill. If deletion is explicit, use `manage-memory` and `delete-memory --confirm DELETE-<id>`.
 
@@ -91,6 +96,11 @@ Never hard-delete from this skill. If deletion is explicit, use `manage-memory` 
 | Near duplicate | report, require confirmation |
 | Conflicting claim key | pick validated/high-trust winner only when clear |
 | Weak preference without evidence | mark `needs_confirmation` |
+| Secret-shaped stored content | propose safe `redact_secret`, apply immediately |
+| Raw log or output dump stored as memory | propose safe `prune` |
+| Vague unactionable memory | report `review_vague`, require rewrite or confirmation |
+| Aged point-in-time snapshot | propose safe `stale` for verification |
+| Missing source/status provenance | report `review_metadata` |
 
 ## Examples
 

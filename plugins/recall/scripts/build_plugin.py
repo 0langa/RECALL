@@ -15,6 +15,7 @@ from pathlib import Path
 
 INCLUDE = [
     ".codex-plugin",
+    ".claude-plugin",
     "assets",
     "skills",
     "hooks",

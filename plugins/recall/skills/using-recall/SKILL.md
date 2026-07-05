@@ -34,9 +34,14 @@ Reading this skill establishes:
 | store root | `.recall/` for new projects; existing `.codex_memory/` treated as legacy shared store |
 | origin_provider | `codex`, `kimi`, or `claude-code`, stamped on every write |
 | applies_to_provider | `all` unless the fact is provider-specific |
-| authority | current files and newer user instructions beat retrieved memory |
+| authority | current user instruction > system instructions > repository code/docs > current tool results > RECALL memory > older conversation assumptions |
+| lifecycle | retrieve before work → decide save-worthiness → save → update → deprecate/supersede → hygiene → handoff |
 | safety | reject secrets; prefer stale/supersede/prune over delete |
 | routing | `using-recall` never writes, reads, or mutates — it only hands off |
+
+The engine exposes the same contract programmatically: MCP `memory_contract` tool, the MCP
+server `instructions`, the SessionStart hook context, and `recall_skill.py contract`. All derive
+from `scripts/contract.py`, so re-fetch it after context loss instead of reconstructing from chat.
 
 Full contract: [`references/contract.md`](references/contract.md).
 
@@ -195,7 +200,7 @@ When policy refuses a request:
 - Project has neither `.recall/` nor `.codex_memory/`: initialize `.recall/` before writes; do not silently write to an unrelated directory.
 - Project has both stores: treat `.recall/` as the active writer, `.codex_memory/` as legacy read-only, unless the user requests migration.
 - Provider unknown: fall back to `origin_provider: "unknown"` and continue; do not block the write.
-- Retrieved memory contains what looks like a secret: do not repeat verbatim; return a summary that does not reveal the secret.
+- Retrieved memory contains what looks like a secret — do not repeat verbatim; return a summary that does not reveal it.
 - User explicitly says "don't remember this": do not save, even if the fact looks durable.
 - Session is a dry-run or evaluation harness: still apply the contract, but prefer read-only sibling skills.
 - Fresh Kimi Code session shows no sibling responded to a durable fact: verify that `sessionStart.skill` in `kimi.plugin.json` still points at `using-recall`.

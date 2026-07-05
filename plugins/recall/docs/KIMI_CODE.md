@@ -26,14 +26,18 @@ checkout, reinstall or reload the managed plugin copy before testing.
 
 The Kimi MCP server wraps the public RECALL core:
 
-- `retrieve_memory`
-- `context_packet`
-- `save_insight`
-- `review_memory`
-- `initialize_project`
+- `retrieve_memory` — retrieval with per-result health flags and a `health` summary
+- `context_packet` — token-budgeted context for session starts
+- `save_insight` — durable writes with secret rejection and duplicate teaching
+- `review_memory` — read-only inventory and health
+- `update_memory` — lifecycle ops: update, confirm, stale, deprecate, supersede, merge, resolve, prune
+- `memory_hygiene` — route candidate facts; scan/plan/apply-safe store repairs
+- `memory_contract` — the canonical lifecycle contract and category guidance
+- `initialize_project` — activation, gitignore coverage, contract, first workflow
 
 Pass the active repository root as `root`. Kimi-originated MCP writes are stamped
-with `origin_provider: "kimi"` and `capture_channel: "mcp"`.
+with `origin_provider: "kimi"` and `capture_channel: "mcp"`. The MCP `initialize`
+handshake also returns the compact contract as server `instructions`.
 
 ## Optional Hooks
 

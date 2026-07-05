@@ -2,8 +2,13 @@
 
 RECALL is local-first project memory for Codex, Kimi Code, and Claude Code. It stores durable context in `.recall/` inside the active project, while continuing to use existing `.codex_memory/` stores for backward compatibility, so agents can retrieve decisions, constraints, commands, debugging history, requirements, risks, and custom categories across sessions.
 
-## What Works In v1.0.0
+## What Works
 
+- Deterministic memory lifecycle contract (`scripts/contract.py`): source authority order, retrieve-before-work triggers, save/skip rules, and status meanings, exposed via the MCP server `instructions`, the `memory_contract` MCP tool, the SessionStart hook context, and `recall_skill.py contract` — the same rules on every provider.
+- MCP lifecycle surface: `retrieve_memory`, `context_packet`, `save_insight`, `review_memory`, `update_memory`, `memory_hygiene`, `memory_contract`, `initialize_project`.
+- Retrieval health flags: every result is marked `current`, `stale`, `superseded`, `deprecated`, `needs_verification`, or `conflicting`, with a `health.next_action` telling the agent what to do about it.
+- Duplicate-aware saves: exact duplicates confirm the existing card instead of appending; near-duplicates link and suggest a merge; secret-shaped content is rejected on every write surface.
+- Hygiene detection for stored secrets (safe in-place redaction), raw log dumps, vague cards, aged snapshots, duplicates, conflicts, and missing provenance.
 - Validation-ready Codex plugin manifest at `.codex-plugin/plugin.json`.
 - Kimi Code plugin manifest at `kimi.plugin.json`, with `using-recall` session guidance and a local MCP server wrapper.
 - Claude Code plugin manifest at `.claude-plugin/plugin.json`, reusing the same skills, hooks, and MCP server.
@@ -272,7 +277,7 @@ python ./scripts/smoke_recall.py --installed-plugin-root <installed-plugin-root>
 
 Codex auto-discovers plugin hooks from `hooks/hooks.json`. RECALL currently wires:
 
-- `SessionStart` as a quiet compatibility hook; it does not inject memory by default.
+- `SessionStart` injects the compact lifecycle contract and a store overview for activated projects; non-activated projects stay quiet.
 - `UserPromptSubmit` to resolve the project root, persist explicit activation, and retrieve relevant sufficient context on later prompts without repeated mentions.
 - `UserPromptSubmit` to catch explicit "remember this" and "define category" cues after RECALL is activated.
 - `PostToolUse` to buffer compact redacted evidence without creating durable command, file-edit, test, or build memories.
@@ -299,8 +304,10 @@ Built-in categories are:
 - `lessons_learned`
 - `requirements`
 - `risks`
+- `tooling_quirks`
+- `integrations`
 
-Unknown categories are accepted, normalized to snake case, and added to the config with a default weight. You can refine them later with the `define-category` skill or the CLI command.
+Every built-in category carries a description, retrieval weight, examples, non-examples, and an update rule (`list-categories` shows them), so agents can pick the right slot deterministically instead of dumping everything into one bucket. Unknown categories are accepted, normalized to snake case, and added to the config with a default weight. You can refine them later with the `define-category` skill or the CLI command.
 
 Lifecycle metadata is stored inside each memory card. RECALL understands `related_to`, `supersedes`, `superseded_by`, `source_session`, and `last_confirmed`, and automatic hooks can update or link existing memories instead of creating repetitive notes.
 

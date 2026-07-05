@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.0 - 2026-07-05
+
+Deterministic memory lifecycle contract, exposed by the engine instead of relying on agents remembering instructions.
+
+- Added `scripts/contract.py` as the canonical behavior contract (source authority order, lifecycle steps, save/skip rules, status meanings). The MCP server `instructions`, the new `memory_contract` MCP tool, the SessionStart hook context, the `recall_skill.py contract` command, and `skills/using-recall/references/contract.md` all derive from or are pinned to it by tests (`tests/test_contract_sync.py`).
+- SessionStart hook now injects the compact contract plus a store overview for activated projects on all providers (previously Kimi-only via `sessionStart.skill`); non-activated projects stay quiet.
+- Added MCP lifecycle tools: `update_memory` (update/confirm/stale/deprecate/supersede/merge/resolve/prune) and `memory_hygiene` (route/scan/plan/apply_safe), closing the append-only bias of the MCP surface.
+- MCP `save_insight` now rejects secret-shaped content (parity with the skill adapter), routes through duplicate detection, and returns teaching responses: `updated_existing` confirms the existing card instead of appending; `saved_related` suggests a merge; `ignored` explains recovery (including preference-evidence requirements). Skill adapter `save-insight` gained the same dedup-and-teach behavior.
+- Retrieval results now carry per-result health flags (`current`, `stale`, `superseded`, `deprecated`, `needs_verification`, `conflicting`) and a response-level `health` summary with `next_action`; conflicting claim keys are marked across results.
+- Enriched all built-in categories with examples, non-examples, and update rules; added `tooling_quirks` (provider/tool quirks) and `integrations` (external service constraints) categories; `define-category` accepts `--example`, `--non-example`, `--update-rule`.
+- Hygiene now detects stored secret-shaped content (safe in-place `redact_secret`, highest priority), raw log/output dumps (safe prune), vague memories (`review_vague`), aged point-in-time snapshots (safe stale after 45 days for `project_state`/`session_summaries`/`integrations`/`tooling_quirks`), and missing provenance (`review_metadata`); `hygiene-scan` output includes `next_action`.
+- `initialize-project` (MCP and adapter) now ensures `.gitignore` covers `.recall/` and `.codex_memory/`, and returns category list, compact contract, and a first-workflow guide.
+- Fixed `.claude-plugin/` missing from `build_plugin.py` INCLUDE (built zips previously shipped without the Claude Code manifest); `inspect_package.py` now requires `.claude-plugin/plugin.json` and `scripts/contract.py`.
+- Added cross-provider drift gates: manifest version/name/skills-path parity across `.codex-plugin`, `.claude-plugin`, and `kimi.plugin.json`, MCP server env parity, and contract-consistency tests.
+- New test files: `test_contract_sync.py`, `test_retrieval_flags.py`, `test_hygiene_quality_checks.py`, `test_mcp_lifecycle_tools.py`.
+
 ## 1.1.1 - 2026-07-02
 
 - Fixed `save-insight` silently accepting secret-shaped content (AWS keys, JWTs, GitHub tokens, verbal `password is X` phrasing). The adapter now returns `{"result":"rejected","reason":"secret-like content must not be stored"}` and refuses to persist the record.

@@ -26,6 +26,20 @@ def run_skill(root: str, *args: str) -> dict:
     return json.loads(completed.stdout)
 
 
+MANAGER = ROOT / "scripts" / "memory_manager.py"
+
+
+def run_manager(root: str, *args: str) -> dict:
+    completed = subprocess.run(
+        [sys.executable, str(MANAGER), "--root", root, *args],
+        text=True,
+        capture_output=True,
+        check=True,
+        cwd=ROOT,
+    )
+    return json.loads(completed.stdout)
+
+
 def run_skill_with_input(
     root: str,
     input_text: str,
@@ -201,9 +215,11 @@ class RecallSkillAdapterTests(unittest.TestCase):
 
     def test_archive_noise_is_dry_run_until_apply(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            noisy = run_skill(
+            # Seed via the trusted manager path: skill saves declaring hook
+            # sources are gated by the auto-capture policy by design.
+            noisy = run_manager(
                 tmp,
-                "save-insight",
+                "add",
                 "commands",
                 "Tool: Bash Command: git status --short Result: completed",
                 "--summary",
@@ -238,13 +254,32 @@ class RecallSkillAdapterTests(unittest.TestCase):
                 "--status",
                 "active",
             )
-            duplicate = run_skill(
+            # Duplicate-shaped skill saves are deduplicated at write time now:
+            # the existing card is confirmed instead of appended.
+            duplicate_save = run_skill(
                 tmp,
                 "save-insight",
                 "requirements",
                 "Release checks must pass before tagging.",
                 "--summary",
                 "Release checks gate tags.",
+                "--status",
+                "active",
+            )
+            self.assertEqual(duplicate_save["result"], "updated_existing")
+            self.assertEqual(duplicate_save["id"], first["id"])
+
+            # Pre-existing duplicates (e.g. legacy stores) still surface as
+            # merge proposals through hygiene; seed one via the trusted path.
+            duplicate = run_manager(
+                tmp,
+                "add",
+                "requirements",
+                "Release checks must pass before tagging.",
+                "--summary",
+                "Release checks gate tags.",
+                "--source",
+                "skill",
                 "--status",
                 "active",
             )
@@ -311,9 +346,9 @@ class RecallSkillAdapterTests(unittest.TestCase):
 
     def test_audit_memory_surfaces_noise_candidates_and_quality_metrics(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            noisy = run_skill(
+            noisy = run_manager(
                 tmp,
-                "save-insight",
+                "add",
                 "commands",
                 "Tool: Bash Command: Get-Content README.md Result: completed",
                 "--summary",

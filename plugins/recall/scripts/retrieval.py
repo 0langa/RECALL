@@ -191,6 +191,76 @@ def score_record(
     return score
 
 
+SNAPSHOT_CATEGORIES = {"project_state", "integrations", "tooling_quirks", "session_summaries"}
+SNAPSHOT_AGING_DAYS = 30.0
+FLAG_CURRENT = "current"
+FLAG_STALE = "stale"
+FLAG_SUPERSEDED = "superseded"
+FLAG_DEPRECATED = "deprecated"
+FLAG_NEEDS_VERIFICATION = "needs_verification"
+FLAG_CONFLICTING = "conflicting"
+
+
+def health_flag(record: storage.MemoryRecord) -> tuple[str, str | None]:
+    """Classify a record's trustworthiness for retrieval output."""
+    status = record_status(record)
+    if status == "stale":
+        return FLAG_STALE, "source changed since capture; verify against the repository"
+    if status == "superseded":
+        return FLAG_SUPERSEDED, "replaced by a newer memory; follow superseded_by instead"
+    if status in {"deprecated", "archived"}:
+        return FLAG_DEPRECATED, "retired memory; do not act on it"
+    if status == "hypothesis":
+        return FLAG_NEEDS_VERIFICATION, "unconfirmed hypothesis; verify before trusting"
+    age_days = max(0.0, (datetime.now(timezone.utc) - recency_timestamp(record)).total_seconds() / 86400)
+    if record.category in SNAPSHOT_CATEGORIES and age_days > SNAPSHOT_AGING_DAYS:
+        return FLAG_NEEDS_VERIFICATION, (
+            f"point-in-time snapshot is {int(age_days)} days old; verify it still holds"
+        )
+    return FLAG_CURRENT, None
+
+
+def mark_conflicts(results: list[dict[str, Any]]) -> None:
+    """Mark results whose claim_key collides with a different claim_value."""
+    claims: dict[tuple[str, str], set[str]] = {}
+    for item in results:
+        metadata = item.get("metadata") or {}
+        claim_key = metadata.get("claim_key")
+        claim_value = metadata.get("claim_value")
+        if not claim_key or claim_value is None:
+            continue
+        claims.setdefault((item["category"], str(claim_key)), set()).add(str(claim_value))
+    for item in results:
+        metadata = item.get("metadata") or {}
+        claim_key = metadata.get("claim_key")
+        if not claim_key:
+            continue
+        values = claims.get((item["category"], str(claim_key)), set())
+        if len(values) > 1:
+            item["flag"] = FLAG_CONFLICTING
+            item["flag_reason"] = (
+                f"multiple memories disagree on claim `{claim_key}`; reconcile before trusting"
+            )
+
+
+def health_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
+    counts: dict[str, int] = {}
+    for item in results:
+        flag = item.get("flag", FLAG_CURRENT)
+        counts[flag] = counts.get(flag, 0) + 1
+    next_action = None
+    if counts.get(FLAG_CONFLICTING):
+        next_action = "conflicting memories returned; run memory-hygiene reconcile-current-truth before relying on them"
+    elif counts.get(FLAG_STALE) or counts.get(FLAG_NEEDS_VERIFICATION):
+        next_action = "some results need verification; check them against the repository before acting"
+    elif counts.get(FLAG_SUPERSEDED) or counts.get(FLAG_DEPRECATED):
+        next_action = "retired memories matched; prefer their replacements or current repository state"
+    summary: dict[str, Any] = {"flag_counts": counts}
+    if next_action:
+        summary["next_action"] = next_action
+    return summary
+
+
 def query(
     query_text: str,
     categories: list[str] | None = None,
@@ -223,18 +293,23 @@ def query(
         ranked.append(record)
 
     ranked.sort(key=lambda item: (item.score, parse_timestamp(item.timestamp), item.id), reverse=True)
-    results = [
-        {
+    results = []
+    for record in ranked[:limit]:
+        flag, flag_reason = health_flag(record)
+        item: dict[str, Any] = {
             "id": record.id,
             "category": record.category,
             "timestamp": record.timestamp,
             "score": round(record.score, 4),
             "content": record.content,
             "metadata": record.metadata,
+            "flag": flag,
         }
-        for record in ranked[:limit]
-    ]
-    response: dict[str, Any] = {"query": query_text, "results": results}
+        if flag_reason:
+            item["flag_reason"] = flag_reason
+        results.append(item)
+    mark_conflicts(results)
+    response: dict[str, Any] = {"query": query_text, "results": results, "health": health_summary(results)}
     if summarize:
         response["summary"] = summarize_records(results, cfg["token_budget"])
     return response

@@ -23,11 +23,33 @@ Every durable write carries:
 - `capture_channel`: `hook`, `mcp`, `skill_adapter`, or `manual`.
 - `applies_to_provider`: `all` unless the fact is provider-specific.
 
-## Retrieval Authority
+## Source Authority Order
 
-- Current files > user instructions > retrieved memory.
+Canonical order (highest authority first), shared verbatim with the engine's
+`scripts/contract.py` and the MCP server instructions:
+
+1. current user instruction
+2. system/developer instructions
+3. repository code and docs
+4. current tool results
+5. RECALL memory
+6. older conversation assumptions
+
+Within memory:
+
 - Validated lifecycle beats hypothesis lifecycle for the same claim key.
 - Recent trust promotions beat older automatic writes when they conflict.
+- Results flagged `stale`, `superseded`, `deprecated`, `needs_verification`, or
+  `conflicting` are unverified until checked against the repository.
+
+## Lifecycle Steps
+
+initialize → retrieve before work → decide save-worthiness (route-memory when
+unsure) → save durable insight → update changed memory → deprecate or supersede
+wrong memory → validate health (hygiene) → handoff summary. Retrieval comes
+first for bug fixes, unfamiliar code, repeated failures, provider/plugin work,
+security-sensitive changes, preference-shaped tasks, and continuation after
+context loss.
 
 ## Save vs Skip
 

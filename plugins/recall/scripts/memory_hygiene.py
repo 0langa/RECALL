@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Any, Iterable, NamedTuple
 
 import config as recall_config
-from embedder import tokenize
+from embedder import embed, tokenize
+import index_store
 import memory_lifecycle
 import memory_noise
 from services import provenance_service
@@ -22,7 +23,21 @@ import storage
 
 NEAR_DUPLICATE_THRESHOLD = 0.72
 CURRENT_STATUSES = {"active", "validated", "open", "hypothesis"}
-SAFE_ACTIONS = {"stale", "prune", "merge", "supersede", "needs_confirmation", "refresh_source"}
+SAFE_ACTIONS = {"stale", "prune", "merge", "supersede", "needs_confirmation", "refresh_source", "redact_secret"}
+SNAPSHOT_CATEGORIES = {"project_state", "session_summaries", "integrations", "tooling_quirks"}
+SNAPSHOT_STALE_DAYS = 45.0
+RAW_LOG_MIN_CHARS = 1200
+RAW_LOG_MARKERS = ("traceback (most recent call last)", "stack trace", "==== ", "----", "\n\n\n")
+VAGUE_MAX_CHARS = 60
+VAGUE_PATTERNS = (
+    "it works now",
+    "fixed the bug",
+    "made progress",
+    "did some work",
+    "updated stuff",
+    "misc changes",
+    "everything is fine",
+)
 
 
 @dataclass(frozen=True)
@@ -396,13 +411,120 @@ def _noise_proposals(records: Iterable[storage.MemoryRecord]) -> list[HygienePro
     return proposals
 
 
+def _record_age_days(record: storage.MemoryRecord) -> float:
+    metadata = record.metadata or {}
+    freshest = record.timestamp
+    for key in ("last_confirmed", "updated_at", "edited_at"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip() > str(freshest):
+            freshest = value
+    try:
+        parsed = datetime.fromisoformat(str(freshest).replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return max(0.0, (datetime.now(timezone.utc) - parsed).total_seconds() / 86400)
+
+
+def _secret_proposal(record: storage.MemoryRecord) -> HygieneProposal | None:
+    """Stored secret-shaped content must be repaired even though writes redact."""
+    metadata = record.metadata or {}
+    if not security.contains_secret(record.content, metadata.get("summary"), metadata.get("details")):
+        return None
+    return HygieneProposal(
+        record.id,
+        "redact_secret",
+        0.99,
+        "content contains secret-shaped values; redact immediately (policy: secrets must never be stored)",
+        True,
+    )
+
+
+def _raw_log_proposal(record: storage.MemoryRecord) -> HygieneProposal | None:
+    if not _is_current(record):
+        return None
+    content = record.content or ""
+    if len(content) < RAW_LOG_MIN_CHARS:
+        return None
+    lowered = content.lower()
+    line_count = content.count("\n") + 1
+    marker_hit = any(marker in lowered for marker in RAW_LOG_MARKERS)
+    if marker_hit or line_count >= 25:
+        return HygieneProposal(
+            record.id,
+            "prune",
+            0.86,
+            "looks like a raw log/output dump; archive it and save a one-line insight instead",
+            True,
+        )
+    return None
+
+
+def _vague_proposal(record: storage.MemoryRecord) -> HygieneProposal | None:
+    if not _is_current(record):
+        return None
+    metadata = record.metadata or {}
+    content = " ".join((record.content or "").split())
+    lowered = content.lower()
+    too_short = len(content) <= VAGUE_MAX_CHARS and not metadata.get("summary") and not metadata.get("details")
+    pattern_hit = any(pattern in lowered for pattern in VAGUE_PATTERNS)
+    if pattern_hit or (too_short and len(content.split()) <= 4):
+        return HygieneProposal(
+            record.id,
+            "review_vague",
+            0.7,
+            "memory is too vague to act on; rewrite it as a specific verifiable fact or prune it",
+            False,
+        )
+    return None
+
+
+def _snapshot_age_proposal(record: storage.MemoryRecord) -> HygieneProposal | None:
+    if record.category not in SNAPSHOT_CATEGORIES or not _is_current(record):
+        return None
+    age_days = _record_age_days(record)
+    if age_days <= SNAPSHOT_STALE_DAYS:
+        return None
+    return HygieneProposal(
+        record.id,
+        "stale",
+        0.84,
+        f"point-in-time `{record.category}` snapshot is {int(age_days)} days old; verify it or supersede it with a current snapshot",
+        True,
+    )
+
+
+def _metadata_gap_proposal(record: storage.MemoryRecord) -> HygieneProposal | None:
+    if not _is_current(record):
+        return None
+    metadata = record.metadata or {}
+    missing = [field for field in ("source", "status") if not str(metadata.get(field) or "").strip()]
+    if not record.timestamp:
+        missing.append("timestamp")
+    if not missing:
+        return None
+    return HygieneProposal(
+        record.id,
+        "review_metadata",
+        0.65,
+        f"memory lacks useful provenance ({', '.join(missing)}); add it or the card cannot be trusted or aged correctly",
+        False,
+    )
+
+
 def _single_record_proposals(records: list[storage.MemoryRecord], root: str | Path | None) -> list[HygieneProposal]:
     proposals: list[HygieneProposal] = []
     for record in records:
         for proposal in (
+            _secret_proposal(record),
             _source_proposal(record, root),
             _command_stale_proposal(record),
             _preference_proposal(record),
+            _raw_log_proposal(record),
+            _vague_proposal(record),
+            _snapshot_age_proposal(record),
+            _metadata_gap_proposal(record),
         ):
             if proposal is not None:
                 proposals.append(proposal)
@@ -412,13 +534,16 @@ def _single_record_proposals(records: list[storage.MemoryRecord], root: str | Pa
 
 def _dedupe_proposals(proposals: list[HygieneProposal]) -> list[HygieneProposal]:
     priority = {
-        "merge": 0,
-        "supersede": 1,
-        "stale": 2,
-        "prune": 3,
-        "needs_confirmation": 4,
-        "refresh_source": 5,
-        "review_near_duplicate": 6,
+        "redact_secret": 0,
+        "merge": 1,
+        "supersede": 2,
+        "stale": 3,
+        "prune": 4,
+        "needs_confirmation": 5,
+        "refresh_source": 6,
+        "review_near_duplicate": 7,
+        "review_vague": 8,
+        "review_metadata": 9,
     }
     best: dict[tuple[int | None, str, tuple[int, ...]], HygieneProposal] = {}
     for proposal in proposals:
@@ -466,7 +591,14 @@ def hygiene_scan(root: str | Path | None = None, *, limit: int | None = None) ->
     counts: dict[str, int] = {}
     for proposal in plan["proposals"]:
         counts[proposal["proposed_action"]] = counts.get(proposal["proposed_action"], 0) + 1
-    return {
+    next_action = None
+    if counts.get("redact_secret"):
+        next_action = "secret-shaped content found; run hygiene-apply --safe NOW to redact it"
+    elif plan["safe_to_apply_count"]:
+        next_action = f"{plan['safe_to_apply_count']} safe repair(s) available; run hygiene-apply --safe"
+    elif plan["requires_confirmation"]:
+        next_action = "only review-required proposals remain; inspect the listed ids and fix them via manage-memory"
+    response = {
         "action": "hygiene-scan",
         "inspected": plan["inspected"],
         "candidate_ids": [proposal["id"] for proposal in plan["proposals"] if proposal["id"] is not None],
@@ -474,6 +606,9 @@ def hygiene_scan(root: str | Path | None = None, *, limit: int | None = None) ->
         "proposals": plan["proposals"],
         "requires_confirmation": plan["requires_confirmation"],
     }
+    if next_action:
+        response["next_action"] = next_action
+    return response
 
 
 def _apply_proposal(proposal: dict[str, Any], root: str | Path | None) -> dict[str, Any]:
@@ -485,7 +620,26 @@ def _apply_proposal(proposal: dict[str, Any], root: str | Path | None) -> dict[s
         return {"id": record_id, "action": action, "applied": False, "reason": "not safe action"}
     if record_id is None:
         return {"id": None, "action": action, "applied": False, "reason": "missing target id"}
-    if action == "stale":
+    if action == "redact_secret":
+        record = memory_lifecycle.get_required(int(record_id), root)
+        metadata = dict(record.metadata or {})
+        safe_content = security.redact_text(record.content or "")
+        for key in ("summary", "details"):
+            value = metadata.get(key)
+            if isinstance(value, str):
+                metadata[key] = security.redact_text(value)
+        metadata["redacted_at"] = utc_now()
+        metadata["lifecycle_note"] = reason
+        updated = storage.update_record(
+            int(record_id),
+            category=record.category,
+            content=safe_content,
+            metadata=metadata,
+            embedding=embed(safe_content),
+            root=root,
+        )
+        index_store.rebuild(root)
+    elif action == "stale":
         updated = memory_lifecycle.mark_stale(int(record_id), root, reason)
     elif action == "prune":
         updated = memory_lifecycle.prune(int(record_id), root, reason)

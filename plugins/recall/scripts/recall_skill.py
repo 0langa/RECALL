@@ -198,7 +198,7 @@ def handle_save_insight(args: argparse.Namespace, root: Path | None) -> None:
             applies_to_provider=args.applies_to_provider,
         )
     )
-    record = memory_manager.add_record(
+    outcome = memory_manager.add_record_if_useful(
         args.category,
         args.content,
         memory_manager.build_card_metadata(
@@ -213,7 +213,30 @@ def handle_save_insight(args: argparse.Namespace, root: Path | None) -> None:
         ),
         root,
     )
-    print_json({"action": "save-insight", "id": record.id, "category": record.category})
+    record = outcome.get("record")
+    payload: dict[str, Any] = {"action": "save-insight", "result": outcome.get("action")}
+    if outcome.get("reason"):
+        payload["reason"] = outcome["reason"]
+    if record is not None:
+        payload["id"] = record.id
+        payload["category"] = record.category
+    if outcome.get("action") == "updated_existing" and record is not None:
+        payload["next_action"] = (
+            f"Existing memory #{record.id} already covers this; it was confirmed instead of duplicated. "
+            f"If the fact changed, run edit-memory {record.id} with the corrected content."
+        )
+    elif outcome.get("action") == "saved_related" and record is not None:
+        related = (record.metadata or {}).get("related_memory_id")
+        payload["next_action"] = (
+            f"Saved, but memory #{related} is similar. If both describe the same fact, run "
+            f"merge-memories {record.id} {related}."
+        )
+    elif outcome.get("action") == "ignored":
+        payload["next_action"] = (
+            "Nothing was stored. If this insight is durable and new, rephrase it as a specific, "
+            "verifiable fact and retry; otherwise keep it out of memory."
+        )
+    print_json(payload)
 
 
 def handle_save_turn_card(args: argparse.Namespace, root: Path | None) -> None:
@@ -235,8 +258,29 @@ def handle_retrieve_memory(args: argparse.Namespace, root: Path | None) -> None:
 
 
 def handle_define_category(args: argparse.Namespace, root: Path | None) -> None:
-    details = memory_manager.define_category(args.category, args.description, args.weight, root)
+    details = recall_config.add_category(
+        args.category,
+        args.description,
+        args.weight,
+        root,
+        examples=args.example or None,
+        non_examples=args.non_example or None,
+        update_rule=args.update_rule,
+    )
     print_json({"action": "define-category", "category": args.category, "details": details})
+
+
+def handle_contract(args: argparse.Namespace, root: Path | None) -> None:
+    import contract as recall_contract
+
+    cfg = recall_config.load_config_if_present(root)
+    print_json(
+        {
+            "action": "contract",
+            "contract": recall_contract.contract_dict(),
+            "categories": cfg.get("categories", {}),
+        }
+    )
 
 
 def handle_doctor(args: argparse.Namespace, root: Path | None) -> None:
@@ -270,6 +314,11 @@ def handle_list_categories(args: argparse.Namespace, root: Path | None) -> None:
             "name": name,
             "description": details["description"],
             "weight": details["weight"],
+            **{
+                key: details[key]
+                for key in ("examples", "non_examples", "update_rule")
+                if key in details
+            },
         }
         for name, details in sorted(cfg["categories"].items())
     ]
@@ -287,9 +336,25 @@ def handle_configure_recall(args: argparse.Namespace, root: Path | None) -> None
 
 
 def handle_initialize_project(args: argparse.Namespace, root: Path | None) -> None:
+    import contract as recall_contract
+
     target = (root or Path.cwd()).resolve()
     cfg = recall_config.activate_project(target, activated_by="explicit_initialize")
-    print_json({"action": "initialize-project", "root": str(target), "activation": cfg["activation"]})
+    gitignore = recall_config.ensure_gitignore_entries(target)
+    print_json(
+        {
+            "action": "initialize-project",
+            "root": str(target),
+            "activation": cfg["activation"],
+            "gitignore": gitignore,
+            "categories": sorted(cfg.get("categories", {})),
+            "contract": recall_contract.compact_contract_text(),
+            "first_workflow": (
+                "1) retrieve-memory before starting work; 2) work normally; 3) save-insight only for "
+                "durable verified facts; 4) edit/supersede memories when facts change; 5) hygiene-scan periodically."
+            ),
+        }
+    )
 
 
 def handle_activation_status(args: argparse.Namespace, root: Path | None) -> None:
@@ -577,7 +642,12 @@ def main() -> None:
     define.add_argument("category")
     define.add_argument("--description", required=True)
     define.add_argument("--weight", type=float, default=1.0)
+    define.add_argument("--example", action="append", default=[], help="Positive example memory for this category. May be repeated.")
+    define.add_argument("--non-example", action="append", default=[], help="Non-example that does NOT belong here. May be repeated.")
+    define.add_argument("--update-rule", help="How memories in this category should be updated or aged.")
     define.set_defaults(handler=handle_define_category)
+
+    subparsers.add_parser("contract").set_defaults(handler=handle_contract)
 
     subparsers.add_parser("doctor").set_defaults(handler=handle_doctor)
     subparsers.add_parser("repair").set_defaults(handler=handle_repair)

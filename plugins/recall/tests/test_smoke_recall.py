@@ -22,7 +22,8 @@ class SmokeRecallTests(unittest.TestCase):
         result = json.loads(completed.stdout)
         self.assertEqual(result["status"], "pass")
         self.assertGreaterEqual(result["records"], 4)
-        self.assertIn("SessionStart stays quiet until explicit RECALL invocation", result["checks"])
+        self.assertIn("SessionStart injects the lifecycle contract for the activated project", result["checks"])
+        self.assertIn("SessionStart stays quiet for non-activated projects", result["checks"])
 
 
 if __name__ == "__main__":

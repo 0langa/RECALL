@@ -18,8 +18,10 @@ WINDOWS_USER_MARKER = "C:" + "\\" + "Users" + "\\"
 POSIX_USER_MARKER = "/" + "Users" + "/"
 REQUIRED_PATHS = {
     ".codex-plugin/plugin.json",
+    ".claude-plugin/plugin.json",
     "hooks/hooks.json",
     "kimi.plugin.json",
+    "scripts/contract.py",
     "skills/save-insight/SKILL.md",
     "skills/retrieve-memory/SKILL.md",
     "skills/using-recall/SKILL.md",

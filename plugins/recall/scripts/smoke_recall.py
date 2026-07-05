@@ -304,8 +304,27 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
         input_payload={"cwd": str(project_root), "hook_event_name": "SessionStart", "source": "startup"},
     )
     require(session_start["continue"] is True, "SessionStart hook did not continue")
-    require("hookSpecificOutput" not in session_start, "SessionStart should stay quiet until @recall")
-    checks.append("SessionStart stays quiet until explicit RECALL invocation")
+    contract_context = str(
+        (session_start.get("hookSpecificOutput") or {}).get("additionalContext") or ""
+    )
+    require(
+        "Authority order" in contract_context,
+        "SessionStart should inject the lifecycle contract for activated projects",
+    )
+    checks.append("SessionStart injects the lifecycle contract for the activated project")
+
+    with tempfile.TemporaryDirectory(prefix="recall-smoke-inactive-") as inactive_dir:
+        inactive_start = run_json(
+            hook_command(plugin_root, "session_start.py"),
+            cwd=plugin_root,
+            input_payload={"cwd": inactive_dir, "hook_event_name": "SessionStart", "source": "startup"},
+        )
+        require(inactive_start["continue"] is True, "SessionStart hook did not continue for inactive project")
+        require(
+            "hookSpecificOutput" not in inactive_start,
+            "SessionStart should stay quiet for non-activated projects",
+        )
+    checks.append("SessionStart stays quiet for non-activated projects")
 
     final_doctor = run_json(memory_command(plugin_root, project_root, "doctor"), cwd=plugin_root)
     require(final_doctor["index_complete"] is True, "final doctor reports incomplete index")
