@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -S \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/scripts/session_start.py\"",
+            "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/scripts/session_start.py\"",
             "commandWindows": "py -3 -S -c \"import os,runpy,sys; p=os.path.join((os.environ.get('CLAUDE_PLUGIN_ROOT') or os.environ['PLUGIN_ROOT']),'hooks','scripts','session_start.py'); sys.path.insert(0, os.path.dirname(p)); runpy.run_path(p, run_name='__main__')\"",
             "statusMessage": "RECALL idle until invoked",
             "timeout": 30
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -S \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/scripts/prompt_inspector.py\"",
+            "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/scripts/prompt_inspector.py\"",
             "commandWindows": "py -3 -S -c \"import os,runpy,sys; p=os.path.join((os.environ.get('CLAUDE_PLUGIN_ROOT') or os.environ['PLUGIN_ROOT']),'hooks','scripts','prompt_inspector.py'); sys.path.insert(0, os.path.dirname(p)); runpy.run_path(p, run_name='__main__')\"",
             "statusMessage": "Checking RECALL memory cues",
             "timeout": 30
@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -S \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/scripts/post_tool_use.py\"",
+            "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/scripts/post_tool_use.py\"",
             "commandWindows": "py -3 -S -c \"import os,runpy,sys; p=os.path.join((os.environ.get('CLAUDE_PLUGIN_ROOT') or os.environ['PLUGIN_ROOT']),'hooks','scripts','post_tool_use.py'); sys.path.insert(0, os.path.dirname(p)); runpy.run_path(p, run_name='__main__')\"",
             "statusMessage": "Observing RECALL memory candidates",
             "timeout": 30
@@ -47,7 +47,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -S \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/scripts/pre_compact.py\"",
+            "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/scripts/pre_compact.py\"",
             "commandWindows": "py -3 -S -c \"import os,runpy,sys; p=os.path.join((os.environ.get('CLAUDE_PLUGIN_ROOT') or os.environ['PLUGIN_ROOT']),'hooks','scripts','pre_compact.py'); sys.path.insert(0, os.path.dirname(p)); runpy.run_path(p, run_name='__main__')\"",
             "statusMessage": "Checking RECALL compaction gate",
             "timeout": 30
@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -S \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/scripts/stop.py\"",
+            "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/scripts/stop.py\"",
             "commandWindows": "py -3 -S -c \"import os,runpy,sys; p=os.path.join((os.environ.get('CLAUDE_PLUGIN_ROOT') or os.environ['PLUGIN_ROOT']),'hooks','scripts','stop.py'); sys.path.insert(0, os.path.dirname(p)); runpy.run_path(p, run_name='__main__')\"",
             "statusMessage": "Checking RECALL finalization",
             "timeout": 30
