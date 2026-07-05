@@ -296,7 +296,7 @@ def add_record_if_useful(
     preference = preference_service.evaluate(recall_config.normalize_category(category), metadata, root)
     if preference.action == "ignore":
         return {"action": "ignored", "record": None, "duplicate_id": None, "reason": preference.reason}
-    if preference.action == "update":
+    if preference.action == "update" and preference.record is not None:
         return {"action": "updated_existing", "record": preference.record, "duplicate_id": preference.record.id, "reason": preference.reason}
     metadata = preference.metadata
     decision = write_policy.classify_write(category, safe_content, metadata, str(root) if root is not None else None)

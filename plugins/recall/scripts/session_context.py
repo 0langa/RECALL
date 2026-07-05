@@ -33,12 +33,15 @@ GENERIC_SUMMARIES = {
 
 
 def record_text(record: dict[str, Any], max_chars: int = 220) -> str:
-    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
-    summary = metadata.get("summary") if isinstance(metadata.get("summary"), str) else ""
+    raw_metadata = record.get("metadata")
+    metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
+    raw_summary = metadata.get("summary")
+    summary = raw_summary if isinstance(raw_summary, str) else ""
     if summary.strip().lower() and summary.strip().lower() not in GENERIC_SUMMARIES:
         text = summary
     else:
-        details = metadata.get("details") if isinstance(metadata.get("details"), str) else ""
+        raw_details = metadata.get("details")
+        details = raw_details if isinstance(raw_details, str) else ""
         text = details or record.get("content", "")
     text = " ".join(str(text).split())
     if len(text) > max_chars:

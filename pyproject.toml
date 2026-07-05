@@ -1,0 +1,42 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+extend-exclude = [
+    "dist",
+    "quality_results",
+    ".codex_memory",
+    ".codex_memory_old",
+]
+
+[tool.ruff.lint]
+# Conservative rule set: correctness (F, E9) and clear style errors (E4, E7).
+# Import sorting and formatting are intentionally out of scope to keep the
+# gate about defects, not churn.
+select = ["E4", "E7", "E9", "F", "B"]
+ignore = [
+    # assert in tests is idiomatic; unittest suites rely on it.
+    "B011",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Hook scripts import _recall_path for its sys.path side effect.
+"plugins/recall/hooks/scripts/*" = ["F401"]
+# Tests insert the scripts dir into sys.path before importing engine modules.
+"plugins/recall/tests/*" = ["E402"]
+"RECALL_quality_suite/tests/*" = ["E402"]
+
+[tool.mypy]
+# Lenient, blocking baseline: catch real type errors without demanding a
+# full annotation pass on legacy modules.
+python_version = "3.11"
+mypy_path = "plugins/recall/scripts"
+files = ["plugins/recall/scripts"]
+explicit_package_bases = true
+namespace_packages = true
+ignore_missing_imports = true
+check_untyped_defs = false
+disallow_untyped_defs = false
+warn_unused_ignores = false
+warn_redundant_casts = true
+no_implicit_optional = false
+exclude = "(dist|tests|hooks)"

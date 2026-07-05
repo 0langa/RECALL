@@ -67,15 +67,14 @@ deprecated — never left silently authoritative.
 
 ## Quality gates (run before release)
 
-- Unit: `cd plugins/recall && python -m pytest tests/ -x -q` (was 165 green pre-pass)
+- Lint: `python -m ruff check .` and `python -m mypy --config-file pyproject.toml` (repo root; blocking in CI)
+- Unit: `cd plugins/recall && python -m pytest tests/ -x -q`
 - Smoke: `python scripts/smoke_recall.py --json`
 - Quality suite: `python RECALL_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick --skip-existing-unit`
 - CI: `.github/workflows/recall-quality.yml` (unit 6-matrix, smoke 3-OS, quality, package)
 
 ## Known deferred / future ideas
 
-- No lint/type gate in CI (no pyproject/ruff.toml/mypy config) — candidate addition.
-- Repo-doc duplication detection in hygiene is heuristic-only; semantic
-  comparison against README/docs deferred.
-- capture_mode/recall_mode enforcement inside hook scripts partial.
 - Hook payload drift vs live Codex payloads remains a compatibility risk.
+- Doc-duplication detection is lexical (token containment vs README/docs
+  paragraphs); embedding-based similarity would catch paraphrases.

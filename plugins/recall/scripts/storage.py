@@ -266,7 +266,7 @@ def add_record(
                     *normalized.values(),
                 ),
             )
-            record_id = int(cursor.lastrowid)
+            record_id = int(cursor.lastrowid or 0)
             connection.commit()
     else:
         jsonl_dir(root).mkdir(parents=True, exist_ok=True)
@@ -320,7 +320,7 @@ def add_records_batch(
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (category, timestamp, safe_content, json.dumps(safe_metadata, sort_keys=True), json.dumps(embedding), *normalized.values()),
                 )
-                inserted.append(MemoryRecord(int(cursor.lastrowid), category, timestamp, safe_content, safe_metadata, embedding=embedding))
+                inserted.append(MemoryRecord(int(cursor.lastrowid or 0), category, timestamp, safe_content, safe_metadata, embedding=embedding))
             connection.commit()
         except Exception:
             connection.rollback()

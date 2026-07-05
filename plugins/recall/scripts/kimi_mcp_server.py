@@ -405,7 +405,7 @@ def call_update_memory(arguments: Json) -> Json:
             "new": _record_summary(result["new"]),
         }
     elif op == "merge":
-        secondary_ids = [int(value) for value in (arguments.get("secondary_ids") or [])]
+        secondary_ids: list[int | str] = [int(value) for value in (arguments.get("secondary_ids") or [])]
         if not secondary_ids:
             raise ValueError("op=merge requires secondary_ids (the duplicate memories to fold into id).")
         result = memory_manager.merge_records(record_id, secondary_ids, root, note)
@@ -487,6 +487,7 @@ def handle(request: Json) -> Json | None:
     method = request.get("method")
     request_id = request.get("id")
     try:
+        result: Json
         if method == "initialize":
             result = {
                 "protocolVersion": "2024-11-05",

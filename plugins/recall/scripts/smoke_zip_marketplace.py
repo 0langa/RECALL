@@ -118,7 +118,7 @@ def main() -> None:
             print(json.dumps(report, indent=2, sort_keys=True))
         else:
             print(f"RECALL zip marketplace smoke failed: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
 
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))

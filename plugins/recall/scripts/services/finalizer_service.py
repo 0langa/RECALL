@@ -166,7 +166,7 @@ def _looks_like_raw_prompt_card(content: str, summary: str, details: str, tags: 
     tag_set = {tag.casefold() for tag in tags}
     prompt_tagged = bool(tag_set & {"user-prompt", "correction"})
     marker_count = sum(1 for marker in PROMPT_PLAN_MARKERS if marker in lowered)
-    duplicated_prompt = summary and details and summary.strip() == details.strip() and content.startswith(summary[:200])
+    duplicated_prompt = bool(summary and details and summary.strip() == details.strip() and content.startswith(summary[:200]))
     return prompt_tagged and (marker_count >= 2 or duplicated_prompt)
 
 
@@ -291,7 +291,7 @@ def apply_finalizer_batch(batch: dict[str, Any], root: str | Path | None) -> dic
                         (prepared["category"], timestamp, prepared["content"], json.dumps(prepared["metadata"], sort_keys=True),
                          json.dumps(prepared["embedding"]), *normalized.values()),
                     )
-                    new_id = int(cursor.lastrowid)
+                    new_id = int(cursor.lastrowid or 0)
                     superseded = _supersede_conflicting_claims(connection, new_id, prepared["category"], prepared["metadata"])
                     changed = True
                     result = {"op": "save", "action": "saved", "id": new_id}

@@ -181,7 +181,7 @@ def summarize_events(events: list[dict[str, Any]], limit: int = 8) -> list[dict[
     for event in events:
         if event.get("durable_candidate") is not True:
             continue
-        compact = {
+        compact: dict[str, Any] = {
             "event_id": one_line(event.get("event_id"), 80),
             "signal": one_line(event.get("signal"), 40),
             "category_hint": one_line(event.get("category_hint"), 32),

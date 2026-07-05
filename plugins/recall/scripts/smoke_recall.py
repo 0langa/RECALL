@@ -366,7 +366,7 @@ def main() -> None:
             print(json.dumps(result, indent=2, sort_keys=True))
         else:
             print(f"RECALL smoke failed: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
     finally:
         if should_cleanup and not args.keep:
             shutil.rmtree(project_root, ignore_errors=True)

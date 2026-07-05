@@ -348,7 +348,7 @@ def _duplicate_proposals(records: list[storage.MemoryRecord]) -> list[HygienePro
                 continue
             if left.category != right.category:
                 continue
-            pair = tuple(sorted((left.id, right.id)))
+            pair = (min(left.id, right.id), max(left.id, right.id))
             if pair in seen_pairs:
                 continue
             seen_pairs.add(pair)

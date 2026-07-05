@@ -399,12 +399,14 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"Unsupported RECALL observability_mode: {observability_mode}")
     merged["observability_mode"] = observability_mode
     merged["debug_retention_days"] = max(1, int(merged.get("debug_retention_days", 7)))
-    relevance = merged.get("relevance") if isinstance(merged.get("relevance"), dict) else {}
+    raw_relevance = merged.get("relevance")
+    relevance: dict[str, Any] = raw_relevance if isinstance(raw_relevance, dict) else {}
     merged["relevance"] = {
         "minimum_score": float(relevance.get("minimum_score", 0.75)),
         "minimum_lexical_overlap": float(relevance.get("minimum_lexical_overlap", 0.15)),
     }
-    staleness = merged.get("staleness") if isinstance(merged.get("staleness"), dict) else {}
+    raw_staleness = merged.get("staleness")
+    staleness: dict[str, Any] = raw_staleness if isinstance(raw_staleness, dict) else {}
     merged["staleness"] = {}
     for key, default in (("snapshot_stale_days", 45.0), ("retrieval_aging_days", 30.0)):
         try:

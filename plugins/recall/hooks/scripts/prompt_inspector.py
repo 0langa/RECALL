@@ -47,7 +47,6 @@ def main() -> None:
         provider=args.provider,
         fallback_root=args.root,
     )
-    compat_payload = event.compatibility_payload()
     cwd = event.cwd or event.root
     resolved_root = event.root
     prompt = event.prompt.strip()

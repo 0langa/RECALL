@@ -138,6 +138,7 @@ class HookEvent:
         event_name = _string(payload, "hook_event_name", "event") or fallback_event
         cwd = _string(payload, "cwd", "workspace", "project_dir")
         resolved_cwd = str(Path(cwd).resolve()) if cwd else None
+        root: str | None
         if fallback_root:
             root = str(Path(fallback_root).expanduser().resolve())
         elif resolved_cwd:

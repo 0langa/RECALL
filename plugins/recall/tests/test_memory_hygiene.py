@@ -101,7 +101,7 @@ class MemoryHygieneTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             first = memory_manager.add_record("requirements", "Release checks must pass before tagging.", root=tmp)
             duplicate = memory_manager.add_record("requirements", "Release checks must pass before tagging.", root=tmp)
-            near = memory_manager.add_record("requirements", "Release checks must pass before tagging and publishing.", root=tmp)
+            memory_manager.add_record("requirements", "Release checks must pass before tagging and publishing.", root=tmp)
 
             plan = memory_hygiene.hygiene_plan(tmp)
             proposals = plan["proposals"]

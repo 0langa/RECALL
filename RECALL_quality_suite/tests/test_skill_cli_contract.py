@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import json
-import sqlite3
 import unittest
-from pathlib import Path
 
 from _harness import active_memory_dir, assert_memory_inside_project, memory_cmd, run_json, skill_cmd, temp_project
 

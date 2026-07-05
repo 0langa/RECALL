@@ -59,9 +59,9 @@ def promote(record_id: int, root: str | Path | None = None, note: str | None = N
     slot = _claim_slot(record)
     if slot:
         for other in storage.iter_records(root):
-            if other.id == record.id or _claim_slot(other) is None:
-                continue
             other_slot = _claim_slot(other)
+            if other.id == record.id or other_slot is None:
+                continue
             other_status = str((other.metadata or {}).get("status", "")).lower()
             if (
                 other.category == record.category

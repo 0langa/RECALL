@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 import unittest
 from pathlib import Path
 
@@ -89,7 +88,7 @@ class HookLifecycleContractTests(unittest.TestCase):
             self.assertEqual(result["results"], [])
 
     def test_malformed_json_is_safe_noop(self) -> None:
-        with temp_project() as project:
+        with temp_project():
             completed = run_text(hook_cmd("pre_compact.py"), input_payload=None, check=True)
             # Empty stdin is allowed to no-op.
             self.assertEqual(json.loads(completed.stdout), {"continue": True})
