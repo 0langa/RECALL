@@ -121,6 +121,26 @@ needs_confirmation/refresh_source; `--safe` apply) → doctor/repair.
 - Not run: PluginEval per-skill judge (codex-backed, slow; frozen skill surface
   unchanged in triggering shape), CI matrix (runs on push).
 
+## Batch 2 plan (2026-07-05, user-aligned) — clear all deferred items → v1.3.0
+
+User decisions: docs corpus = README + docs/ only; doc-dup = review-only proposal;
+token diet = compact outputs by default (full metadata behind verbose); capture_mode
+mapping = standard current / minimal no per-tool buffering but Stop summary /
+manual explicit cues only / off no hook capture (skill+MCP saves stay explicit);
+ruff blocking + lenient mypy blocking; 4 separate commits; hold push.
+
+1. Commit 1: `_doc_duplicate_proposals` in memory_hygiene — paragraph-level token
+   containment vs README.md + docs/**/*.md, review_doc_duplicate (unsafe), corpus
+   cached + size-capped, detection fully local (no LLM). Tests with fixture docs.
+2. Commit 2: `staleness` config block (snapshot_stale_days, retrieval_aging_days);
+   retrieval compact-by-default + `verbose` flag through retrieval/manager/MCP/
+   adapter; hygiene proposal list cap + omitted count; session-start injection cap.
+3. Commit 3: ruff config + lenient mypy config at repo root, fix findings, CI lint
+   job, gate commands documented.
+4. Commit 4: capture_mode enforcement in post_tool_use/pre_compact/stop/
+   prompt_inspector; per-mode tests; version bump 1.3.0 (5 places), CHANGELOG,
+   docs; full gates + PluginEval.
+
 ## Deferred (with reasons)
 
 1. Semantic repo-doc duplication detection — severity: medium; component:

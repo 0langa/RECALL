@@ -38,6 +38,19 @@ VAGUE_PATTERNS = (
     "misc changes",
     "everything is fine",
 )
+# Doc-duplication detection is fully local (deterministic token containment,
+# no model or network calls). Repo docs win over memory, so memories that just
+# restate README/docs content are flagged for review — never auto-pruned.
+DOC_DUPLICATE_CONTAINMENT = 0.8
+DOC_DUPLICATE_MIN_TOKENS = 10
+DOC_PARAGRAPH_MIN_TOKENS = 8
+DOC_CORPUS_MAX_FILES = 200
+DOC_CORPUS_MAX_BYTES_PER_FILE = 200_000
+DOC_STOPWORDS = frozenset(
+    "the and for with that this from into onto over under are is was were been being have has had "
+    "will would should could must may might can not all any each when where which while there their "
+    "them they its our your you use used using also than then such only more most some does did".split()
+)
 
 
 @dataclass(frozen=True)
@@ -513,6 +526,77 @@ def _metadata_gap_proposal(record: storage.MemoryRecord) -> HygieneProposal | No
     )
 
 
+def _content_tokens(text: str) -> set[str]:
+    return {token for token in tokenize(text) if token not in DOC_STOPWORDS}
+
+
+def _docs_corpus(root: str | Path | None) -> list[tuple[str, list[set[str]]]]:
+    """Load README + docs/ markdown as per-paragraph token sets. Local-only."""
+    base = recall_config.project_root(root)
+    candidates: list[Path] = []
+    for name in ("README.md", "readme.md"):
+        path = base / name
+        if path.is_file():
+            candidates.append(path)
+            break
+    docs_dir = base / "docs"
+    if docs_dir.is_dir():
+        candidates.extend(sorted(docs_dir.rglob("*.md"))[: DOC_CORPUS_MAX_FILES])
+    corpus: list[tuple[str, list[set[str]]]] = []
+    for path in candidates[:DOC_CORPUS_MAX_FILES]:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")[:DOC_CORPUS_MAX_BYTES_PER_FILE]
+        except OSError:
+            continue
+        paragraphs = [
+            tokens
+            for block in re.split(r"\n\s*\n", text)
+            if len(tokens := _content_tokens(block)) >= DOC_PARAGRAPH_MIN_TOKENS
+        ]
+        if paragraphs:
+            corpus.append((path.relative_to(base).as_posix(), paragraphs))
+    return corpus
+
+
+def _doc_duplicate_proposals(
+    records: list[storage.MemoryRecord],
+    root: str | Path | None,
+) -> list[HygieneProposal]:
+    corpus = _docs_corpus(root)
+    if not corpus:
+        return []
+    proposals: list[HygieneProposal] = []
+    for record in records:
+        if not _is_current(record):
+            continue
+        memory_tokens = _content_tokens(_record_text(record))
+        if len(memory_tokens) < DOC_DUPLICATE_MIN_TOKENS:
+            continue
+        best_path: str | None = None
+        best_containment = 0.0
+        for doc_path, paragraphs in corpus:
+            for paragraph in paragraphs:
+                containment = len(memory_tokens & paragraph) / len(memory_tokens)
+                if containment > best_containment:
+                    best_containment = containment
+                    best_path = doc_path
+        if best_path is not None and best_containment >= DOC_DUPLICATE_CONTAINMENT:
+            proposals.append(
+                HygieneProposal(
+                    record.id,
+                    "review_doc_duplicate",
+                    min(0.95, best_containment),
+                    (
+                        f"memory restates `{best_path}` ({int(best_containment * 100)}% of its terms appear in "
+                        "one doc paragraph); repo docs win — prune it or rewrite it to add non-doc insight"
+                    ),
+                    False,
+                    details={"doc_path": best_path, "overlap": round(best_containment, 4)},
+                )
+            )
+    return proposals
+
+
 def _single_record_proposals(records: list[storage.MemoryRecord], root: str | Path | None) -> list[HygieneProposal]:
     proposals: list[HygieneProposal] = []
     for record in records:
@@ -544,6 +628,7 @@ def _dedupe_proposals(proposals: list[HygieneProposal]) -> list[HygieneProposal]
         "review_near_duplicate": 7,
         "review_vague": 8,
         "review_metadata": 9,
+        "review_doc_duplicate": 10,
     }
     best: dict[tuple[int | None, str, tuple[int, ...]], HygieneProposal] = {}
     for proposal in proposals:
@@ -567,6 +652,7 @@ def hygiene_plan(
             *_single_record_proposals(inspected_records, root),
             *_duplicate_proposals(inspected_records),
             *_claim_conflict_proposals(inspected_records, claim_key),
+            *_doc_duplicate_proposals(inspected_records, root),
         ]
     )
     if limit is not None:

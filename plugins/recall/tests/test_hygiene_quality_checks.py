@@ -128,6 +128,77 @@ class HygieneQualityCheckTests(unittest.TestCase):
             self.assertFalse(proposal["safe_to_apply"])
             self.assertIn("source", proposal["reason"])
 
+    def test_memory_restating_repo_docs_is_flagged_review_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            readme = Path(tmp) / "README.md"
+            readme.write_text(
+                "# Project\n\n"
+                "RECALL stores decisions, constraints, debugging history, commands, requirements, "
+                "risks, and custom categories in a project-local memory store so agents can recover "
+                "useful context across sessions without hosted services.\n",
+                encoding="utf-8",
+            )
+            duplicate = seed_raw(
+                tmp,
+                "architecture",
+                "RECALL stores decisions constraints debugging history commands requirements risks "
+                "and custom categories in a project-local memory store so agents recover useful "
+                "context across sessions without hosted services.",
+                {"source": "skill", "status": "active"},
+            )
+            original = seed_raw(
+                tmp,
+                "debug_history",
+                "Windows sqlite temp cleanup fails unless the connection is closed explicitly before "
+                "TemporaryDirectory teardown removes the folder.",
+                {"source": "skill", "status": "active"},
+            )
+            plan = memory_hygiene.hygiene_plan(tmp)
+            doc_proposals = {p["id"]: p for p in plan["proposals"] if p["proposed_action"] == "review_doc_duplicate"}
+            self.assertIn(duplicate.id, doc_proposals)
+            self.assertNotIn(original.id, doc_proposals)
+            proposal = doc_proposals[duplicate.id]
+            self.assertFalse(proposal["safe_to_apply"])
+            self.assertEqual(proposal["details"]["doc_path"], "README.md")
+            self.assertIn("README.md", proposal["reason"])
+
+            # Review-only: safe apply must not archive the flagged memory.
+            memory_hygiene.hygiene_apply(tmp, safe=True)
+            self.assertEqual(storage.get_record(duplicate.id, tmp).metadata.get("status"), "active")
+
+    def test_docs_corpus_covers_docs_directory_and_missing_docs_is_quiet(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            docs_dir = Path(tmp) / "docs"
+            docs_dir.mkdir()
+            (docs_dir / "release.md").write_text(
+                "Release notes must stay in docs and list every packaging gate, smoke check, and "
+                "quality suite result before any version tag is pushed to the marketplace.\n",
+                encoding="utf-8",
+            )
+            duplicate = seed_raw(
+                tmp,
+                "requirements",
+                "Release notes must stay in docs and list every packaging gate smoke check and "
+                "quality suite result before any version tag is pushed to the marketplace.",
+                {"source": "skill", "status": "active"},
+            )
+            plan = memory_hygiene.hygiene_plan(tmp)
+            actions = {p["id"]: p["proposed_action"] for p in plan["proposals"]}
+            self.assertEqual(actions.get(duplicate.id), "review_doc_duplicate")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            lonely = seed_raw(
+                tmp,
+                "requirements",
+                "Release notes must stay in docs and list every packaging gate smoke check and "
+                "quality suite result before any version tag is pushed to the marketplace.",
+                {"source": "skill", "status": "active"},
+            )
+            plan = memory_hygiene.hygiene_plan(tmp)
+            self.assertFalse(
+                [p for p in plan["proposals"] if p["id"] == lonely.id and p["proposed_action"] == "review_doc_duplicate"]
+            )
+
     def test_good_store_produces_no_proposals(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory_manager.add_record(

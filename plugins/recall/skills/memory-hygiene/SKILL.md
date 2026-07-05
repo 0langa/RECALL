@@ -77,8 +77,11 @@ Safe automatic changes are non-destructive:
 - `needs_confirmation`: weak preference or ambiguous memory is kept but demoted.
 
 Review-only findings (never auto-applied): `review_near_duplicate`, `review_vague`
-(memory too vague to act on), and `review_metadata` (missing source/status provenance).
-Scan output includes a `next_action` telling you the correct follow-up.
+(memory too vague to act on), `review_metadata` (missing source/status provenance), and
+`review_doc_duplicate` (memory restates README/docs content — repo docs win; prune the
+memory or rewrite it to add non-doc insight). Doc-duplication detection is fully local
+deterministic token comparison against `README.md` and `docs/**/*.md`; it makes no
+model or network calls. Scan output includes a `next_action` telling you the correct follow-up.
 
 Never hard-delete from this skill. If deletion is explicit, use `manage-memory` and `delete-memory --confirm DELETE-<id>`.
 
@@ -101,6 +104,7 @@ Never hard-delete from this skill. If deletion is explicit, use `manage-memory` 
 | Vague unactionable memory | report `review_vague`, require rewrite or confirmation |
 | Aged point-in-time snapshot | propose safe `stale` for verification |
 | Missing source/status provenance | report `review_metadata` |
+| Memory restates README/docs content | report `review_doc_duplicate`, require confirmation |
 
 ## Examples
 
