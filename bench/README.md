@@ -70,6 +70,13 @@ Layer 1 numbers and never blend them into one score.
 
 The harness only emits and aggregates files; it never calls a model.
 
+**One-message shortcut:** the repo-local skill `.claude/skills/recall-bench/`
+wraps this whole section — invoke `recall-bench` ("run a judged normal bench")
+from any agent session opened in this repo and that agent runs the harness,
+acts as the judge itself, aggregates, and reports. Invoke it from a
+cheap-model session; the session's model is the judge. Manual steps below
+remain the underlying mechanism.
+
 1. Run with judge emission on (complete preset does): produces `judge_tasks.jsonl`.
 2. Give the file to ANY agent (a cheap one — the rubrics are simple 1–5
    scores) with: "Score each task per its instructions; write one JSON line
