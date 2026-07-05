@@ -165,6 +165,28 @@ def gate_tokens(text: str) -> set[str]:
     return tokens
 
 
+def gate_match_count(query_text: str, record: storage.MemoryRecord) -> int:
+    """Count distinct non-stopword query terms found in agent-facing card text."""
+    query_tokens = gate_tokens(query_text)
+    if not query_tokens:
+        return 0
+    metadata = record.metadata or {}
+    texts = [record.content]
+    for key in ("summary", "details"):
+        value = metadata.get(key)
+        if isinstance(value, str):
+            texts.append(value)
+    tags = metadata.get("tags")
+    if isinstance(tags, list):
+        texts.append(" ".join(str(tag) for tag in tags))
+    elif isinstance(tags, str):
+        texts.append(tags)
+    content_tokens: set[str] = set()
+    for text in texts:
+        content_tokens.update(gate_tokens(text))
+    return len(query_tokens & content_tokens)
+
+
 def normalized_lexical_overlap(query_text: str, record: storage.MemoryRecord) -> float:
     """Stable 0..1 overlap used by automatic-injection gating.
 
@@ -191,6 +213,16 @@ def normalized_lexical_overlap(query_text: str, record: storage.MemoryRecord) ->
         if content_tokens:
             score += weight * (len(query_tokens & content_tokens) / len(query_tokens))
     return min(1.0, score)
+
+
+def rank_lexical_score(query_text: str, record: storage.MemoryRecord) -> float:
+    """Filtered lexical score for ranking.
+
+    Raw lexical overlap lets repeated filler words ("the", "for", "with") beat
+    distinctive cards in large stores. Reuse gate tokens for rank lexical
+    signal while keeping vector/category/status/source weighting unchanged.
+    """
+    return normalized_lexical_overlap(query_text, record)
 
 
 def source_blind_memory_request(query_text: str) -> bool:
@@ -226,7 +258,7 @@ def score_record(
     indexed_embedding = index.get(record.id, {}).get("embedding")
     embedding = indexed_embedding if isinstance(indexed_embedding, list) else record.embedding or embed(record.content)
     score = cosine(query_vector, embedding)
-    score += 0.45 * weighted_lexical_score(query_text, record)
+    score += 0.45 * rank_lexical_score(query_text, record)
     try:
         score += 0.15 * float(record.metadata.get("importance", 0.0))
     except (TypeError, ValueError):
@@ -415,10 +447,12 @@ def assess_relevance(
     results = response.get("results", [])
     top = results[0] if results else None
     lexical = 0.0
+    match_count = 0
     if top is not None:
         record = storage.get_record(int(top["id"]), root)
         if record is not None:
             lexical = normalized_lexical_overlap(query_text, record)
+            match_count = gate_match_count(query_text, record)
     cfg = recall_config.load_config_if_present(root)
     thresholds = cfg.get("relevance", {})
     minimum_score = float(thresholds.get("minimum_score", 0.75))
@@ -441,6 +475,7 @@ def assess_relevance(
         "top_score": round(relevance_score, 4),
         "raw_rank_score": round(raw_score, 4),
         "lexical_overlap": round(lexical, 4),
+        "gate_match_count": match_count,
         "category_match": category_match,
         "result_ids": [int(item["id"]) for item in results],
         "thresholds": {"minimum_score": minimum_score, "minimum_lexical_overlap": minimum_lexical},

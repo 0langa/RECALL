@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import memory_manager  # noqa: E402
+import retrieval  # noqa: E402
 import session_context  # noqa: E402
 
 
@@ -175,6 +176,56 @@ class RetrievalQualityTests(unittest.TestCase):
             result = memory_manager.query("deterministic command", categories=["commands"], root=tmp)
 
             self.assertEqual([item["id"] for item in result["results"][:2]], [second.id, first.id])
+
+    def test_filtered_rank_lexical_prefers_distinctive_requirement_over_filler(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            memory_manager.add_record(
+                "decisions",
+                "Chose streaming over single writes for the config loader because streaming keeps behavior deterministic under load.",
+                memory_manager.build_card_metadata(
+                    summary="Chose streaming over single writes for the config loader because streaming keeps behavior deterministic under load.",
+                    status="active",
+                    source="skill",
+                ),
+                root=tmp,
+            )
+            memory_manager.add_record(
+                "requirements",
+                "Golden requirement: exported reports must include the generation timestamp in UTC in the footer.",
+                memory_manager.build_card_metadata(
+                    summary="Golden requirement: exported reports must include the generation timestamp in UTC in the footer.",
+                    status="active",
+                    source="skill",
+                    tags=["golden", "reports"],
+                ),
+                root=tmp,
+            )
+
+            result = memory_manager.query(
+                "Start implementing the report footer; check what requirements exist for report generation output.",
+                root=tmp,
+            )
+
+            self.assertEqual(result["results"][0]["category"], "requirements")
+            self.assertIn("footer", result["results"][0]["content"])
+
+    def test_gate_match_count_reports_distinct_non_stopword_overlap(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            record = memory_manager.add_record(
+                "integrations",
+                "Golden integration: the billing provider sandbox resets every Monday 03:00 UTC; test data does not survive.",
+                memory_manager.build_card_metadata(
+                    summary="Golden integration: the billing provider sandbox resets every Monday 03:00 UTC; test data does not survive.",
+                    status="active",
+                    source="skill",
+                    tags=["golden", "billing"],
+                ),
+                root=tmp,
+            )
+
+            count = retrieval.gate_match_count("Run the integration suite.", record)
+
+            self.assertEqual(count, 1)
 
 
 if __name__ == "__main__":

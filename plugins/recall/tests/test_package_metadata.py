@@ -49,14 +49,8 @@ class PackageMetadataTests(unittest.TestCase):
         self.assertFalse((ROOT / "hooks" / "scripts" / "update_categories.py").exists())
         self.assertTrue((ROOT / "scripts" / "update_categories.py").is_file())
 
-    def test_repo_marketplace_points_to_child_plugin(self) -> None:
-        payload = json.loads((REPO_ROOT / ".agents" / "plugins" / "marketplace.json").read_text(encoding="utf-8"))
-        self.assertEqual(payload["name"], "recall-local")
-        entry = payload["plugins"][0]
-        self.assertEqual(entry["name"], "recall")
-        self.assertEqual(entry["source"], {"source": "local", "path": "./plugins/recall"})
-        self.assertEqual(entry["policy"]["installation"], "AVAILABLE")
-        self.assertEqual(entry["policy"]["authentication"], "ON_INSTALL")
+    def test_repo_does_not_ship_local_marketplace_manifest(self) -> None:
+        self.assertFalse((REPO_ROOT / ".agents" / "plugins" / "marketplace.json").exists())
 
     def test_manifest_public_surface_metadata_is_present(self) -> None:
         payload = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))

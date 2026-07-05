@@ -85,10 +85,21 @@ threshold on unrelated prompts, and diluted genuinely matching ones. Fixes:
    prompt where injecting release requirements is genuinely useful).
 Tried and REVERTED: best-of-top-3 gate candidate selection — fixed nothing,
 reintroduced weak rank-2/3 matches (0.895 → 0.789). Keep gate on rank-1.
-Remaining honest mismatches (2/19): one weak-match false inject ("run the
-integration suite" pulls a test-fixture card), one false suppress
-(feature_work footer prompt; golden card outranked by filler at rank 1 —
-structural rank-vs-relevance gap, only fixable with better embeddings).
+FOLLOW-UP CLOSED (2026-07-06): injection gate accuracy 0.895 → 1.000
+(19/19 labeled turns). Fixes:
+1. Ranking now uses stopword-filtered gate lexical signal
+   (`retrieval.rank_lexical_score`) so distinctive cards beat generic filler
+   that only shares raw function words.
+2. Automatic retrieval now skips execution-only prompts
+   (`capture_policy.suppress_auto_retrieval`) such as plain test runs,
+   integration-suite runs, and "apply fix + rerun" follow-ups; explicit
+   `@recall`, questions, release, requirement, constraint, and policy prompts
+   still allow injection.
+No embedding format change was needed. Complete benchmark passes with golden
+retrieval hit rate 1.0, flag correctness 1.0, zero secret leaks, fixed
+overhead 5752 est tokens/session, marginal 238.4 est tokens/turn, and
+emission_hash b4070b73430514d47bc22a47b7d154f1d0c41c53f1ca85732b41e2c97b6ed8fb.
+Regenerated `bench/baselines/v1.3.0.json`.
 
 
 Goal: make RECALL a dependable memory layer that guides, enforces, and verifies

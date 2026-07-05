@@ -52,6 +52,19 @@ PROMPT_REQUIREMENT_RE = re.compile(r"(?i)\b(must|need to|required|acceptance cri
 PROMPT_DECISION_RE = re.compile(r"(?i)\b(decided|we will|use .+ instead|approved|accepted)\b")
 PROMPT_CORRECTION_RE = re.compile(r"(?i)\b(correction|actually|instead|no longer|replace|supersede)\b")
 COMMAND_QUERY_RE = re.compile(r"(?i)\b(build|test|run|command|install|lint|format|deploy|package|tooling)\b")
+INFORMATION_REQUEST_RE = re.compile(
+    r"(?i)(\?|"
+    r"\b(?:what|which|how|why|where|when|who|summarize|explain|check\s+what|look\s+up|find\s+out)\b)"
+)
+RELEASE_CONTEXT_RE = re.compile(r"(?i)\b(release|tag|branch policy|requirement|requirements|constraint|constraints|policy)\b")
+EXECUTION_ONLY_RE = re.compile(
+    r"(?i)^\s*(?:ok(?:ay)?\s+)?(?:"
+    r"run\b.*\b(?:test|tests|unit tests|integration suite|pytest|suite)\b|"
+    r"apply\b.*\b(?:fix|patch)\b.*\b(?:rerun|run)\b|"
+    r"rerun\b|"
+    r"execute\b.*\b(?:test|tests|suite|pytest)\b"
+    r")"
+)
 CONDITIONAL_COMMAND_MEMORY_RE = re.compile(
     r"(?is)\bremember\b.+\bonly\s+if\b.+\b(?:works?|passes?|succeeds?|success|actually\s+works?)\b|"
     r"\bonly\s+remember\b.+\bif\b.+\b(?:works?|passes?|succeeds?|success|actually\s+works?)\b|"
@@ -304,6 +317,21 @@ def should_store_stop_note(root: str | None, note: str) -> bool:
 
 def retrieval_exclusions(prompt: str) -> list[str]:
     return [] if COMMAND_QUERY_RE.search(prompt) else ["commands"]
+
+
+def suppress_auto_retrieval(prompt: str) -> bool:
+    """Skip memory injection for execution-only prompts.
+
+    RECALL should not spend tokens on context for plain "run/rerun tests" or
+    "apply the fix" turns. Questions and release/requirement/policy prompts
+    can still benefit from memory; explicit @recall bypasses this in the hook.
+    """
+    clean = normalize_prompt_memory_text(prompt)
+    if not clean:
+        return False
+    if INFORMATION_REQUEST_RE.search(clean) or RELEASE_CONTEXT_RE.search(clean):
+        return False
+    return bool(EXECUTION_ONLY_RE.search(clean))
 
 
 def normalize_prompt_memory_text(prompt: str) -> str:

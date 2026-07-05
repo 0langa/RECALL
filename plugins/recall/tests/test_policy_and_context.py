@@ -39,6 +39,20 @@ class PolicyAndContextTests(unittest.TestCase):
         )
         self.assertIsNone(capture_policy.classify_prompt_event(prompt))
 
+    def test_execution_only_prompts_suppress_auto_retrieval(self) -> None:
+        self.assertTrue(capture_policy.suppress_auto_retrieval("Run the integration suite."))
+        self.assertTrue(capture_policy.suppress_auto_retrieval("Run the unit tests for the footer."))
+        self.assertTrue(capture_policy.suppress_auto_retrieval("Ok apply the jitter fix and rerun."))
+
+    def test_questions_and_release_prompts_do_not_suppress_auto_retrieval(self) -> None:
+        self.assertFalse(
+            capture_policy.suppress_auto_retrieval(
+                "Start implementing the report footer; check what requirements exist for report generation output."
+            )
+        )
+        self.assertFalse(capture_policy.suppress_auto_retrieval("Run the release build."))
+        self.assertFalse(capture_policy.suppress_auto_retrieval("What was the accepted compression default?"))
+
     def test_replayed_idempotency_key_does_not_create_duplicate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             metadata = memory_manager.build_card_metadata(

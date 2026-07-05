@@ -190,6 +190,8 @@ def main() -> None:
         statuses=["validated", "active", "open", "resolved"],
     )
     should_retrieve = recall_mode == "always" or (recall_mode == "relevant" and assessment["relevant"])
+    if not explicit_recall and capture_policy.suppress_auto_retrieval(retrieval_text):
+        should_retrieve = False
     if explicit_recall:
         should_retrieve = True
     observability.trace(root, "retrieval_gate", {**assessment, "excluded_categories": exclusions})
