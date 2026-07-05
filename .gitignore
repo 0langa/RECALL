@@ -1,6 +1,7 @@
 .recall/
 .codex_memory/
 .codex_memory_old/
+.handoff/
 dist/
 __pycache__/
 *.pyc
