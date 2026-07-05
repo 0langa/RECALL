@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import argparse
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,7 @@ sys.path.insert(0, str(BENCH_ROOT))
 
 from recall_bench import baseline, channels, judge, metrics, scenarios, tokens  # noqa: E402
 from recall_bench.recorder import normalize_for_hash  # noqa: E402
+import run_bench  # noqa: E402
 
 
 class TokenTests(unittest.TestCase):
@@ -137,6 +139,21 @@ class ScenarioSchemaTests(unittest.TestCase):
 
 
 class JudgeTests(unittest.TestCase):
+    def test_run_config_can_enable_judge_emission_for_normal_mode(self) -> None:
+        args = argparse.Namespace(
+            config=None,
+            mode="normal",
+            seed=None,
+            sessions=None,
+            turn_limit=None,
+            emit_judge=True,
+            judge_max_per_rubric=3,
+        )
+        config = run_bench.load_config(args)
+        self.assertEqual(config["mode"], "normal")
+        self.assertTrue(config["judge"]["emit"])
+        self.assertEqual(config["judge"]["max_per_rubric"], 3)
+
     def test_emit_and_aggregate_round_trip(self) -> None:
         journal = [
             {

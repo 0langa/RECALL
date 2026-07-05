@@ -42,6 +42,10 @@ def load_config(args: argparse.Namespace) -> dict:
         config["sessions_per_scenario"] = args.sessions
     if args.turn_limit is not None:
         config["turn_limit"] = args.turn_limit
+    if getattr(args, "emit_judge", False):
+        config.setdefault("judge", {})["emit"] = True
+    if getattr(args, "judge_max_per_rubric", None) is not None:
+        config.setdefault("judge", {})["max_per_rubric"] = args.judge_max_per_rubric
     return config
 
 
@@ -178,6 +182,8 @@ def main() -> int:
     run.add_argument("--out", help="Output directory (default bench/runs/<mode>-<seed>).")
     run.add_argument("--strict", action="store_true", help="Exit 1 when baseline comparison fails.")
     run.add_argument("--keep-dirs", action="store_true", help="Keep temp project dirs for inspection.")
+    run.add_argument("--emit-judge", action="store_true", help="Emit judge_tasks.jsonl even when the selected mode disables it.")
+    run.add_argument("--judge-max-per-rubric", type=int, help="Override judge.max_per_rubric for emitted judge tasks.")
     run.set_defaults(handler=cmd_run)
 
     judge_parser = sub.add_parser("judge-aggregate")

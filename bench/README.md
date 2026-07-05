@@ -23,6 +23,7 @@ reports:
 ```bash
 python bench/run_bench.py run --mode light                      # <~60s smoke
 python bench/run_bench.py run --mode normal --price-per-million 3.0
+python bench/run_bench.py run --mode normal --emit-judge --price-per-million 3.0
 python bench/run_bench.py run --mode complete --save-baseline bench/baselines/vX.Y.Z.json
 python bench/run_bench.py run --config my_custom_config.json    # custom sets
 python bench/run_bench.py run --mode light --baseline bench/baselines/v1.3.0.json --strict
