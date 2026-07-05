@@ -8,3 +8,4 @@ __pycache__/
 quality_results/
 source_blind_eval_pack/
 Persistent Memory Plugins for OpenAI Codex — Architecture Spec & Design Blueprint.md
+uv.lock

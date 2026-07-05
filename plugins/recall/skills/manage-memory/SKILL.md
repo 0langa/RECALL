@@ -82,6 +82,12 @@ Use the contract asset when deciding whether the request belongs here:
 
 1. Start with `review-memory` or `retrieve-memory` if IDs or current state are unclear.
 2. Use `configure-capture manual|minimal|standard|off` to control automatic hook writes.
+   The modes are enforced inside the hooks (not by agent goodwill):
+   - `standard`: full automatic capture — per-tool evidence, prompt signals, stop notes, session summaries.
+   - `minimal`: no per-tool evidence buffering; prompt signals, stop notes, and session summaries still run.
+   - `manual`: only explicit cues (`@recall remember this`) and skill/MCP saves; no automatic hook capture.
+   - `off`: no hook capture of any kind, including explicit prompt cues (the hook explains how to re-enable);
+     skill and MCP saves stay available. Retrieval is governed separately by `configure-recall`.
 3. Use `archive-noise` for non-destructive cleanup of low-value automatic command history.
 4. Use lifecycle commands to confirm, resolve, mark stale, supersede, merge, or prune memory.
 5. Use `doctor` and `repair` only for local storage or index maintenance.

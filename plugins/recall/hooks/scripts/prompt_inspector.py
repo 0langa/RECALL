@@ -87,6 +87,7 @@ def main() -> None:
 
     cfg = recall_config.load_config_if_present(root)
     recall_mode = str(cfg.get("recall_mode", "relevant"))
+    capture_mode = str(cfg.get("capture_mode", "standard"))
 
     session_id = event.session_id
     turn_id = event.turn_id
@@ -102,6 +103,22 @@ def main() -> None:
             "origin_provider": event.provider,
         },
     )
+
+    explicit_cue = bool(
+        explicit_recall
+        and (CATEGORY_RE.search(cue_text) or REMEMBER_RE.search(cue_text))
+    )
+    if explicit_cue and capture_mode == "off":
+        print(
+            json.dumps(
+                additional_context(
+                    "UserPromptSubmit",
+                    "RECALL capture is off for this project, so nothing was saved. "
+                    "Re-enable with `manage-memory configure-capture standard` (or `minimal`/`manual`).",
+                )
+            )
+        )
+        return
 
     category_match = CATEGORY_RE.search(cue_text) if explicit_recall else None
     if category_match:
@@ -156,10 +173,13 @@ def main() -> None:
         )
         return
 
-    prompt_event = capture_policy.classify_prompt_event(memory_text or cue_text or prompt)
-    if prompt_event is not None:
-        prompt_event = {**prompt_event, **event.provider_metadata(capture_channel="hook")}
-        turn_buffer.append_event(root, session_id, turn_id, prompt_event)
+    # Automatic prompt-signal capture is background capture: allowed in
+    # standard and minimal, never in manual or off.
+    if capture_mode in capture_policy.AUTO_CAPTURE_MODES:
+        prompt_event = capture_policy.classify_prompt_event(memory_text or cue_text or prompt)
+        if prompt_event is not None:
+            prompt_event = {**prompt_event, **event.provider_metadata(capture_channel="hook")}
+            turn_buffer.append_event(root, session_id, turn_id, prompt_event)
 
     retrieval_text = memory_text or cue_text or prompt
     exclusions = capture_policy.retrieval_exclusions(retrieval_text)

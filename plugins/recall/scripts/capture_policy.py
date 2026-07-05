@@ -10,7 +10,19 @@ from typing import Any
 import config as recall_config
 
 
+# capture_mode contract (enforced here, not in agent instructions):
+#   standard: full automatic capture — per-tool evidence, prompt signals,
+#             stop notes, and session summaries.
+#   minimal:  no per-tool evidence buffering (PostToolUse is off); prompt
+#             signals, stop notes, and session summaries still run.
+#   manual:   only explicit cues (@recall / remember this) and skill/MCP
+#             saves; no automatic hook capture at all.
+#   off:      no hook capture of any kind, including explicit prompt cues;
+#             hooks only read. Skill and MCP saves remain available because
+#             they are explicit agent/user actions, not background capture.
+# Retrieval/injection is governed separately by recall_mode.
 AUTO_CAPTURE_MODES = {"minimal", "standard"}
+TOOL_CAPTURE_MODES = {"standard"}
 READ_ONLY_COMMAND_RE = re.compile(
     r"(?i)^\s*(?:Get-Content|Get-ChildItem|Select-String|Select-Object|Get-Location|"
     r"rg\b|git\s+status\b|git\s+log\b|git\s+show\b|dir\b|ls\b|pwd\b|cat\b|type\b|"
@@ -165,7 +177,7 @@ def classify_tool_capture(
     mode: str | None = None,
 ) -> CaptureDecision | None:
     mode = mode or capture_mode(root)
-    if mode not in AUTO_CAPTURE_MODES:
+    if mode not in TOOL_CAPTURE_MODES:
         return None
 
     command = command.strip()
@@ -274,7 +286,13 @@ def classify_tool_capture(
 
 
 def should_store_precompact(root: str | None = None) -> bool:
-    return capture_mode(root) == "standard"
+    return capture_mode(root) in AUTO_CAPTURE_MODES
+
+
+def explicit_capture_allowed(root: str | None = None) -> bool:
+    """Explicit prompt cues (remember this / define category) work in every
+    mode except off; off means hooks never write."""
+    return capture_mode(root) != "off"
 
 
 def should_store_stop_note(root: str | None, note: str) -> bool:

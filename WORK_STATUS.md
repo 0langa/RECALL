@@ -129,17 +129,22 @@ mapping = standard current / minimal no per-tool buffering but Stop summary /
 manual explicit cues only / off no hook capture (skill+MCP saves stay explicit);
 ruff blocking + lenient mypy blocking; 4 separate commits; hold push.
 
-1. Commit 1: `_doc_duplicate_proposals` in memory_hygiene — paragraph-level token
-   containment vs README.md + docs/**/*.md, review_doc_duplicate (unsafe), corpus
-   cached + size-capped, detection fully local (no LLM). Tests with fixture docs.
-2. Commit 2: `staleness` config block (snapshot_stale_days, retrieval_aging_days);
-   retrieval compact-by-default + `verbose` flag through retrieval/manager/MCP/
-   adapter; hygiene proposal list cap + omitted count; session-start injection cap.
-3. Commit 3: ruff config + lenient mypy config at repo root, fix findings, CI lint
-   job, gate commands documented.
-4. Commit 4: capture_mode enforcement in post_tool_use/pre_compact/stop/
-   prompt_inspector; per-mode tests; version bump 1.3.0 (5 places), CHANGELOG,
-   docs; full gates + PluginEval.
+1. DONE (e773c24): `_doc_duplicate_proposals` in memory_hygiene — paragraph-level
+   token containment vs README.md + docs/**/*.md, review_doc_duplicate (unsafe),
+   corpus size-capped, detection fully local (no LLM). Tests with fixture docs.
+2. DONE (011a07d): `staleness` config block (snapshot_stale_days=45,
+   retrieval_aging_days=30); retrieval compact-by-default on agent surfaces
+   (`verbose` opt-in; library callers keep full metadata); hygiene-scan caps
+   listed proposals at 20 with omitted count; session-start injection capped
+   at ~2000 chars.
+3. DONE (902c9e2): pyproject.toml with ruff (E4/E7/E9/F/B) + lenient mypy over
+   engine scripts, both blocking; all pre-existing findings fixed; CI lint job.
+4. DONE: capture_mode enforced in hooks — standard full; minimal no per-tool
+   buffering (PostToolUse standard-only via TOOL_CAPTURE_MODES), pre_compact
+   session summaries now standard+minimal; manual explicit-cues-only (prompt
+   auto-signals gated); off blocks all hook capture incl. explicit cues with a
+   re-enable hint (skill/MCP saves unaffected; recall_mode governs retrieval).
+   tests/test_capture_modes.py (8 tests). Version 1.3.0 in all 5 places.
 
 ## Deferred (with reasons)
 

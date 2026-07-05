@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0 - 2026-07-05
+
+Clears every item deferred from 1.2.0. Doc-duplication detection and all other checks remain fully local — no model or network calls; the token work cuts what RECALL injects into agent context.
+
+- Hygiene detects memories that restate repo docs: paragraph-level token containment against `README.md` and `docs/**/*.md` produces review-only `review_doc_duplicate` proposals naming the overlapping file (never auto-applied; corpus size-capped).
+- Staleness thresholds are configurable via a validated `staleness` config block (`snapshot_stale_days`, `retrieval_aging_days`); hygiene snapshot ageing and retrieval health flags both consume it.
+- Token-lean agent outputs: `retrieve_memory`/`retrieve-memory` return compact results by default (full metadata behind `verbose`); `hygiene-scan` caps listed proposals at 20 with an omitted count; SessionStart injection is hard-capped (~2000 chars). Library callers keep full metadata by default.
+- Blocking lint gates: `ruff check .` (conservative correctness rules) and lenient `mypy` over the engine, wired as a CI job; all pre-existing findings fixed.
+- capture_mode is enforced in the hooks: `standard` = full auto capture; `minimal` = no per-tool evidence buffering, session summaries and stop notes still run; `manual` = explicit cues and skill/MCP saves only; `off` = no hook capture at all, explicit cues get a how-to-re-enable response. `recall_mode` continues to govern retrieval separately. PreCompact session summaries now run in `minimal` too (previously standard-only).
+- New tests: doc-duplication fixtures, configurable-threshold tests, compact/verbose retrieval tests, scan-cap test, and per-mode capture tests (`tests/test_capture_modes.py`).
+
 ## 1.2.0 - 2026-07-05
 
 Deterministic memory lifecycle contract, exposed by the engine instead of relying on agents remembering instructions.
