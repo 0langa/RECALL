@@ -4,6 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from .tokens import humanize
+
+
+def _tok(value: Any) -> str:
+    """Exact token count first (this is test output), short form for scanning."""
+    if not isinstance(value, (int, float)):
+        return str(value)
+    return f"{value} (~{humanize(value)})" if value >= 1_000 else str(value)
+
 
 def render_markdown(report: dict[str, Any]) -> str:
     meta = report.get("meta", {})
@@ -16,11 +25,12 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- emission determinism hash: `{meta.get('emission_hash', '')[:16]}…`",
         "",
         "## Token cost",
-        f"- fixed overhead per session: **{token_data.get('fixed_overhead_per_session_est_tokens', '?')} est tokens**",
-        f"- marginal per turn: **{token_data.get('marginal_per_turn_est_tokens', '?')} est tokens**",
-        f"- projected 20-turn session: **{token_data.get('projected_session_est_tokens_20_turns', '?')} est tokens**",
+        f"- fixed overhead per session: **{_tok(token_data.get('fixed_overhead_per_session_est_tokens', '?'))} est tokens**",
+        f"- marginal per turn: **{_tok(token_data.get('marginal_per_turn_est_tokens', '?'))} est tokens**",
+        f"- projected 20-turn session: **{_tok(token_data.get('projected_session_est_tokens_20_turns', '?'))} est tokens**",
     ]
     if "projected_session_cost_usd_20_turns" in token_data:
+        # Dollar line only appears when the run was explicitly priced.
         lines.append(
             f"- projected 20-turn session cost: **${token_data['projected_session_cost_usd_20_turns']}** "
             f"(at ${token_data['price_per_million_used']}/M input tokens)"

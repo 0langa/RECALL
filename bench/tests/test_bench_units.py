@@ -28,6 +28,20 @@ class TokenTests(unittest.TestCase):
     def test_dollars(self) -> None:
         self.assertEqual(tokens.dollars(1_000_000, 3.0), 3.0)
 
+    def test_humanize_short_forms(self) -> None:
+        self.assertEqual(tokens.humanize(237), "237")
+        self.assertEqual(tokens.humanize(5752), "5.8k")
+        self.assertEqual(tokens.humanize(10474), "10.5k")
+        self.assertEqual(tokens.humanize(1_000_000), "1m")
+        self.assertEqual(tokens.humanize(1_200_000), "1.2m")
+
+    def test_parse_amount_accepts_short_forms_and_exact(self) -> None:
+        self.assertEqual(tokens.parse_amount("150k"), 150_000)
+        self.assertEqual(tokens.parse_amount("1.2m"), 1_200_000)
+        self.assertEqual(tokens.parse_amount("5M"), 5_000_000)
+        self.assertEqual(tokens.parse_amount("10_000"), 10_000)
+        self.assertEqual(tokens.parse_amount(2500), 2500)
+
 
 class ChannelTests(unittest.TestCase):
     def test_channels_are_disjoint_and_validated(self) -> None:

@@ -20,7 +20,10 @@ Parse from the user's request; defaults in bold:
 - mode: `light` | **`normal`** | `complete`
 - judged: **yes** if the user says "judged"/"with judge"; otherwise no
 - baseline: compare against `bench/baselines/<latest>.json` **when one exists**
-- price: pass `--price-per-million <X>` if the user names a price; else omit
+- price: pass `--price-per-million <X>` ONLY if the user explicitly names a
+  price; the user thinks in tokens, not dollars — never volunteer dollar math
+- token amounts in requests may use short forms (`10k`, `150k`, `1.2m`);
+  interpret them as exact counts (150k = 150000)
 
 ## Workflow
 
@@ -54,8 +57,10 @@ python bench/run_bench.py judge-aggregate --tasks bench/runs/<mode>-<seed>/judge
 
 3. Report to the user, in this order:
    - PASS/FAIL of baseline comparison (list any violations verbatim)
-   - Token cost: fixed overhead/session, marginal/turn, 20-turn projection
-     (+ dollars if priced)
+   - Token cost, tokens-first: fixed overhead/session, marginal/turn, 20-turn
+     projection. Give the EXACT number with the short form in parentheses,
+     e.g. "10474 (~10.5k) est tokens per 20-turn session". Add a dollar line
+     only when the run was explicitly priced.
    - Quality: injection-gate accuracy, golden retrieval hit rate, flag
      correctness, hygiene detection, secret-leak sweep result
    - Judge means per rubric + flag counts (judged runs only)
@@ -79,12 +84,14 @@ python bench/run_bench.py judge-aggregate --tasks bench/runs/<mode>-<seed>/judge
 
 ## Example
 
-User: "run a judged normal bench at $3 per million"
+User: "run a judged normal bench"
 
 ```bash
-python bench/run_bench.py run --mode normal --emit-judge --price-per-million 3.0 --baseline bench/baselines/v1.3.0.json
+python bench/run_bench.py run --mode normal --emit-judge --baseline bench/baselines/v1.3.0.json
 # ...score bench/runs/normal-1337/judge_tasks.jsonl -> judge_scores.jsonl yourself...
 python bench/run_bench.py judge-aggregate --tasks bench/runs/normal-1337/judge_tasks.jsonl --scores bench/runs/normal-1337/judge_scores.jsonl
 ```
 
-Then summarize as in step 3.
+Then summarize as in step 3, tokens-first: "20-turn session ≈ 10474 (~10.5k)
+est tokens; fixed overhead 5752 (~5.8k); marginal 237/turn." No dollars unless
+the user priced the run.

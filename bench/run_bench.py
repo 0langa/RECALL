@@ -111,12 +111,18 @@ def cmd_run(args: argparse.Namespace) -> int:
     (out_dir / "report.md").write_text(report_mod.render_markdown(result), encoding="utf-8")
     if args.save_baseline:
         baseline_mod.save(result, Path(args.save_baseline))
+    from recall_bench.tokens import humanize
+
+    projected = computed["tokens"]["projected_session_est_tokens_20_turns"]
     print(json.dumps({
         "status": "pass" if result.get("baseline_comparison", {}).get("pass", True) else "fail",
         "report": str(out_dir / "report.json"),
         "markdown": str(out_dir / "report.md"),
         "fixed_overhead_est_tokens": computed["tokens"]["fixed_overhead_per_session_est_tokens"],
+        "fixed_overhead_short": humanize(computed["tokens"]["fixed_overhead_per_session_est_tokens"]),
         "marginal_per_turn_est_tokens": computed["tokens"]["marginal_per_turn_est_tokens"],
+        "projected_session_20_turns_est_tokens": projected,
+        "projected_session_20_turns_short": humanize(projected),
         "secret_leaks": computed["secret_leaks"]["leaks_found"],
         "emission_hash": result["meta"]["emission_hash"],
     }, indent=2))
