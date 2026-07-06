@@ -17,7 +17,7 @@
   },
   "token_budget": 1200,
   "recency_days": null,
-  "embedding_model": "local-hash-v1",
+  "embedding_model": "local-hash-v2",
   "summarizer_model": "heuristic-v1",
   "categories": {
     "decisions": {

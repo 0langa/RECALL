@@ -14,7 +14,8 @@ import re
 from collections import Counter
 
 
-DIMENSIONS = 64
+DIMENSIONS = 256
+EMBEDDING_MODEL = "local-hash-v2"
 TOKEN_RE = re.compile(r"[a-zA-Z0-9_]{2,}")
 
 

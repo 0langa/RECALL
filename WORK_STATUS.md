@@ -263,3 +263,58 @@ ruff blocking + lenient mypy blocking; 4 separate commits; hold push.
 4. capture_mode enforcement inside hook scripts remains partial (pre-existing)
    — severity: low-medium; component: hooks; next step: gate post_tool_use
    capture on capture_mode value.
+
+## Batch 4 — Paraphrase-robust retrieval (2026-07-06) → v1.4.0
+
+Goal: lift RECALL's last retrieval frontier, semantic matching beyond lexical
+overlap, measuring honestly before optimizing (per user instruction: no
+ranking change lands without the metric existing first).
+
+1. DONE (1868f2b): `paraphrase_query` added per golden card in
+   `bench/recall_bench/store_fabricator.py` (same-meaning, few/no shared
+   tokens vs. the plain lexical `query`); `paraphrase_retrieval` reported as a
+   metric separate from `retrieval` in probes.py/metrics.py/report.py,
+   deliberately NOT baseline-gated (honest headroom number, not a pass/fail
+   bar). Honest starting reading: hit rate 0.3 against lexical goldens' 1.0.
+2. DONE (c6d7436): IDF downweighting of store-frequent tokens
+   (`retrieval.build_term_document_frequencies`, `idf_weighted_overlap`) —
+   measured alone, zero paraphrase gain: the 64-dim hash embedder's cosine
+   term could go actively NEGATIVE on genuine paraphrase matches from
+   hash-collision noise, which a 0.45-weighted lexical term can't outweigh
+   regardless of how it's distributed. Then an ephemeral in-memory FTS5 bm25
+   rerank (`storage.fts5_rerank_scores`, weight tuned per step) — built fresh
+   per query over `retrieval.searchable_text` (content+summary+details+tags),
+   NOT the persisted `memories_fts` mirror. FIRST ATTEMPT reused the
+   persisted mirror (content+title only) at weight 0.6 and regressed 4 pinned
+   tests by reintroducing the already-fixed "raw content stuffing beats
+   structured fields" anti-pattern (SQLite bm25's document-length
+   normalization doesn't respect this project's per-field weighting: tags 1.0
+   > summary 0.9 > details 0.65 > content 0.35). Rebuilding ephemeral over
+   full field-weighted text at weight 0.35 fixed 3/7 misses with 1
+   collateral regression: hit rate 0.3 -> 0.5, zero regressions on gated
+   metrics, marginal tokens/turn improved 105.5 -> 95.2.
+3. DONE (v1.4.0, this batch): local hash embedder upgraded 64 -> 256
+   dimensions (`embedder.DIMENSIONS`, `EMBEDDING_MODEL` bumped
+   `local-hash-v1` -> `local-hash-v2`) — confirmed root cause: fewer hash
+   collisions at 256 dims stops the cosine term from actively fighting real
+   matches. `index_store.rebuild` gained `_migrate_stale_embeddings`: any
+   stored embedding whose length no longer matches `DIMENSIONS` is silently
+   re-embedded from `record.content` and persisted back to the `memories`
+   table (not just the index cache) the next time the index rebuilds, so
+   existing stores self-heal with no manual migration step. The dims change
+   shifted cosine balances enough that the FTS weight from step 2 (0.35)
+   broke a different pinned test (durable-category-vs-session-summary
+   margin tightened); retuned to 0.15. Net result: paraphrase hit rate
+   0.3 -> 0.6, with every existing gate unchanged (lexical goldens 1.0, gate
+   19/19, flags 1.0, hygiene 6/7, leaks 0, marginal ~95.6), same
+   emission_hash across repeated runs, 237/237 unit tests, ruff/mypy clean,
+   PluginEval static unchanged (90.92 composite, Platinum — skill surface
+   untouched this batch). Version bumped to 1.4.0 in all 5 pinned places
+   (3 manifests + kimi_mcp_server.py serverInfo + test_package_metadata.py).
+4. Remaining paraphrase gap (4/10 queries, all genuinely zero-shared-
+   vocabulary) is a real semantic-matching ceiling no hash-based lexical
+   embedding can close without an actual model, which is out of scope for
+   this local-first, no-network/no-download plugin.
+5. Not yet done: judged run (card_quality, injection_usefulness) from a
+   cheap-model session — never execute live LLM judging from the building
+   agent.

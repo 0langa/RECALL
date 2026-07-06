@@ -139,9 +139,9 @@ class MemoryManagerTests(unittest.TestCase):
                                 "id": 999,
                                 "category": "decisions",
                                 "timestamp": "2026-01-01T00:00:00+00:00",
-                                "embedding_model": "local-hash-v1",
-                                "dimensions": 64,
-                                "embedding": [0.0] * 64,
+                                "embedding_model": "local-hash-v2",
+                                "dimensions": 256,
+                                "embedding": [0.0] * 256,
                             }
                         ),
                         json.dumps(
@@ -224,9 +224,45 @@ class MemoryManagerTests(unittest.TestCase):
             memory_manager.add_record("decisions", "Index records include portable metadata.", root=tmp)
             line = (recall_config.memory_dir(tmp) / "vector_index.bin").read_text(encoding="utf-8").splitlines()[0]
             payload = json.loads(line)
-            self.assertEqual(payload["embedding_model"], "local-hash-v1")
-            self.assertEqual(payload["dimensions"], 64)
+            self.assertEqual(payload["embedding_model"], "local-hash-v2")
+            self.assertEqual(payload["dimensions"], 256)
             self.assertIn("embedding", payload)
+
+    def test_stale_embedding_dimension_is_migrated_on_rebuild(self) -> None:
+        """A record carrying a pre-upgrade (v1, 64-dim) embedding must be
+        silently re-embedded to the current shape the first time the index
+        is rebuilt, and the fix must persist to storage itself so scoring
+        never mixes vector generations mid-store."""
+        with tempfile.TemporaryDirectory() as tmp:
+            record = memory_manager.add_record("decisions", "Ledger migration keeps append-only history.", root=tmp)
+            db = recall_config.memory_dir(tmp) / "memory.sqlite"
+            connection = sqlite3.connect(db)
+            try:
+                connection.execute(
+                    "UPDATE memories SET embedding = ? WHERE id = ?",
+                    (json.dumps([0.0] * 64), record.id),
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            report = memory_manager.repair(tmp)
+            self.assertGreaterEqual(report["repair"]["migrated_embeddings"], 1)
+
+            refreshed = memory_manager.query("ledger migration append only history", root=tmp)
+            self.assertEqual(refreshed["results"][0]["id"], record.id)
+
+            connection = sqlite3.connect(db)
+            try:
+                row = connection.execute("SELECT embedding, content FROM memories WHERE id = ?", (record.id,)).fetchone()
+            finally:
+                connection.close()
+            self.assertEqual(len(json.loads(row[0])), 256)
+            self.assertEqual(row[1], "Ledger migration keeps append-only history.")
+
+            # Idempotent: a second rebuild finds nothing left to migrate.
+            second_report = memory_manager.repair(tmp)
+            self.assertEqual(second_report["repair"]["migrated_embeddings"], 0)
 
     def test_structured_card_tags_beat_plain_keyword_note(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

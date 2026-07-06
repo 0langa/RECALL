@@ -216,7 +216,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "snapshot_stale_days": 45,
         "retrieval_aging_days": 30,
     },
-    "embedding_model": "local-hash-v1",
+    "embedding_model": "local-hash-v2",
     "summarizer_model": "heuristic-v1",
     "categories": DEFAULT_CATEGORIES,
 }

@@ -30,7 +30,7 @@ RECALL does not use a hosted database or network embedding service. It is design
 Requires Codex CLI with plugin marketplace support and a local Python runtime.
 
 ```bash
-codex plugin marketplace add 0langa/RECALL --ref v1.3.0
+codex plugin marketplace add 0langa/RECALL --ref v1.4.0
 codex plugin add recall@recall-local
 ```
 
@@ -183,12 +183,15 @@ The v1.3.0 release was validated with plugin tests, quality gates, package inspe
 The 2026-06-25 split retest also verified Codex CLI `0.140.0` and Kimi Code
 CLI `0.19.2` writing and reading each other's project-local `.recall/` memory
 through live hook-injected context.
+v1.4.0 (retrieval ranking + local embedder v2) was validated with the full
+plugin test suite, blocking lint/type gates, and complete-mode benchmark runs
+(package/zip/marketplace smoke not re-run this pass).
 
 ## Release Status
 
-Current stable release: `v1.3.0`
+Current stable release: `v1.4.0`
 
-The GitHub release asset is `recall.zip`. Users who install from GitHub should pin `--ref v1.3.0` for a stable install.
+The GitHub release asset is `recall.zip`. Users who install from GitHub should pin `--ref v1.4.0` for a stable install.
 
 ## License
 

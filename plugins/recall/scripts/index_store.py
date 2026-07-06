@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import config as recall_config
-from embedder import DIMENSIONS
+from embedder import DIMENSIONS, EMBEDDING_MODEL, embed
 import storage
 
 
@@ -23,10 +23,37 @@ def build_index_record(record: storage.MemoryRecord, root: str | Path | None = N
         "id": record.id,
         "category": record.category,
         "timestamp": record.timestamp,
-        "embedding_model": cfg.get("embedding_model", "local-hash-v1"),
+        "embedding_model": cfg.get("embedding_model", EMBEDDING_MODEL),
         "dimensions": len(embedding) or DIMENSIONS,
         "embedding": embedding,
     }
+
+
+def _migrate_stale_embeddings(records: list[storage.MemoryRecord], root: str | Path | None = None) -> int:
+    """Re-embed records still carrying a previous embedder version's vector.
+
+    This pure-hash embedder ties its output shape 1:1 to `DIMENSIONS`, so a
+    length mismatch is the version signal: any stored embedding not shaped
+    for the current embedder was computed by an older one and is stale.
+    Recomputes from `record.content` (unaffected by the embedder change) and
+    persists the fix to the memories table itself, not just the index
+    mirror, so scoring never mixes vector generations mid-store.
+    """
+    migrated = 0
+    for record in records:
+        if len(record.embedding or []) == DIMENSIONS:
+            continue
+        record.embedding = embed(record.content)
+        storage.update_record(
+            record.id,
+            category=record.category,
+            content=record.content,
+            metadata=record.metadata,
+            embedding=record.embedding,
+            root=root,
+        )
+        migrated += 1
+    return migrated
 
 
 def append_record(record: storage.MemoryRecord, root: str | Path | None = None) -> None:
@@ -84,12 +111,13 @@ def inspect_index(root: str | Path | None = None) -> dict[str, Any]:
 def rebuild(root: str | Path | None = None) -> dict[str, Any]:
     storage.init_store(root)
     records = list(storage.iter_records(root))
+    migrated_embeddings = _migrate_stale_embeddings(records, root)
     path = index_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         for record in records:
             handle.write(json.dumps(build_index_record(record, root), sort_keys=True) + "\n")
-    return {"index_path": str(path), "indexed_records": len(records)}
+    return {"index_path": str(path), "indexed_records": len(records), "migrated_embeddings": migrated_embeddings}
 
 
 def diagnostics(root: str | Path | None = None) -> dict[str, Any]:

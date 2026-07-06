@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0 - 2026-07-06
+
+Closes the last open retrieval frontier from 1.3.0: semantic matching beyond raw lexical overlap. Measured honestly with a new benchmark metric before optimizing, then improved ranking end to end with zero regressions on every existing quality gate.
+
+- Benchmark gained a `paraphrase_retrieval` metric (`bench/recall_bench`): each golden card now has a same-meaning, different-words query variant sharing few or no tokens with the card. Deliberately not baseline-gated — it's an honest headroom number, not a pass/fail bar. Starting reading: hit rate 0.3 against a lexical-goldens ceiling of 1.0.
+- Retrieval ranking (`retrieval.py`) gained two additive signals: IDF downweighting of store-frequent tokens (`build_term_document_frequencies`, `idf_weighted_overlap`) and an ephemeral in-memory FTS5 bm25 rerank (`storage.fts5_rerank_scores`) built per query over the same field-weighted text the lexical scorer already uses — not the persisted `memories_fts` mirror, which only indexes content+title and reintroduces the "raw content stuffing beats structured fields" anti-pattern this project already fixed once.
+- Local hash embedder (`embedder.py`) upgraded 64 -> 256 dimensions (`local-hash-v1` -> `local-hash-v2`): the 64-dim embedder's cosine term could go actively negative on genuine paraphrase matches from hash-collision noise, which no amount of lexical reweighting could overcome. `index_store.rebuild` now silently re-embeds and persists any record still carrying an old-shaped embedding the next time the index needs rebuilding, so existing stores self-heal with no manual migration step.
+- Net result: paraphrase hit rate 0.3 -> 0.6, with lexical goldens still 1.0, injection gate still 19/19, flag correctness still 1.0, hygiene detection still 6/7, zero secret leaks, and marginal tokens/turn essentially flat (~95.6 vs. 105.5 baseline — improved, not regressed).
+- New tests: `test_stale_embedding_dimension_is_migrated_on_rebuild` (migration + idempotency), plus fixture updates for the new embedding shape.
+
 ## 1.3.0 - 2026-07-05
 
 Clears every item deferred from 1.2.0. Doc-duplication detection and all other checks remain fully local — no model or network calls; the token work cuts what RECALL injects into agent context.

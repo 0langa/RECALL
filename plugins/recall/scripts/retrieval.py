@@ -312,7 +312,7 @@ def rank_lexical_score(
     return normalized_lexical_overlap(query_text, record)
 
 
-FTS_RERANK_WEIGHT = 0.35
+FTS_RERANK_WEIGHT = 0.15
 
 
 def fts5_rerank_bonus(record_id: int, bm25_scores: dict[int, float]) -> float:

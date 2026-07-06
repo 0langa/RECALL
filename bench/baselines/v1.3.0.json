@@ -1,14 +1,14 @@
 {
   "meta": {
     "bench_schema_version": 1,
-    "emission_hash": "969b96053044da3129880d7c26da46ec190234d4319514076ae2aff5cf0a3556",
+    "emission_hash": "a999665fa622e52feadfa006d1c5f35f894592fe086dbb35c475b10df30cc615",
     "journal": "C:\\Users\\Julius\\source\\repos\\RECALL\\bench\\runs\\complete-1337\\journal.jsonl",
     "judge_tasks": {
       "path": "C:\\Users\\Julius\\source\\repos\\RECALL\\bench\\runs\\complete-1337\\judge_tasks.jsonl",
       "tasks_emitted": 17
     },
     "mode": "complete",
-    "recall_version": "1.3.0",
+    "recall_version": "1.4.0",
     "scenarios": [
       "bugfix_loop",
       "feature_work",
@@ -31,44 +31,44 @@
     "latency": {
       "hook.post_tool_use": {
         "count": 71,
-        "max_ms": 442.39,
-        "p50_ms": 170.31,
-        "p95_ms": 311.1
+        "max_ms": 277.42,
+        "p50_ms": 150.72,
+        "p95_ms": 237.2
       },
       "hook.pre_compact": {
         "count": 3,
-        "max_ms": 174.25,
-        "p50_ms": 166.03,
-        "p95_ms": 174.25
+        "max_ms": 173.24,
+        "p50_ms": 163.78,
+        "p95_ms": 173.24
       },
       "hook.prompt_inspector": {
         "count": 207,
-        "max_ms": 988.24,
-        "p50_ms": 321.74,
-        "p95_ms": 664.6
+        "max_ms": 693.91,
+        "p50_ms": 318.65,
+        "p95_ms": 578.33
       },
       "hook.session_start": {
         "count": 65,
-        "max_ms": 476.29,
-        "p50_ms": 196.0,
-        "p95_ms": 364.74
+        "max_ms": 266.33,
+        "p50_ms": 156.97,
+        "p95_ms": 229.46
       },
       "hook.stop": {
         "count": 207,
-        "max_ms": 1299.49,
-        "p50_ms": 267.49,
-        "p95_ms": 788.76
+        "max_ms": 870.35,
+        "p50_ms": 242.66,
+        "p95_ms": 566.24
       }
     },
     "quality": {
       "compact_vs_verbose": {
-        "compact_chars": 2165,
+        "compact_chars": 2151,
         "compact_has_no_metadata": true,
         "compact_is_smaller": true,
         "kind": "probe",
         "probe": "compact_vs_verbose",
         "scenario": "release_prep",
-        "verbose_chars": 3478,
+        "verbose_chars": 3317,
         "verbose_has_metadata": true
       },
       "conflict_marking": {
@@ -137,16 +137,15 @@
         "scenario": "release_prep"
       },
       "paraphrase_retrieval": {
-        "hit_rate_at_limit": 0.5,
-        "mean_rank": 2.4,
+        "hit_rate_at_limit": 0.6,
+        "mean_rank": 2.83,
         "misses": [
-          "overnight cleanup script to run",
           "can we edit old financial records directly",
           "how incoming data gets distributed to processing nodes",
           "what time stamp info belongs at the bottom of output files",
           "what caused the datastore to freeze during mass removal"
         ],
-        "mrr": 0.5833,
+        "mrr": 0.4639,
         "queries": 10
       },
       "retrieval": {
@@ -175,7 +174,7 @@
         "cards_first_session": 60,
         "cards_last_session": 61,
         "cards_per_session": 0.33,
-        "db_bytes_last": 172032,
+        "db_bytes_last": 294912,
         "sessions": 4,
         "status_distribution_last": {
           "active": 60,
@@ -187,7 +186,7 @@
         "cards_first_session": 64,
         "cards_last_session": 66,
         "cards_per_session": 0.67,
-        "db_bytes_last": 172032,
+        "db_bytes_last": 299008,
         "sessions": 4,
         "status_distribution_last": {
           "active": 60,
@@ -212,7 +211,7 @@
         "cards_first_session": 514,
         "cards_last_session": 514,
         "cards_per_session": 0.0,
-        "db_bytes_last": 995328,
+        "db_bytes_last": 2035712,
         "sessions": 4,
         "status_distribution_last": {
           "active": 510,
@@ -227,7 +226,7 @@
         "cards_first_session": 60,
         "cards_last_session": 61,
         "cards_per_session": 0.02,
-        "db_bytes_last": 192512,
+        "db_bytes_last": 311296,
         "sessions": 51,
         "status_distribution_last": {
           "active": 60,
@@ -239,7 +238,7 @@
         "cards_first_session": 73,
         "cards_last_session": 74,
         "cards_per_session": 0.33,
-        "db_bytes_last": 180224,
+        "db_bytes_last": 315392,
         "sessions": 4,
         "status_distribution_last": {
           "active": 69,
@@ -252,10 +251,10 @@
       }
     },
     "tokens": {
-      "conditional_static_est_tokens": 45395,
+      "conditional_static_est_tokens": 45942,
       "fixed_overhead_per_session_est_tokens": 5752,
-      "marginal_per_turn_est_tokens": 95.2,
-      "marginal_total_est_tokens": 12377,
+      "marginal_per_turn_est_tokens": 95.6,
+      "marginal_total_est_tokens": 12432,
       "per_channel": {
         "mcp_initialize_instructions": {
           "chars": 1061,
@@ -270,9 +269,9 @@
           "fixed": true
         },
         "prompt_injection": {
-          "chars": 47836,
+          "chars": 48011,
           "count": 128,
-          "est_tokens": 12005,
+          "est_tokens": 12060,
           "fixed": false
         },
         "session_start_context": {
@@ -318,9 +317,9 @@
           "fixed": false
         },
         "tool_result_retrieve": {
-          "chars": 91245,
+          "chars": 93435,
           "count": 25,
-          "est_tokens": 22819,
+          "est_tokens": 23366,
           "fixed": false
         },
         "tool_result_save": {
@@ -330,7 +329,7 @@
           "fixed": false
         }
       },
-      "projected_session_est_tokens_20_turns": 7656,
+      "projected_session_est_tokens_20_turns": 7664,
       "sessions_measured": 66,
       "turns_measured": 130
     }
