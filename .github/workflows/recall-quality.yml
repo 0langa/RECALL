@@ -26,10 +26,12 @@ jobs:
         run: python -m mypy --config-file pyproject.toml
 
   bench-light:
-    # Non-blocking token/quality benchmark: uploads the report, never fails
-    # the build (flip to --strict once baselines prove stable).
+    # Blocking token/quality benchmark since 2026-07-06: flipped to --strict
+    # after 2 consecutive Linux CI runs (+ local Windows) produced the exact
+    # same emission_hash against bench/baselines/v1.3.0.json. Before that
+    # date this job silently never ran past its first step (missing pytest
+    # install, masked by continue-on-error) for the harness's entire history.
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v4
@@ -44,8 +46,8 @@ jobs:
       - name: Bench harness self-tests
         run: python -m pytest bench/tests -q
 
-      - name: Light benchmark vs baseline (non-blocking)
-        run: python bench/run_bench.py run --mode light --baseline bench/baselines/v1.3.0.json --out bench/runs/ci-light
+      - name: Light benchmark vs baseline (strict)
+        run: python bench/run_bench.py run --mode light --baseline bench/baselines/v1.3.0.json --out bench/runs/ci-light --strict
 
       - name: Upload benchmark report
         uses: actions/upload-artifact@v4
