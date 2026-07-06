@@ -113,6 +113,7 @@ def _probe_metrics(probes: list[dict[str, Any]]) -> dict[str, Any]:
         return [probe for probe in probes if probe["probe"] == kind]
 
     golden = of("golden_retrieval")
+    paraphrase = of("paraphrase_retrieval")
     flags = of("flag_correctness")
     quality: dict[str, Any] = {}
     if golden:
@@ -124,6 +125,19 @@ def _probe_metrics(probes: list[dict[str, Any]]) -> dict[str, Any]:
             "mean_rank": round(statistics.mean(ranks), 2) if ranks else None,
             "mrr": round(statistics.mean(1 / rank for rank in ranks), 4) if ranks else 0.0,
             "misses": [probe["query"] for probe in golden if not probe["hit"]],
+        }
+    if paraphrase:
+        # Deliberately separate from `retrieval`: this is the honest
+        # semantic-matching headroom metric, not gated against the lexical
+        # baseline in baseline.py (see bench/README.md paraphrase section).
+        hits = [probe for probe in paraphrase if probe["hit"]]
+        ranks = [probe["rank"] for probe in hits]
+        quality["paraphrase_retrieval"] = {
+            "queries": len(paraphrase),
+            "hit_rate_at_limit": round(len(hits) / len(paraphrase), 4),
+            "mean_rank": round(statistics.mean(ranks), 2) if ranks else None,
+            "mrr": round(statistics.mean(1 / rank for rank in ranks), 4) if ranks else 0.0,
+            "misses": [probe["query"] for probe in paraphrase if not probe["hit"]],
         }
     if flags:
         quality["flag_correctness"] = {

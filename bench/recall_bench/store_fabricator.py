@@ -77,25 +77,31 @@ WORD_B = ["jsonl", "os.path", "threads", "click", "encryption", "webhooks", "sin
 
 # Golden cards: retrieval ground truth. Each golden query must rank its card
 # in the top-k. Content is distinctive on purpose.
+#
+# `paraphrase_query` is a second ground-truth query per card that shares
+# few/no content tokens with the card (a same-meaning, different-words
+# rephrasing). It measures semantic matching beyond lexical overlap; the
+# plain `query` field intentionally stays lexically close and is untouched.
 GOLDEN_CARDS = [
-    {"category": "decisions", "content": "Golden decision: the export pipeline uses zstandard compression level 7 as the accepted default.", "query": "export pipeline compression default", "tags": ["golden", "export"]},
-    {"category": "commands", "content": "Golden command: run the nightly consolidation with python scripts/consolidate.py --window 24h --verify.", "query": "nightly consolidation command", "tags": ["golden", "consolidation"]},
-    {"category": "debug_history", "content": "Golden fix: the flaky websocket reconnect was caused by a missing jitter on retry; adding 0-300ms jitter resolved it.", "query": "websocket reconnect flaky fix", "tags": ["golden", "websocket"]},
-    {"category": "constraints", "content": "Golden constraint: the ledger table is append-only; updates must create correction rows, never mutate history.", "query": "ledger append only constraint", "tags": ["golden", "ledger"]},
-    {"category": "architecture", "content": "Golden architecture: the ingest gateway fans out to three workers over a local queue; workers are stateless.", "query": "ingest gateway worker fanout", "tags": ["golden", "ingest"]},
-    {"category": "requirements", "content": "Golden requirement: exported reports must include the generation timestamp in UTC in the footer.", "query": "report footer timestamp requirement", "tags": ["golden", "reports"]},
+    {"category": "decisions", "content": "Golden decision: the export pipeline uses zstandard compression level 7 as the accepted default.", "query": "export pipeline compression default", "paraphrase_query": "how do we pack export files", "tags": ["golden", "export"]},
+    {"category": "commands", "content": "Golden command: run the nightly consolidation with python scripts/consolidate.py --window 24h --verify.", "query": "nightly consolidation command", "paraphrase_query": "overnight cleanup script to run", "tags": ["golden", "consolidation"]},
+    {"category": "debug_history", "content": "Golden fix: the flaky websocket reconnect was caused by a missing jitter on retry; adding 0-300ms jitter resolved it.", "query": "websocket reconnect flaky fix", "paraphrase_query": "why do live connections randomly drop and reconnect", "tags": ["golden", "websocket"]},
+    {"category": "constraints", "content": "Golden constraint: the ledger table is append-only; updates must create correction rows, never mutate history.", "query": "ledger append only constraint", "paraphrase_query": "can we edit old financial records directly", "tags": ["golden", "ledger"]},
+    {"category": "architecture", "content": "Golden architecture: the ingest gateway fans out to three workers over a local queue; workers are stateless.", "query": "ingest gateway worker fanout", "paraphrase_query": "how incoming data gets distributed to processing nodes", "tags": ["golden", "ingest"]},
+    {"category": "requirements", "content": "Golden requirement: exported reports must include the generation timestamp in UTC in the footer.", "query": "report footer timestamp requirement", "paraphrase_query": "what time stamp info belongs at the bottom of output files", "tags": ["golden", "reports"]},
     {
         "category": "preferences",
         "content": "Golden preference: the user wants migration scripts reviewed in dry-run output form before apply.",
         "query": "migration dry run review preference",
+        "paraphrase_query": "how does the user like to check schema changes before running them",
         "tags": ["golden", "migrations"],
         # Preferences require durable evidence by contract; a bare preference
         # card would be a planted hygiene finding, not a golden card.
         "metadata": {"preference_key": "migration.review_style", "preference_evidence_type": "explicit_declaration"},
     },
-    {"category": "tooling_quirks", "content": "Golden quirk: the deploy CLI requires --region before the subcommand or it exits zero without deploying.", "query": "deploy cli region flag order quirk", "tags": ["golden", "deploy"]},
-    {"category": "integrations", "content": "Golden integration: the billing provider sandbox resets every Monday 03:00 UTC; test data does not survive.", "query": "billing sandbox weekly reset", "tags": ["golden", "billing"]},
-    {"category": "lessons_learned", "content": "Golden lesson: bulk deletes without a row cap once locked the store; always chunk destructive operations.", "query": "bulk delete lock lesson", "tags": ["golden", "deletes"]},
+    {"category": "tooling_quirks", "content": "Golden quirk: the deploy CLI requires --region before the subcommand or it exits zero without deploying.", "query": "deploy cli region flag order quirk", "paraphrase_query": "why does the release tool quit without doing anything", "tags": ["golden", "deploy"]},
+    {"category": "integrations", "content": "Golden integration: the billing provider sandbox resets every Monday 03:00 UTC; test data does not survive.", "query": "billing sandbox weekly reset", "paraphrase_query": "when does the payment test environment wipe its data", "tags": ["golden", "billing"]},
+    {"category": "lessons_learned", "content": "Golden lesson: bulk deletes without a row cap once locked the store; always chunk destructive operations.", "query": "bulk delete lock lesson", "paraphrase_query": "what caused the datastore to freeze during mass removal", "tags": ["golden", "deletes"]},
 ]
 
 # Lifecycle-state cards used to verify flag correctness in retrieval output.
@@ -170,7 +176,10 @@ def fabricate(
         for card in GOLDEN_CARDS:
             metadata = {"summary": card["content"][:120], "tags": card["tags"], **card.get("metadata", {})}
             record_id = _seed_card(root, index, card["category"], card["content"], metadata)
-            manifest["golden"].append({"id": record_id, "query": card["query"], "category": card["category"]})
+            manifest["golden"].append({
+                "id": record_id, "query": card["query"], "category": card["category"],
+                "paraphrase_query": card.get("paraphrase_query"),
+            })
             index += 1
 
     if flagged:

@@ -32,6 +32,7 @@ def run_probes(recorder: Recorder, *, root: Path, manifest: dict[str, Any], scen
     mcp = McpClient()
     try:
         _retrieval_probes(recorder, mcp, root=root, manifest=manifest, scenario=scenario, limit=limit)
+        _paraphrase_retrieval_probes(recorder, mcp, root=root, manifest=manifest, scenario=scenario, limit=limit)
         _flag_probes(recorder, mcp, root=root, manifest=manifest, scenario=scenario)
         _conflict_probes(recorder, mcp, root=root, manifest=manifest, scenario=scenario)
         _dedup_probes(recorder, mcp, root=root, scenario=scenario)
@@ -51,6 +52,27 @@ def _retrieval_probes(recorder: Recorder, mcp: McpClient, *, root: Path, manifes
         rank = ids.index(golden["id"]) + 1 if golden["id"] in ids else None
         recorder.event("probe", {
             "probe": "golden_retrieval", "scenario": scenario, "query": golden["query"],
+            "expected_id": golden["id"], "hit": rank is not None, "rank": rank,
+            "duration_ms": round(duration_ms, 2),
+        })
+
+
+def _paraphrase_retrieval_probes(recorder: Recorder, mcp: McpClient, *, root: Path, manifest: dict[str, Any], scenario: str, limit: int) -> None:
+    """Same ground truth as `_retrieval_probes` but queried with a same-meaning,
+    different-words rephrasing. Separate probe kind: this measures semantic
+    matching beyond lexical overlap and is intentionally kept apart from the
+    lexical golden metric so a low score here does not gate on the lexical
+    baseline."""
+    for golden in manifest.get("golden", []):
+        paraphrase = golden.get("paraphrase_query")
+        if not paraphrase:
+            continue
+        payload, raw, duration_ms = mcp.call_tool("retrieve_memory", {"root": str(root), "query_text": paraphrase, "limit": limit})
+        _record_tool(recorder, name="retrieve_memory", raw=raw, duration_ms=duration_ms, scenario=scenario)
+        ids = [item["id"] for item in payload.get("results", [])]
+        rank = ids.index(golden["id"]) + 1 if golden["id"] in ids else None
+        recorder.event("probe", {
+            "probe": "paraphrase_retrieval", "scenario": scenario, "query": paraphrase,
             "expected_id": golden["id"], "hit": rank is not None, "rank": rank,
             "duration_ms": round(duration_ms, 2),
         })

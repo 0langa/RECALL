@@ -1,10 +1,10 @@
 {
   "meta": {
     "bench_schema_version": 1,
-    "emission_hash": "8beae82f311a142286e213d83e656bc2f8e3cc5062c133477ec052343ed038af",
-    "journal": "bench\\runs\\complete-1337\\journal.jsonl",
+    "emission_hash": "f262aa1fe189e38397f260135f33c6dce57be5c6d9f784051743c6dd1b40b3e7",
+    "journal": "C:\\Users\\Julius\\source\\repos\\RECALL\\bench\\runs\\complete-1337\\journal.jsonl",
     "judge_tasks": {
-      "path": "bench\\runs\\complete-1337\\judge_tasks.jsonl",
+      "path": "C:\\Users\\Julius\\source\\repos\\RECALL\\bench\\runs\\complete-1337\\judge_tasks.jsonl",
       "tasks_emitted": 17
     },
     "mode": "complete",
@@ -31,33 +31,33 @@
     "latency": {
       "hook.post_tool_use": {
         "count": 71,
-        "max_ms": 218.73,
-        "p50_ms": 115.6,
-        "p95_ms": 147.24
+        "max_ms": 179.51,
+        "p50_ms": 109.28,
+        "p95_ms": 128.07
       },
       "hook.pre_compact": {
         "count": 3,
-        "max_ms": 133.05,
-        "p50_ms": 120.41,
-        "p95_ms": 133.05
+        "max_ms": 121.2,
+        "p50_ms": 118.6,
+        "p95_ms": 121.2
       },
       "hook.prompt_inspector": {
         "count": 207,
-        "max_ms": 509.57,
-        "p50_ms": 212.71,
-        "p95_ms": 309.96
+        "max_ms": 422.59,
+        "p50_ms": 201.85,
+        "p95_ms": 275.85
       },
       "hook.session_start": {
         "count": 65,
-        "max_ms": 267.8,
-        "p50_ms": 132.26,
-        "p95_ms": 196.4
+        "max_ms": 168.18,
+        "p50_ms": 120.32,
+        "p95_ms": 136.99
       },
       "hook.stop": {
         "count": 207,
-        "max_ms": 640.02,
-        "p50_ms": 173.09,
-        "p95_ms": 411.5
+        "max_ms": 468.57,
+        "p50_ms": 166.11,
+        "p95_ms": 353.53
       }
     },
     "quality": {
@@ -135,6 +135,21 @@
         "kind": "probe",
         "probe": "hygiene_detection",
         "scenario": "release_prep"
+      },
+      "paraphrase_retrieval": {
+        "hit_rate_at_limit": 0.3,
+        "mean_rank": 2.33,
+        "misses": [
+          "how do we pack export files",
+          "can we edit old financial records directly",
+          "how incoming data gets distributed to processing nodes",
+          "what time stamp info belongs at the bottom of output files",
+          "why does the release tool quit without doing anything",
+          "when does the payment test environment wipe its data",
+          "what caused the datastore to freeze during mass removal"
+        ],
+        "mrr": 0.5833,
+        "queries": 10
       },
       "retrieval": {
         "hit_rate_at_limit": 1.0,
@@ -239,7 +254,7 @@
       }
     },
     "tokens": {
-      "conditional_static_est_tokens": 38817,
+      "conditional_static_est_tokens": 45887,
       "fixed_overhead_per_session_est_tokens": 5752,
       "marginal_per_turn_est_tokens": 105.5,
       "marginal_total_est_tokens": 13721,
@@ -305,9 +320,9 @@
           "fixed": false
         },
         "tool_result_retrieve": {
-          "chars": 64934,
-          "count": 15,
-          "est_tokens": 16241,
+          "chars": 93205,
+          "count": 25,
+          "est_tokens": 23311,
           "fixed": false
         },
         "tool_result_save": {

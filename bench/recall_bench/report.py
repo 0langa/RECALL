@@ -58,6 +58,13 @@ def render_markdown(report: dict[str, Any]) -> str:
         ]
         if retrieval.get("misses"):
             lines.append(f"  - misses: {', '.join(retrieval['misses'])}")
+    paraphrase = quality.get("paraphrase_retrieval")
+    if paraphrase:
+        lines.append(
+            f"- paraphrase retrieval hit rate: **{paraphrase['hit_rate_at_limit']}** (MRR {paraphrase['mrr']}, {paraphrase['queries']} queries) — semantic headroom, not baseline-gated"
+        )
+        if paraphrase.get("misses"):
+            lines.append(f"  - misses: {', '.join(paraphrase['misses'])}")
     flag_data = quality.get("flag_correctness")
     if flag_data:
         lines.append(f"- flag correctness: **{flag_data['correct_rate']}** over {flag_data['checked']} lifecycle cards")
