@@ -11,7 +11,7 @@ RECALL never makes network calls or off-machine writes. All memory stays in the 
 
 ## Boundary
 
-`using-recall` is a policy skill. It does not create, retrieve, mutate, inspect, route, or clean memory. It establishes the contract the sibling skills obey. When a task requires an action, hand off to the correct sibling instead of taking the action here.
+`using-recall` is a policy skill. It does not create, retrieve, mutate, inspect, route, or clean memory. It establishes the contract the sibling skills obey. For an action-shaped request, this skill's only output is a structured recommendation naming the correct sibling — invoking that sibling is the calling agent's decision, not a step this skill performs.
 
 Use the boundary asset as the quick handoff check:
 
@@ -100,11 +100,11 @@ Worked handoffs: [`references/handoff-scenarios.md`](references/handoff-scenario
 ## Workflow
 
 1. At session start, apply the contract before other RECALL skills run.
-2. Match the user request to the handoff map.
-3. Invoke the sibling skill; do not perform its work here.
-4. If routing is ambiguous, ask `memory-hygiene` before touching memory.
+2. Look up the request in the Handoff Map above; do not re-derive routing logic here.
+3. Return the matching sibling as this skill's output — naming it is the deliverable; invoking it belongs to the calling agent.
+4. If the Handoff Map has no clear match, name `memory-hygiene` as the sibling to consult before memory is touched.
 5. When retrieval or hygiene output surfaces a secret-shaped record, return a redacted summary.
-6. When a write is refused by policy, tell the user which rule fired and which sibling can override it.
+6. When a write is refused by policy, state which rule fired and which sibling can override it.
 
 ## Examples
 
@@ -114,36 +114,15 @@ Establish the contract at session start:
 {"action":"using-recall","store_root":".recall","origin_provider":"kimi","applies_to_provider":"all"}
 ```
 
-Route a "remember this" request:
+Route a request using the Handoff Map — this skill's output is the recommendation, not the invocation:
 
-```
-User: "Remember that our default backend is SQLite."
-Handoff: save-insight decisions "Default backend is SQLite." \
-  --summary "Default backend is SQLite." \
-  --tag decision --source skill --status active \
-  --importance 0.8 --confidence 0.9
+```json
+{"action":"using-recall","handoff":{"skill":"save-insight","reason":"durable decision: default backend is SQLite"},"store_root":".recall","origin_provider":"claude-code","applies_to_provider":"all"}
 ```
 
-Route a "what do we know" request:
-
-```
-User: "What do we know about the release process?"
-Handoff: retrieve-memory "release process" --summary
-```
-
-Route a cleanup request:
-
-```
-User: "Some memories look stale."
-Handoff: memory-hygiene hygiene-scan --limit 80
-```
-
-Route an explicit destructive request:
-
-```
-User: "Delete memory 42."
-Handoff: manage-memory delete-memory 42 --confirm DELETE-42
-```
+The named sibling owns its own parameters (tags, importance, confidence, filters, limits) — this
+skill only identifies which sibling and why. The Handoff Map above covers the remaining request
+types; worked end-to-end scenarios for each are in [handoff-scenarios.md](references/handoff-scenarios.md).
 
 Handle a secret-shaped retrieval:
 
@@ -184,15 +163,12 @@ When policy refuses a request:
 
 ## Ownership Boundaries
 
+Every row in the Handoff Map above resolves to the same action: apply the contract, then return
+that sibling as the handoff. Only two request shapes fall outside that table:
+
 | Request | This skill action | Handoff |
 |---|---|---|
 | "start using RECALL" | apply the contract | none |
-| "remember this decision" | apply the contract, then hand off | `save-insight` |
-| "what do we know about X" | apply the contract, then hand off | `retrieve-memory` |
-| "audit memory quality" | apply the contract, then hand off | `review-memory` |
-| "delete/edit/supersede memory 42" | apply the contract, then hand off | `manage-memory` |
-| "clean this candidate up" | apply the contract, then hand off | `memory-hygiene` |
-| "make a new category" | apply the contract, then hand off | `define-category` |
 | "don't remember this" | apply the contract, refuse | none |
 
 ## Edge Cases

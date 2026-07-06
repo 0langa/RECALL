@@ -18,10 +18,10 @@ All `python ./scripts/recall_skill.py ...` examples assume the current directory
 ## Contract
 
 This skill receives a category-design request and returns one normalized category definition:
-name, description, and retrieval weight. It owns durable taxonomy, not ordinary tagging,
-memory writing, broad cleanup, or retrieval. If the request is about storing a fact, use
-`save-insight`. If it is about inspecting category counts or noisy records, use
-`review-memory`.
+name, description, and retrieval weight. It owns durable taxonomy only — not ordinary tagging,
+memory writing, broad cleanup, or retrieval. Storing a fact is `save-insight`'s contract;
+inspecting category counts or noisy records is `review-memory`'s contract. Those requests are
+out of scope here, not requests this skill routes elsewhere.
 
 Use the contract asset as the quick boundary check:
 
