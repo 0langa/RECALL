@@ -35,6 +35,37 @@ SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
     re.compile(r"(?i)(api[_-]?key|token|password|secret)\s*[:=]\s*['\"]?[^'\"\s]+"),
 ]
+# Values that make the second pattern's keyword=value match source code
+# (type annotations, slice reassignment) rather than a real secret literal.
+_NOT_A_SECRET_VALUE = {
+    "str", "int", "float", "bool", "bytes", "list", "dict", "set", "tuple",
+    "any", "none", "object", "optional", "callable",
+}
+
+
+def _is_plausible_secret(match: "re.Match[str]") -> bool:
+    """Filter keyword=value false positives from ordinary Python source.
+
+    The first pattern (an OpenAI-style key prefix) is structurally specific
+    enough to trust outright. The second pattern's bare keyword-then-
+    separator shape also matches a type-annotated parameter or a variable
+    reassigned from a slice of itself — neither is a secret literal. Reject
+    a match only when the captured value is a common type keyword or
+    restates the matched keyword itself; a real hardcoded credential does
+    neither.
+    """
+    if match.lastindex is None:
+        return True
+    keyword = match.group(1)
+    value = match.group(0)[match.end(1) - match.start(0):].lstrip(" \t:=").strip("'\"")
+    value = re.split(r"[,);\s]", value, maxsplit=1)[0]
+    if not value:
+        return False
+    if value.lower() in _NOT_A_SECRET_VALUE:
+        return False
+    if value.lower().startswith(keyword.lower()):
+        return False
+    return True
 
 
 def normalize(path: str) -> str:
@@ -95,7 +126,8 @@ def inspect_package(path: Path) -> dict[str, object]:
             if WINDOWS_USER_MARKER in text or POSIX_USER_MARKER in text:
                 errors.append(f"Personal absolute path found in: {name}")
             for pattern in SECRET_PATTERNS:
-                if pattern.search(text):
+                match = pattern.search(text)
+                if match and _is_plausible_secret(match):
                     errors.append(f"Secret-like string found in: {name}")
                     break
 

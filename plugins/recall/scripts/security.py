@@ -25,11 +25,47 @@ SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----"),
 ]
 
+# Values that make the keyword=value patterns above match ordinary source
+# code (type annotations, slice reassignment) rather than a real secret.
+_NOT_A_SECRET_VALUE = {
+    "str", "int", "float", "bool", "bytes", "list", "dict", "set", "tuple",
+    "any", "none", "object", "optional", "callable",
+}
+_SEPARATOR_RE = re.compile(r"^\s*(?:is|was|[:=])\s*")
+
+
+def _is_plausible_secret(match: "re.Match[str]") -> bool:
+    """Filter type-annotation and self-reassignment false positives (a bare
+    "token" parameter typed as a builtin, or reassigned from itself) out of
+    the first two keyword-based patterns; every other pattern is
+    structurally specific enough (sk-, AKIA, JWT shape, ...) to trust as-is.
+    """
+    if match.lastindex is None:
+        return True
+    keyword = match.group(1)
+    remainder = match.group(0)[match.end(1) - match.start(0):]
+    value = _SEPARATOR_RE.sub("", remainder, count=1).strip("'\"")
+    value = re.split(r"[,);\s]", value, maxsplit=1)[0]
+    if not value:
+        return False
+    if value.lower() in _NOT_A_SECRET_VALUE:
+        return False
+    if value.lower().startswith(keyword.lower()):
+        return False
+    return True
+
+
+def _first_plausible_match(pattern: "re.Pattern[str]", text: str) -> "re.Match[str] | None":
+    for match in pattern.finditer(text):
+        if _is_plausible_secret(match):
+            return match
+    return None
+
 
 def redact_text(text: str) -> str:
     redacted = text
     for pattern in SECRET_PATTERNS:
-        redacted = pattern.sub("[REDACTED]", redacted)
+        redacted = pattern.sub(lambda match: "[REDACTED]" if _is_plausible_secret(match) else match.group(0), redacted)
     return redacted
 
 
@@ -47,6 +83,6 @@ def contains_secret(*values: str | None) -> bool:
     for value in values:
         if not value:
             continue
-        if any(pattern.search(value) for pattern in SECRET_PATTERNS):
+        if any(_first_plausible_match(pattern, value) is not None for pattern in SECRET_PATTERNS):
             return True
     return False
