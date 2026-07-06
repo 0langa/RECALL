@@ -100,6 +100,35 @@ class StoreMigrationTests(unittest.TestCase):
             report = recovery_service.migrate_legacy_store(tmp, apply=True)
             self.assertEqual(report["result"], "nothing_to_migrate")
 
+    def test_legacy_store_triggers_session_start_and_doctor_nudges(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            seed_legacy_store(tmp)
+            recall_config.activate_project(tmp)
+
+            hook = subprocess.run(
+                [sys.executable, str(ROOT / "hooks" / "scripts" / "session_start.py")],
+                input=json.dumps({"cwd": tmp, "hook_event_name": "SessionStart", "source": "startup"}),
+                text=True, capture_output=True, check=True, cwd=ROOT,
+            )
+            context = json.loads(hook.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("migrate-store", context)
+
+            doctor = run_skill(tmp, "doctor")
+            self.assertIn("migrate-store", doctor["report"]["repairs_available"])
+            self.assertTrue(any("legacy" in warning for warning in doctor["report"]["warnings"]))
+
+            # After migration both nudges disappear.
+            run_skill(tmp, "migrate-store", "--apply")
+            hook_after = subprocess.run(
+                [sys.executable, str(ROOT / "hooks" / "scripts" / "session_start.py")],
+                input=json.dumps({"cwd": tmp, "hook_event_name": "SessionStart", "source": "startup"}),
+                text=True, capture_output=True, check=True, cwd=ROOT,
+            )
+            context_after = json.loads(hook_after.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertNotIn("migrate-store", context_after)
+            doctor_after = run_skill(tmp, "doctor")
+            self.assertNotIn("migrate-store", doctor_after["report"]["repairs_available"])
+
     def test_adapter_command_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             seed_legacy_store(tmp)

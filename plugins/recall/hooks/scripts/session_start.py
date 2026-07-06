@@ -59,6 +59,12 @@ def main() -> None:
     overview = store_overview(root)
     if overview:
         parts.append(overview)
+    if recall_config.memory_dir(root).name == recall_config.LEGACY_MEMORY_DIR_NAME:
+        parts.append(
+            "This project still uses the legacy .codex_memory store. Migrate it to the "
+            "provider-neutral .recall directory with `recall_skill.py migrate-store --apply` "
+            "(safe copy; counts verified; the legacy directory is kept as a frozen backup)."
+        )
     text = "\n".join(parts)
     # Hard cap the injected context so RECALL never dominates per-session
     # token cost (~2000 chars ≈ 500 tokens).

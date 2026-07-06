@@ -398,6 +398,9 @@ def doctor(root: str | Path | None = None) -> dict[str, Any]:
         warnings.append(f"Malformed JSONL row count: {jsonl_report['malformed_jsonl_rows']}.")
     if jsonl_report["invalid_jsonl_rows"]:
         warnings.append(f"Invalid JSONL row count: {jsonl_report['invalid_jsonl_rows']}.")
+    if recall_config.memory_dir(root).name == recall_config.LEGACY_MEMORY_DIR_NAME:
+        warnings.append("Active store is the legacy .codex_memory directory; migrate to .recall with migrate-store.")
+        repairs_available.append("migrate-store")
     return {
         "backend": backend,
         "schema_version": storage.schema_version(root),
