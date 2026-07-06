@@ -308,6 +308,10 @@ def handle_restore_memory(args: argparse.Namespace, root: Path | None) -> None:
     print_json({"action": "restore-memory", "report": recovery_service.restore_memory(args.path, root)})
 
 
+def handle_migrate_store(args: argparse.Namespace, root: Path | None) -> None:
+    print_json(recovery_service.migrate_legacy_store(root, apply=args.apply))
+
+
 def handle_list_categories(args: argparse.Namespace, root: Path | None) -> None:
     cfg = recall_config.load_config(root)
     categories = [
@@ -665,6 +669,9 @@ def main() -> None:
     import_memory.add_argument("--replace", action="store_true")
     import_memory.set_defaults(handler=handle_import_memory)
     subparsers.add_parser("backup-memory").set_defaults(handler=handle_backup_memory)
+    migrate_store = subparsers.add_parser("migrate-store")
+    migrate_store.add_argument("--apply", action="store_true", help="Perform the migration. Omit for a dry-run plan.")
+    migrate_store.set_defaults(handler=handle_migrate_store)
     restore_memory = subparsers.add_parser("restore-memory")
     restore_memory.add_argument("path")
     restore_memory.set_defaults(handler=handle_restore_memory)

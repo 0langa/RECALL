@@ -91,6 +91,10 @@ Use the contract asset when deciding whether the request belongs here:
 3. Use `archive-noise` for non-destructive cleanup of low-value automatic command history.
 4. Use lifecycle commands to confirm, resolve, mark stale, supersede, merge, or prune memory.
 5. Use `doctor` and `repair` only for local storage or index maintenance.
+   Use `migrate-store` (dry-run by default, `--apply` to execute) to move a
+   legacy `.codex_memory/` store into provider-neutral `.recall/`: it copies
+   via the sqlite backup API, verifies record counts, rebuilds the index,
+   and leaves the legacy directory in place as a frozen backup.
 6. Use `delete-memory` only with explicit user intent. Prefer archival over deletion.
 
 ## Output Format

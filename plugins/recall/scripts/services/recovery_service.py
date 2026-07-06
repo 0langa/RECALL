@@ -1,8 +1,10 @@
-"""Portable export, import, backup, and restore workflows."""
+"""Portable export, import, backup, restore, and store-migration workflows."""
 
 from __future__ import annotations
 
 import json
+import shutil
+import sqlite3
 from collections import defaultdict
 from contextlib import closing
 from datetime import datetime, timezone
@@ -11,11 +13,97 @@ from typing import Any
 
 import config as recall_config
 import index_store
-import security
 import storage
+import security
 
 
 FORMAT = "recall.export.v1"
+
+
+def _sqlite_record_count(db_path: Path) -> int:
+    connection = sqlite3.connect(db_path)
+    try:
+        row = connection.execute("SELECT COUNT(*) FROM memories").fetchone()
+        return int(row[0]) if row else 0
+    finally:
+        connection.close()
+
+
+def migrate_legacy_store(root: str | Path | None = None, *, apply: bool = False) -> dict[str, Any]:
+    """Migrate a legacy `.codex_memory/` store into provider-neutral `.recall/`.
+
+    Copies (never moves) the SQLite store via the sqlite backup API, plus the
+    config and any JSONL files, rebuilds the vector index against the new
+    directory, and verifies record counts match. The legacy directory is left
+    untouched as a frozen backup; once `.recall/` exists it wins resolution
+    and `.codex_memory/` becomes read-only history by precedence.
+    """
+
+    project = recall_config.project_root(root)
+    legacy = recall_config.legacy_memory_dir(project)
+    neutral = recall_config.neutral_memory_dir(project)
+    report: dict[str, Any] = {
+        "action": "migrate-store",
+        "mode": "apply" if apply else "dry-run",
+        "legacy": str(legacy),
+        "target": str(neutral),
+    }
+    if not legacy.exists():
+        return {**report, "result": "nothing_to_migrate", "reason": "no legacy .codex_memory directory"}
+    if neutral.exists() and any(neutral.iterdir()):
+        return {
+            **report,
+            "result": "refused",
+            "reason": ".recall already exists and is not empty; resolve manually to avoid overwriting memory",
+        }
+
+    legacy_db = legacy / "memory.sqlite"
+    legacy_jsonl = legacy / "jsonl"
+    plan = {
+        "sqlite": legacy_db.exists(),
+        "sqlite_records": _sqlite_record_count(legacy_db) if legacy_db.exists() else 0,
+        "config": (legacy / "memory_config.json").exists(),
+        "jsonl_files": len(list(legacy_jsonl.glob("*.jsonl"))) if legacy_jsonl.exists() else 0,
+    }
+    report["plan"] = plan
+    if not apply:
+        return {**report, "result": "planned", "next": "re-run with --apply to migrate"}
+
+    neutral.mkdir(parents=True, exist_ok=True)
+    if plan["config"]:
+        shutil.copyfile(legacy / "memory_config.json", neutral / "memory_config.json")
+    if plan["sqlite"]:
+        # sqlite backup API is safe against a WAL store and checkpoints it.
+        source = sqlite3.connect(legacy_db)
+        target = sqlite3.connect(neutral / "memory.sqlite")
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+            source.close()
+    if plan["jsonl_files"]:
+        (neutral / "jsonl").mkdir(exist_ok=True)
+        for path in legacy_jsonl.glob("*.jsonl"):
+            shutil.copyfile(path, neutral / "jsonl" / path.name)
+
+    migrated_count = _sqlite_record_count(neutral / "memory.sqlite") if plan["sqlite"] else 0
+    if plan["sqlite"] and migrated_count != plan["sqlite_records"]:
+        return {
+            **report,
+            "result": "failed",
+            "reason": f"record count mismatch after copy: legacy {plan['sqlite_records']} vs migrated {migrated_count}",
+        }
+    # Root now resolves to .recall (it exists), so rebuild targets the new store.
+    index_report = index_store.rebuild(project)
+    gitignore = recall_config.ensure_gitignore_entries(project)
+    return {
+        **report,
+        "result": "migrated",
+        "records": migrated_count,
+        "index": index_report,
+        "gitignore": gitignore,
+        "legacy_directory": "left in place as frozen backup; .recall now wins resolution. Delete .codex_memory manually once satisfied.",
+    }
 
 
 def _payload(root: str | Path | None) -> dict[str, Any]:
