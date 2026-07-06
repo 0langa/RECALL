@@ -248,21 +248,23 @@ ruff blocking + lenient mypy blocking; 4 separate commits; hold push.
    re-enable hint (skill/MCP saves unaffected; recall_mode governs retrieval).
    tests/test_capture_modes.py (8 tests). Version 1.3.0 in all 5 places.
 
-## Deferred (with reasons)
+## Deferred (with reasons) — CLOSED, all 4 items resolved in Batch 2 (1.3.0)
 
-1. Semantic repo-doc duplication detection — severity: medium; component:
-   memory_hygiene; risk: memory duplicating README/docs undetected unless
-   routed through route-memory; deferral: needs a docs-corpus similarity pass,
-   design decision on false positives; next step: token-overlap comparison of
-   memory content vs docs/*.md with a review-only proposal.
-2. Configurable ageing thresholds (45d hygiene / 30d retrieval flag constants)
-   — severity: low; component: memory_hygiene/retrieval; next step: read from
-   memory_config.json `staleness` block.
-3. Lint/type CI gate (no ruff/mypy config in repo) — severity: low; next step:
-   add ruff config + CI job.
-4. capture_mode enforcement inside hook scripts remains partial (pre-existing)
-   — severity: low-medium; component: hooks; next step: gate post_tool_use
-   capture on capture_mode value.
+This list was never updated when Batch 2 shipped; all 4 items below were
+fully closed by 2026-07-05 and are kept here only as a pointer to what
+resolved them.
+
+1. ~~Semantic repo-doc duplication detection~~ — DONE: `_doc_duplicate_
+   proposals` in memory_hygiene, paragraph-level token containment vs
+   README.md + docs/**/*.md, review-only `review_doc_duplicate` proposals.
+2. ~~Configurable ageing thresholds~~ — DONE: `staleness` config block
+   (`snapshot_stale_days`, `retrieval_aging_days`) in memory_config.json,
+   consumed by both memory_hygiene and retrieval.
+3. ~~Lint/type CI gate~~ — DONE: `pyproject.toml` (ruff E4/E7/E9/F/B +
+   lenient mypy), both blocking, wired as a CI job.
+4. ~~capture_mode enforcement inside hook scripts~~ — DONE: standard/
+   minimal/manual/off all enforced across post_tool_use, pre_compact, and
+   prompt_inspector; `tests/test_capture_modes.py` (8 tests).
 
 ## Batch 4 — Paraphrase-robust retrieval (2026-07-06) → v1.4.0
 
