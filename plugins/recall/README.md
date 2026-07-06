@@ -4,8 +4,8 @@ RECALL is local-first project memory for Codex, Kimi Code, and Claude Code. It s
 
 ## What Works
 
-- Deterministic memory lifecycle contract (`scripts/contract.py`): source authority order, retrieve-before-work triggers, save/skip rules, and status meanings, exposed via the MCP server `instructions`, the `memory_contract` MCP tool, the SessionStart hook context, and `recall_skill.py contract` — the same rules on every provider.
-- MCP lifecycle surface: `retrieve_memory`, `context_packet`, `save_insight`, `review_memory`, `update_memory`, `memory_hygiene`, `memory_contract`, `initialize_project`.
+- Deterministic memory lifecycle contract (`scripts/contract.py`): source authority order, retrieve-before-work triggers, save/skip rules, and status meanings. One contract, delivered per provider: the SessionStart hook injects it everywhere; Claude Code and Kimi Code additionally receive it through the MCP server `instructions` and the `memory_contract` tool; on any provider it is retrievable via `recall_skill.py contract`.
+- MCP lifecycle surface: `retrieve_memory`, `context_packet`, `save_insight`, `review_memory`, `update_memory`, `memory_hygiene`, `memory_contract`, `initialize_project`. Declared in the Claude Code and Kimi manifests; Codex gets the identical server through an optional one-entry `config.toml` addition (see [docs/CODEX.md](docs/CODEX.md)) or reaches every capability through the skill adapter CLI — the engine and store are the same either way.
 - Retrieval health flags: every result is marked `current`, `stale`, `superseded`, `deprecated`, `needs_verification`, or `conflicting`, with a `health.next_action` telling the agent what to do about it.
 - Duplicate-aware saves: exact duplicates confirm the existing card instead of appending; near-duplicates link and suggest a merge; secret-shaped content is rejected on every write surface.
 - Hygiene detection for stored secrets (safe in-place redaction), raw log dumps, vague cards, aged snapshots, duplicates, conflicts, and missing provenance.
@@ -27,7 +27,7 @@ RECALL is local-first project memory for Codex, Kimi Code, and Claude Code. It s
 From GitHub:
 
 ```bash
-codex plugin marketplace add 0langa/RECALL --ref v1.0.0
+codex plugin marketplace add 0langa/RECALL --ref v1.3.0
 codex plugin add recall@recall-local
 ```
 
@@ -313,7 +313,7 @@ Lifecycle metadata is stored inside each memory card. RECALL understands `relate
 
 ## Storage
 
-RECALL writes all runtime data under `.recall/` for new projects, which should be ignored by git. If `.codex_memory/` already exists, RECALL keeps using that legacy store so existing Codex projects are not silently forked. The default backend is SQLite:
+RECALL writes all runtime data under `.recall/` for new projects, which should be ignored by git. If a project only has `.codex_memory/`, RECALL keeps using that legacy store so existing Codex history is not silently forked. Once `.recall/` exists, `.recall/` wins and `.codex_memory/` is legacy history unless you explicitly migrate or inspect it. The default backend is SQLite:
 
 ```text
 .recall/
@@ -339,7 +339,7 @@ RECALL is designed to stay local. The foundation implementation makes no network
 - Codex hook trust is intentionally interactive; RECALL cannot bypass that review.
 - Retrieval is schema-first and deterministic, not transformer-grade semantic search.
 - RECALL depends on a local Python runtime being available to run its scripts and hooks.
-- Live Codex App picker visibility, fresh-thread skill discovery, hook trust, installed-cache smoke, and built-zip marketplace smoke were verified for `v1.0.0`; future Codex payload drift remains a normal compatibility risk.
+- Live Codex App picker visibility, fresh-thread skill discovery, hook trust, installed-cache smoke, and built-zip marketplace smoke have been verified for the stable release line; future Codex payload drift remains a normal compatibility risk.
 
 ## Roadmap
 

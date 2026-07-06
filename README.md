@@ -13,7 +13,7 @@ The installable plugin lives in [`plugins/recall`](plugins/recall/). It contains
 - Captures explicit "remember this" requests and useful development outcomes.
 - Stores structured memory categories such as `decisions`, `requirements`, `risks`, `commands`, and `debug_history`.
 - Supports review, confirmation, supersession, merge, and archival of memory cards.
-- Exposes a deterministic lifecycle contract (retrieve before work, save/skip rules, source authority order) through the MCP server, session-start hooks, and the skill adapter — the same rules on every provider.
+- Exposes a deterministic lifecycle contract (retrieve before work, save/skip rules, source authority order). One contract everywhere, delivered per provider: session-start hooks inject it on Codex, Claude Code, and Kimi Code alike; Claude Code and Kimi Code additionally get it through MCP tool schemas and server instructions, and Codex can opt into the same MCP server with one `config.toml` entry ([docs](plugins/recall/docs/CODEX.md)).
 - Flags retrieval results as current, stale, superseded, deprecated, needs-verification, or conflicting so agents know what to trust.
 - Detects duplicates at save time and confirms the existing card instead of appending; hygiene finds stored secrets, raw logs, vague cards, aged snapshots, and conflicts, and applies safe repairs.
 - Exposes seven public skills: `using-recall`, `retrieve-memory`, `save-insight`, `review-memory`, `manage-memory`, `define-category`, and `memory-hygiene`.
@@ -30,7 +30,7 @@ RECALL does not use a hosted database or network embedding service. It is design
 Requires Codex CLI with plugin marketplace support and a local Python runtime.
 
 ```bash
-codex plugin marketplace add 0langa/RECALL --ref v1.0.0
+codex plugin marketplace add 0langa/RECALL --ref v1.3.0
 codex plugin add recall@recall-local
 ```
 
@@ -41,6 +41,8 @@ Then open Codex in a project and invoke:
 ```
 
 Codex may ask you to review and trust the bundled RECALL hooks before automatic memory capture and retrieval run.
+
+To give Codex the same eight MCP tools Claude Code and Kimi Code see (recommended for cross-provider consistency), add RECALL's server to `~/.codex/config.toml` — one entry, documented in [plugins/recall/docs/CODEX.md](plugins/recall/docs/CODEX.md).
 
 ## Install From A Local Checkout
 
@@ -153,7 +155,7 @@ RECALL writes runtime data to the active project:
   memory.sqlite
 ```
 
-`.recall/` should stay out of source control. Existing `.codex_memory/` stores remain usable and authoritative until a project is migrated, so Codex and Kimi can share the same historical memory instead of forking it.
+`.recall/` should stay out of source control. If a project only has a legacy `.codex_memory/` store, RECALL keeps using it so existing history stays visible. Once `.recall/` exists, `.recall/` wins and `.codex_memory/` is legacy history unless you explicitly migrate or inspect it.
 
 ## Security Model
 
@@ -177,16 +179,16 @@ python build_plugin.py
 python plugins/recall/scripts/smoke_zip_marketplace.py dist/recall.zip --json
 ```
 
-The v1.0.0 release was validated with the plugin test suite, quality suite, package inspection, built-zip marketplace smoke test, installed-cache smoke test, and a real project field test.
+The v1.3.0 release was validated with plugin tests, quality gates, package inspection, built-zip marketplace smoke, installed-cache smoke, and benchmark runs.
 The 2026-06-25 split retest also verified Codex CLI `0.140.0` and Kimi Code
 CLI `0.19.2` writing and reading each other's project-local `.recall/` memory
 through live hook-injected context.
 
 ## Release Status
 
-Current stable release: `v1.0.0`
+Current stable release: `v1.3.0`
 
-The GitHub release asset is `recall.zip`. Users who install from GitHub should pin `--ref v1.0.0` for a stable install.
+The GitHub release asset is `recall.zip`. Users who install from GitHub should pin `--ref v1.3.0` for a stable install.
 
 ## License
 

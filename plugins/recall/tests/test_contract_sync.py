@@ -105,6 +105,57 @@ class ContractConsistencyTests(unittest.TestCase):
             self.assertIn(status, recall_contract.STATUS_MEANINGS)
 
 
+class ProviderCapabilityParityTests(unittest.TestCase):
+    """Every MCP tool must stay reachable on Codex through the adapter CLI.
+
+    Codex's plugin manifest declares no MCP server (opt-in via config.toml,
+    docs/CODEX.md), so the adapter is its guaranteed path. This map failing
+    means a capability became MCP-only — a silent cross-provider gap.
+    """
+
+    MCP_TO_ADAPTER = {
+        "retrieve_memory": ["retrieve-memory"],
+        "context_packet": ["context-packet"],
+        "save_insight": ["save-insight"],
+        "review_memory": ["review-memory"],
+        "update_memory": [
+            "confirm-memory", "stale-memory", "supersede-memory", "merge-memories",
+            "resolve-memory", "prune-memory", "edit-memory", "deprecate-memory",
+        ],
+        "memory_hygiene": ["route-memory", "hygiene-scan", "hygiene-plan", "hygiene-apply"],
+        "memory_contract": ["contract"],
+        "initialize_project": ["initialize-project"],
+    }
+
+    def test_map_covers_exactly_the_mcp_tool_surface(self) -> None:
+        server_source = (ROOT / "scripts" / "kimi_mcp_server.py").read_text(encoding="utf-8")
+        import re
+
+        declared = set(re.findall(r'"name": "([a-z_]+)",\n\s+"description"', server_source))
+        self.assertEqual(
+            declared,
+            set(self.MCP_TO_ADAPTER),
+            "MCP tool surface changed; update MCP_TO_ADAPTER, the adapter, and docs/CODEX.md together",
+        )
+
+    def test_every_mcp_tool_has_adapter_equivalents(self) -> None:
+        adapter_source = (ROOT / "scripts" / "recall_skill.py").read_text(encoding="utf-8")
+        for tool, commands in self.MCP_TO_ADAPTER.items():
+            for command in commands:
+                self.assertIn(
+                    f'add_parser("{command}")',
+                    adapter_source.replace("subparsers.add_parser", "add_parser"),
+                    f"MCP tool {tool} lost its adapter equivalent `{command}`",
+                )
+
+    def test_codex_doc_documents_the_full_tool_map(self) -> None:
+        codex_doc = (ROOT / "docs" / "CODEX.md").read_text(encoding="utf-8")
+        for tool in self.MCP_TO_ADAPTER:
+            self.assertIn(f"`{tool}`", codex_doc, f"docs/CODEX.md missing MCP tool {tool}")
+        self.assertIn("mcp_servers.recall", codex_doc)
+        self.assertIn('RECALL_DEFAULT_PROVIDER = "codex"', codex_doc)
+
+
 class CategoryGuidanceTests(unittest.TestCase):
     def test_default_categories_carry_examples_and_update_rules(self) -> None:
         for name, details in recall_config.DEFAULT_CATEGORIES.items():
