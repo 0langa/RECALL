@@ -38,6 +38,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install bench test tooling
+        run: python -m pip install pytest
+
       - name: Bench harness self-tests
         run: python -m pytest bench/tests -q
 
