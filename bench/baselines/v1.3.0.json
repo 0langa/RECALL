@@ -1,7 +1,7 @@
 {
   "meta": {
     "bench_schema_version": 1,
-    "emission_hash": "f262aa1fe189e38397f260135f33c6dce57be5c6d9f784051743c6dd1b40b3e7",
+    "emission_hash": "969b96053044da3129880d7c26da46ec190234d4319514076ae2aff5cf0a3556",
     "journal": "C:\\Users\\Julius\\source\\repos\\RECALL\\bench\\runs\\complete-1337\\journal.jsonl",
     "judge_tasks": {
       "path": "C:\\Users\\Julius\\source\\repos\\RECALL\\bench\\runs\\complete-1337\\judge_tasks.jsonl",
@@ -31,44 +31,44 @@
     "latency": {
       "hook.post_tool_use": {
         "count": 71,
-        "max_ms": 179.51,
-        "p50_ms": 109.28,
-        "p95_ms": 128.07
+        "max_ms": 442.39,
+        "p50_ms": 170.31,
+        "p95_ms": 311.1
       },
       "hook.pre_compact": {
         "count": 3,
-        "max_ms": 121.2,
-        "p50_ms": 118.6,
-        "p95_ms": 121.2
+        "max_ms": 174.25,
+        "p50_ms": 166.03,
+        "p95_ms": 174.25
       },
       "hook.prompt_inspector": {
         "count": 207,
-        "max_ms": 422.59,
-        "p50_ms": 201.85,
-        "p95_ms": 275.85
+        "max_ms": 988.24,
+        "p50_ms": 321.74,
+        "p95_ms": 664.6
       },
       "hook.session_start": {
         "count": 65,
-        "max_ms": 168.18,
-        "p50_ms": 120.32,
-        "p95_ms": 136.99
+        "max_ms": 476.29,
+        "p50_ms": 196.0,
+        "p95_ms": 364.74
       },
       "hook.stop": {
         "count": 207,
-        "max_ms": 468.57,
-        "p50_ms": 166.11,
-        "p95_ms": 353.53
+        "max_ms": 1299.49,
+        "p50_ms": 267.49,
+        "p95_ms": 788.76
       }
     },
     "quality": {
       "compact_vs_verbose": {
-        "compact_chars": 2164,
+        "compact_chars": 2165,
         "compact_has_no_metadata": true,
         "compact_is_smaller": true,
         "kind": "probe",
         "probe": "compact_vs_verbose",
         "scenario": "release_prep",
-        "verbose_chars": 3477,
+        "verbose_chars": 3478,
         "verbose_has_metadata": true
       },
       "conflict_marking": {
@@ -137,15 +137,13 @@
         "scenario": "release_prep"
       },
       "paraphrase_retrieval": {
-        "hit_rate_at_limit": 0.3,
-        "mean_rank": 2.33,
+        "hit_rate_at_limit": 0.5,
+        "mean_rank": 2.4,
         "misses": [
-          "how do we pack export files",
+          "overnight cleanup script to run",
           "can we edit old financial records directly",
           "how incoming data gets distributed to processing nodes",
           "what time stamp info belongs at the bottom of output files",
-          "why does the release tool quit without doing anything",
-          "when does the payment test environment wipe its data",
           "what caused the datastore to freeze during mass removal"
         ],
         "mrr": 0.5833,
@@ -254,10 +252,10 @@
       }
     },
     "tokens": {
-      "conditional_static_est_tokens": 45887,
+      "conditional_static_est_tokens": 45395,
       "fixed_overhead_per_session_est_tokens": 5752,
-      "marginal_per_turn_est_tokens": 105.5,
-      "marginal_total_est_tokens": 13721,
+      "marginal_per_turn_est_tokens": 95.2,
+      "marginal_total_est_tokens": 12377,
       "per_channel": {
         "mcp_initialize_instructions": {
           "chars": 1061,
@@ -272,9 +270,9 @@
           "fixed": true
         },
         "prompt_injection": {
-          "chars": 53317,
+          "chars": 47836,
           "count": 128,
-          "est_tokens": 13349,
+          "est_tokens": 12005,
           "fixed": false
         },
         "session_start_context": {
@@ -320,9 +318,9 @@
           "fixed": false
         },
         "tool_result_retrieve": {
-          "chars": 93205,
+          "chars": 91245,
           "count": 25,
-          "est_tokens": 23311,
+          "est_tokens": 22819,
           "fixed": false
         },
         "tool_result_save": {
@@ -332,7 +330,7 @@
           "fixed": false
         }
       },
-      "projected_session_est_tokens_20_turns": 7862,
+      "projected_session_est_tokens_20_turns": 7656,
       "sessions_measured": 66,
       "turns_measured": 130
     }

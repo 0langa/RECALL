@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -215,14 +216,121 @@ def normalized_lexical_overlap(query_text: str, record: storage.MemoryRecord) ->
     return min(1.0, score)
 
 
-def rank_lexical_score(query_text: str, record: storage.MemoryRecord) -> float:
+def _document_tokens(record: storage.MemoryRecord) -> set[str]:
+    metadata = record.metadata or {}
+    texts = [record.content]
+    for key in ("summary", "details"):
+        value = metadata.get(key)
+        if isinstance(value, str):
+            texts.append(value)
+    tags = metadata.get("tags")
+    if isinstance(tags, list):
+        texts.append(" ".join(str(tag) for tag in tags))
+    elif isinstance(tags, str):
+        texts.append(tags)
+    tokens: set[str] = set()
+    for text in texts:
+        tokens.update(gate_tokens(text))
+    return tokens
+
+
+def build_term_document_frequencies(records: list[storage.MemoryRecord]) -> tuple[dict[str, int], int]:
+    """Corpus-wide document frequency per gate token, for IDF downweighting.
+
+    Store-frequent tokens (repeated filler vocabulary like "script" or
+    "release") should count for less in ranking than distinctive terms
+    ("zstandard", "websocket") that appear on only one or two cards.
+    """
+    doc_freq: dict[str, int] = {}
+    for record in records:
+        for token in _document_tokens(record):
+            doc_freq[token] = doc_freq.get(token, 0) + 1
+    return doc_freq, len(records)
+
+
+def idf_weight(token: str, doc_freq: dict[str, int], total_docs: int) -> float:
+    frequency = doc_freq.get(token, 0)
+    return math.log((total_docs + 1) / (frequency + 1)) + 1.0
+
+
+def idf_weighted_overlap(
+    query_text: str,
+    record: storage.MemoryRecord,
+    doc_freq: dict[str, int],
+    total_docs: int,
+) -> float:
+    """IDF-downweighted variant of `normalized_lexical_overlap`, ranking only.
+
+    A matched rare token (e.g. "zstandard") now counts for more than a
+    matched store-frequent one (e.g. "script"), so a single distinctive
+    overlap can outrank a card that only shares generic filler vocabulary.
+    The gate's own threshold check keeps using flat overlap unchanged.
+    """
+    query_tokens = gate_tokens(query_text)
+    if not query_tokens:
+        return 0.0
+    query_weight_total = sum(idf_weight(token, doc_freq, total_docs) for token in query_tokens)
+    if query_weight_total <= 0:
+        return 0.0
+    metadata = record.metadata or {}
+    score = 0.0
+    fields: list[tuple[float, str]] = [(0.35, record.content)]
+    for weight, key in ((0.9, "summary"), (0.65, "details")):
+        value = metadata.get(key)
+        if isinstance(value, str):
+            fields.append((weight, value))
+    tags = metadata.get("tags")
+    if isinstance(tags, list):
+        fields.append((1.0, " ".join(str(tag) for tag in tags)))
+    for weight, text in fields:
+        content_tokens = gate_tokens(text)
+        if not content_tokens:
+            continue
+        matched = query_tokens & content_tokens
+        matched_weight = sum(idf_weight(token, doc_freq, total_docs) for token in matched)
+        score += weight * (matched_weight / query_weight_total)
+    return min(1.0, score)
+
+
+def rank_lexical_score(
+    query_text: str,
+    record: storage.MemoryRecord,
+    doc_freq: dict[str, int] | None = None,
+    total_docs: int = 0,
+) -> float:
     """Filtered lexical score for ranking.
 
     Raw lexical overlap lets repeated filler words ("the", "for", "with") beat
     distinctive cards in large stores. Reuse gate tokens for rank lexical
     signal while keeping vector/category/status/source weighting unchanged.
+    When corpus document frequencies are supplied, store-frequent terms count
+    for less than rare ones (`idf_weighted_overlap`); callers without corpus
+    stats fall back to the flat gate-token overlap.
     """
+    if doc_freq is not None:
+        return idf_weighted_overlap(query_text, record, doc_freq, total_docs)
     return normalized_lexical_overlap(query_text, record)
+
+
+FTS_RERANK_WEIGHT = 0.35
+
+
+def fts5_rerank_bonus(record_id: int, bm25_scores: dict[int, float]) -> float:
+    """Min-max normalized bm25 bonus: 1.0 = strongest fts5 match in this
+    candidate set, 0.0 = not matched by fts5 at all (or fts5 unavailable).
+
+    Complements vector cosine + gate-token overlap with SQLite FTS5's
+    rarity-aware bm25 ranking, which can surface a distinctive-term match
+    (e.g. rare "export") that flat token-overlap counting and a noisy
+    low-dimensional hash-embedding cosine can both miss or rank low.
+    """
+    if not bm25_scores or record_id not in bm25_scores:
+        return 0.0
+    best = min(bm25_scores.values())
+    worst = max(bm25_scores.values())
+    if worst == best:
+        return 1.0
+    return (worst - bm25_scores[record_id]) / (worst - best)
 
 
 def source_blind_memory_request(query_text: str) -> bool:
@@ -254,11 +362,15 @@ def score_record(
     query_vector: list[float],
     index: dict[int, dict[str, Any]],
     cfg: dict[str, Any],
+    doc_freq: dict[str, int] | None = None,
+    total_docs: int = 0,
+    bm25_scores: dict[int, float] | None = None,
 ) -> float:
     indexed_embedding = index.get(record.id, {}).get("embedding")
     embedding = indexed_embedding if isinstance(indexed_embedding, list) else record.embedding or embed(record.content)
     score = cosine(query_vector, embedding)
-    score += 0.45 * rank_lexical_score(query_text, record)
+    score += 0.45 * rank_lexical_score(query_text, record, doc_freq, total_docs)
+    score += FTS_RERANK_WEIGHT * fts5_rerank_bonus(record.id, bm25_scores or {})
     try:
         score += 0.15 * float(record.metadata.get("importance", 0.0))
     except (TypeError, ValueError):
@@ -392,11 +504,14 @@ def query(
     records = list(storage.iter_records(root))
     index = index_store.ensure_complete_for_records(records, root)
     query_vector = embed(query_text)
+    doc_freq, total_docs = build_term_document_frequencies(records)
+    record_texts = {record.id: searchable_text(record) for record in records}
+    bm25_scores = storage.fts5_rerank_scores(record_texts, gate_tokens(query_text))
     ranked: list[storage.MemoryRecord] = []
     for record in records:
         if not passes_filters(record, include_set, exclude_set, since, status_set):
             continue
-        record.score = score_record(record, query_text, query_vector, index, cfg)
+        record.score = score_record(record, query_text, query_vector, index, cfg, doc_freq, total_docs, bm25_scores)
         ranked.append(record)
 
     ranked.sort(key=lambda item: (item.score, parse_timestamp(item.timestamp), item.id), reverse=True)

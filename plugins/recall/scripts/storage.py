@@ -641,3 +641,43 @@ def sqlite_diagnostics(root: str | Path | None = None) -> dict[str, Any]:
 
 def backend(root: str | Path | None = None) -> str:
     return str(recall_config.load_config(root)["backend"])
+
+
+def fts5_rerank_scores(record_texts: dict[int, str], tokens: set[str]) -> dict[int, float]:
+    """Raw bm25() score per record id matched by any token (lower = better).
+
+    Built as an ephemeral in-memory FTS5 table over exactly the caller's
+    `record_texts` (typically `retrieval.searchable_text` per candidate),
+    not the persisted `memories_fts` mirror — that table only indexes
+    content+title, which rewards raw keyword-stuffed content over the same
+    terms spread across summary/details/tags. Rebuilding fresh per query
+    keeps this signal aligned with the same full field text the lexical
+    scorer already weighs, at the cost of doing the work every call; caller
+    supplies pre-filtered candidates to keep this cheap for large stores.
+    Empty dict when there are no tokens, no candidates, or FTS5 support is
+    missing from this SQLite build — callers must treat that as "no
+    additional signal to blend in", never as "zero relevant records".
+    """
+    if not tokens or not record_texts:
+        return {}
+    connection = sqlite3.connect(":memory:")
+    try:
+        try:
+            connection.execute("CREATE VIRTUAL TABLE docs USING fts5(text)")
+        except sqlite3.OperationalError:
+            return {}
+        record_ids = list(record_texts.keys())
+        connection.executemany(
+            "INSERT INTO docs(rowid, text) VALUES (?, ?)",
+            [(position, record_texts[record_id]) for position, record_id in enumerate(record_ids, start=1)],
+        )
+        match_query = " OR ".join('"' + token.replace('"', '""') + '"' for token in tokens)
+        try:
+            rows = connection.execute(
+                "SELECT rowid, bm25(docs) FROM docs WHERE docs MATCH ?", (match_query,)
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return {}
+    finally:
+        connection.close()
+    return {record_ids[int(rowid) - 1]: float(score) for rowid, score in rows}
