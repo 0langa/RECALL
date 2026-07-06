@@ -21,7 +21,7 @@ Run local plugin commands from `<repo-root>/plugins/recall` unless a step explic
 
 ## Install Lifecycle
 
-- [x] Install from `.agents/plugins/marketplace.json` in Codex CLI.
+- [x] Install from a local checkout with `codex plugin marketplace add .` from the repository root, or from a built zip through a temporary marketplace.
 - [x] Confirm `RECALL` appears in the plugin picker and can be enabled.
 - [ ] Confirm bundled skills are discoverable in a new thread.
 - [ ] Review and trust bundled hooks in Codex Settings > Coding > Hooks.
@@ -49,7 +49,7 @@ Run local plugin commands from `<repo-root>/plugins/recall` unless a step explic
 
 ## Tag And Artifact
 
-- [x] Tag `v1.0.0` only after local gates, install lifecycle, and real-project field testing pass.
+- [x] Tag the release only after local gates, install lifecycle, and real-project field testing pass.
 - [x] Create the GitHub release from the tag.
 - [x] Attach `dist/recall.zip` as a release artifact.
 - [x] Do not commit `dist/recall.zip`.

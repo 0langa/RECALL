@@ -1,18 +1,18 @@
 # Install RECALL
 
-RECALL's installable plugin is kept at `plugins/recall/`. The same folder contains the shared RECALL core, Codex integration files, and Kimi Code integration files. The repo includes a marketplace file at `.agents/plugins/marketplace.json` that points Codex at the plugin folder with `source.path: "./plugins/recall"`.
+RECALL's installable plugin is kept at `plugins/recall/`. The same folder contains the shared RECALL core, Codex integration files, Kimi Code integration files, and Claude Code integration files. A local checkout is added as a Codex marketplace from the repository root with `codex plugin marketplace add .`; there is no checked-in `.agents/plugins/marketplace.json`.
 
 ## Install From GitHub
 
 ```bash
-codex plugin marketplace add 0langa/RECALL --ref v1.0.0
+codex plugin marketplace add 0langa/RECALL --ref v1.3.0
 codex plugin add recall@recall-local
 ```
 
 You can also use the HTTPS Git URL:
 
 ```bash
-codex plugin marketplace add https://github.com/0langa/RECALL --ref v1.0.0
+codex plugin marketplace add https://github.com/0langa/RECALL --ref v1.3.0
 codex plugin add recall@recall-local
 ```
 
@@ -67,7 +67,7 @@ Review the RECALL hook definitions and trust them when you are ready. After hook
 
 ## Local Runtime Data
 
-Project memories are written to `.recall/` in new projects, not to the plugin folder. Existing `.codex_memory/` stores remain supported and are used in place so current Codex projects keep their history. Ignore both `.recall/` and `.codex_memory/` in project repositories.
+Project memories are written to `.recall/` in new projects, not to the plugin folder. Existing `.codex_memory/` stores remain supported as a legacy fallback when `.recall/` does not exist. Once `.recall/` exists, `.recall/` is the active store and `.codex_memory/` is legacy history unless you explicitly migrate or inspect it. Ignore both `.recall/` and `.codex_memory/` in project repositories.
 
 See [E2E_VERIFICATION_LOG.md](E2E_VERIFICATION_LOG.md) for the latest Codex/Kimi
 live verification notes.

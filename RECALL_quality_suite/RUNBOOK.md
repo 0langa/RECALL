@@ -15,7 +15,7 @@ Use this runbook for command execution after the workflow is understood.
 ## Local active-development loop
 
 ```bash
-python recall_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick
+python RECALL_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick
 ```
 
 Use this after normal code edits.
@@ -23,7 +23,7 @@ Use this after normal code edits.
 The suite runs independent gates in parallel by default. If a failure looks order-sensitive or resource-sensitive, rerun serially:
 
 ```bash
-python recall_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick --serial
+python RECALL_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick --serial
 ```
 
 ## Full pre-release loop
@@ -33,20 +33,20 @@ cd plugins/recall
 python -m unittest discover -s tests
 python ./scripts/smoke_recall.py --json
 cd ../..
-python recall_quality_suite/scripts/run_recall_quality_suite.py --repo-root .
+python RECALL_quality_suite/scripts/run_recall_quality_suite.py --repo-root .
 ```
 
 Then build the plugin ZIP and run package hygiene:
 
 ```bash
 cd plugins/recall
-python ..\..\recall_quality_suite\scripts\package_hygiene_check.py --plugin-root . --zip dist/recall.zip
+python ..\..\RECALL_quality_suite\scripts\package_hygiene_check.py --plugin-root . --zip dist/recall.zip
 ```
 
 ## Source-blind agent evaluation pack
 
 ```bash
-python recall_quality_suite/scripts/source_blind_agent_gate.py --plugin-root plugins/recall --out-dir source_blind_eval_pack
+python RECALL_quality_suite/scripts/source_blind_agent_gate.py --plugin-root plugins/recall --out-dir source_blind_eval_pack
 ```
 
 Give the test agent only:

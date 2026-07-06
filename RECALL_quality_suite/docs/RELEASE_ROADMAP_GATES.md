@@ -14,7 +14,7 @@ Alpha means foundation exists but correctness, install reliability, and memory q
 
 ### Required capabilities
 
-- Local-first memory storage under project `.codex_memory/`.
+- Local-first memory storage under project `.recall/`, with legacy `.codex_memory/` fallback covered by migration tests.
 - Public save/retrieve/category workflows exist.
 - Core hooks exist and fail safely.
 - Doctor/repair/rebuild path exists in some usable form.

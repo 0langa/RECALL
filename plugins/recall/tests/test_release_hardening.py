@@ -222,7 +222,7 @@ class ReleaseHardeningTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixtures = [
                 ("architecture", "RECALL stores project memory in SQLite with FTS5 and a local vector index."),
-                ("requirements", "Runtime memory must remain inside the project .codex_memory directory."),
+                ("requirements", "Runtime memory must remain inside the project .recall directory, or an existing legacy .codex_memory store."),
                 ("risks", "Hook payload drift can break prompt retrieval and tool evidence buffering."),
                 ("commands", "Run python -m unittest discover -s tests to validate the plugin."),
                 ("decisions", "PostToolUse buffers evidence and Stop requests one atomic semantic finalizer batch."),

@@ -14,7 +14,7 @@ A gate fails when:
 - Mandatory files or manifest fields are missing.
 - Hook output does not continue safely.
 - Secret-like values are stored unredacted.
-- Runtime memory escapes the project `.codex_memory` directory.
+- Runtime memory escapes the active project memory directory (`.recall/`, or legacy `.codex_memory/` when that fallback is active).
 - Package hygiene finds runtime data, caches, personal paths, or secret-like strings.
 - Performance thresholds are exceeded.
 

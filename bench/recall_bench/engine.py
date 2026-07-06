@@ -113,6 +113,7 @@ class BenchEngine:
             turns = turns[:turn_limit]
         labels: list[dict[str, Any]] = []
         self._snapshot_store(root, scenario=name, session=0)
+        seen_max_id = self._store_max_id(root)
         for session in range(1, sessions + 1):
             output, duration_ms = self.hooks.run(
                 "session_start.py", _hook_payload(root, session, 0, "SessionStart", source="startup"),
@@ -175,8 +176,59 @@ class BenchEngine:
                 self.recorder.latency(operation="hook.stop", duration_ms=duration_ms, scenario=name, session=session, turn=position)
                 _emit_hook_output(self.recorder, output, channel="stop_system_message", scenario=name, session=session, turn=position, surface="stop", duration_ms=duration_ms)
 
+            seen_max_id = self._record_created_cards(root, scenario=name, session=session, seen_max_id=seen_max_id)
             self._snapshot_store(root, scenario=name, session=session)
         return {"root": root, "manifest": manifest, "labels": labels}
+
+    def _record_created_cards(self, root: Path, *, scenario: str, session: int, seen_max_id: int) -> int:
+        """Journal cards the engine created during this session.
+
+        The judge's card_quality rubric must score REAL captured cards, not
+        probe-phase synthetic saves; this is its sampling source.
+        """
+        import sqlite3
+
+        db = root / ".recall" / "memory.sqlite"
+        if not db.exists():
+            return seen_max_id
+        connection = sqlite3.connect(db)
+        try:
+            rows = connection.execute(
+                "SELECT id, category, content, metadata FROM memories WHERE id > ? ORDER BY id",
+                (seen_max_id,),
+            ).fetchall()
+        finally:
+            connection.close()
+        max_id = seen_max_id
+        for record_id, category, content, metadata_raw in rows:
+            metadata = json.loads(metadata_raw or "{}")
+            self.recorder.event(
+                "card_created",
+                {
+                    "scenario": scenario,
+                    "session": session,
+                    "id": record_id,
+                    "category": category,
+                    "content": content,
+                    "summary": metadata.get("summary"),
+                    "source": metadata.get("source"),
+                },
+            )
+            max_id = max(max_id, record_id)
+        return max_id
+
+    def _store_max_id(self, root: Path) -> int:
+        import sqlite3
+
+        db = root / ".recall" / "memory.sqlite"
+        if not db.exists():
+            return 0
+        connection = sqlite3.connect(db)
+        try:
+            row = connection.execute("SELECT COALESCE(MAX(id), 0) FROM memories").fetchone()
+            return int(row[0]) if row else 0
+        finally:
+            connection.close()
 
     def _snapshot_store(self, root: Path, *, scenario: str, session: int) -> None:
         import sqlite3

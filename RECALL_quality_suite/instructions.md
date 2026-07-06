@@ -2,7 +2,7 @@
 
 You are working in the `0langa/RECALL` repository.
 
-Your objective is to turn the current `recall_quality_suite` into the central development-control system for RECALL from its current alpha-stage state toward the final production-grade product described below.
+Your objective is to turn the current `RECALL_quality_suite` into the central development-control system for RECALL from its current alpha-stage state toward the final production-grade product described below.
 
 RECALL is not final yet. Treat it as alpha-stage unless hard evidence proves otherwise.
 
@@ -17,12 +17,12 @@ Until that is true, RECALL is only a foundation, alpha, beta, or release candida
 Before editing code, read and understand:
 
 ```text
-recall_quality_suite/README.md
-recall_quality_suite/RUNBOOK.md
-recall_quality_suite/docs/TEST_PLAN.md
-recall_quality_suite/docs/EXTENDING.md
-recall_quality_suite/rubrics/production_release_criteria.md
-recall_quality_suite/rubrics/source_blind_quality_gate.md
+RECALL_quality_suite/README.md
+RECALL_quality_suite/RUNBOOK.md
+RECALL_quality_suite/docs/TEST_PLAN.md
+RECALL_quality_suite/docs/EXTENDING.md
+RECALL_quality_suite/rubrics/production_release_criteria.md
+RECALL_quality_suite/rubrics/source_blind_quality_gate.md
 plugins/recall/README.md
 plugins/recall/docs/RELEASE_CHECKLIST.md
 ````
@@ -40,11 +40,11 @@ The suite must become a strict, maintainable, test-driven development framework 
 Create or improve the following documentation files:
 
 ```text
-recall_quality_suite/docs/DEVELOPMENT_WORKFLOW.md
-recall_quality_suite/docs/TDD_PROCESS.md
-recall_quality_suite/docs/RELEASE_ROADMAP_GATES.md
-recall_quality_suite/docs/MEMORY_QUALITY_EVOLUTION_PLAN.md
-recall_quality_suite/docs/AGENT_IMPLEMENTATION_PROTOCOL.md
+RECALL_quality_suite/docs/DEVELOPMENT_WORKFLOW.md
+RECALL_quality_suite/docs/TDD_PROCESS.md
+RECALL_quality_suite/docs/RELEASE_ROADMAP_GATES.md
+RECALL_quality_suite/docs/MEMORY_QUALITY_EVOLUTION_PLAN.md
+RECALL_quality_suite/docs/AGENT_IMPLEMENTATION_PROTOCOL.md
 ```
 
 These files must be concrete, strict, and actionable. They must not be vague essays.
@@ -153,7 +153,7 @@ Run the appropriate checks after changes.
 At minimum:
 
 ```bash
-python recall_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick
+python RECALL_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick
 ```
 
 Also run existing RECALL tests if the implementation touches plugin code:

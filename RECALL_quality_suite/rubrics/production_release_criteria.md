@@ -30,8 +30,8 @@ The current project is not Final Product by default just because automated tests
 
 ### Runtime safety
 
-- [ ] All runtime memory stays inside the active project `.codex_memory/`.
-- [ ] `.codex_memory/` is never included in release artifacts.
+- [ ] All runtime memory stays inside the active project memory directory (`.recall/`, or legacy `.codex_memory/` when that fallback is active).
+- [ ] `.recall/` and `.codex_memory/` runtime data are never included in release artifacts.
 - [ ] Secret-like strings are redacted before storage.
 - [ ] Malformed hook payloads safely no-op.
 - [ ] Hook failures must not block the user's Codex session.
@@ -75,7 +75,7 @@ The current project is not Final Product by default just because automated tests
 
 ## Source-blind human evaluation
 
-A fresh agent with access only to `codex_memory` must answer the three quality-gate questions with:
+A fresh agent with access only to the active RECALL memory store must answer the three quality-gate questions with:
 
 - Average score per question >= 4.5 / 5.
 - No scoring category below 4.

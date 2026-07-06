@@ -115,7 +115,7 @@ class SourceBlindRetrievalReadinessTests(unittest.TestCase):
             result = run_json(skill_cmd(
                 project,
                 "retrieve-memory",
-                "current architecture runtime components hooks storage codex_memory",
+                "current architecture runtime components hooks storage recall codex_memory",
                 "--summary",
                 "--limit",
                 "6",
@@ -123,7 +123,7 @@ class SourceBlindRetrievalReadinessTests(unittest.TestCase):
             categories = {item["category"] for item in result["results"][:4]}
             summary = result["summary"].lower()
             self.assertIn("architecture", categories)
-            self.assertTrue(".codex_memory" in summary or "codex_memory" in summary)
+            self.assertIn(".recall", summary)
             self.assertIn("hooks", summary)
 
     def test_decision_history_gate_distinguishes_active_from_superseded(self) -> None:

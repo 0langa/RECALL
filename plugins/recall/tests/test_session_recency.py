@@ -90,6 +90,28 @@ class SessionRecencyTests(unittest.TestCase):
             context = (fresh.get("hookSpecificOutput") or {}).get("additionalContext", "")
             self.assertIn("three attempts", context)
 
+    def test_weak_match_filler_is_dropped_from_injection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            seed(tmp, "The export pipeline uses zstandard compression level seven by accepted decision.", session_id="old-a")
+            # Filler with zero meaningful overlap with the query below.
+            memory_manager.add_record(
+                "requirements",
+                "The payment webhook must keep backward compatibility for existing consumers.",
+                memory_manager.build_card_metadata(
+                    summary="Webhook backward compatibility requirement.", source="skill", status="active", importance=0.9,
+                ),
+                tmp,
+            )
+            context = session_context.build_session_context(tmp, "export pipeline compression decision", 8)
+            self.assertIn("zstandard", context)
+            self.assertNotIn("payment webhook", context)
+
+    def test_strongest_match_always_survives_the_floor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            seed(tmp, "Ingest gateway fans out to three stateless workers over a local queue.", session_id="old-b")
+            context = session_context.build_session_context(tmp, "how does ingest distribute work", 8)
+            self.assertIn("stateless workers", context)
+
     def test_explicit_recall_is_not_filtered(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0.1.0'\n", encoding="utf-8")

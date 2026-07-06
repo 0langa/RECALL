@@ -1,6 +1,6 @@
 # RECALL Example Workflows
 
-These examples use local-only project memory under `.codex_memory/`. Do not save secrets, credentials, tokens, private keys, passwords, or sensitive personal data.
+These examples use local-only project memory under `.recall/` for new projects, or an existing legacy `.codex_memory/` store when that is the active project store. Do not save secrets, credentials, tokens, private keys, passwords, or sensitive personal data.
 
 ## Save A Requirement
 

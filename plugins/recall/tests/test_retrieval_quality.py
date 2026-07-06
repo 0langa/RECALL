@@ -107,7 +107,7 @@ class RetrievalQualityTests(unittest.TestCase):
             )
             memory_manager.add_record(
                 "constraints",
-                "Runtime memory must stay inside the active project's .codex_memory directory.",
+                "Runtime memory must stay inside the active project's .recall directory, or an existing legacy .codex_memory store.",
                 memory_manager.build_card_metadata(
                     summary="Runtime memory is project-local.",
                     tags=["local-first", "runtime-storage"],

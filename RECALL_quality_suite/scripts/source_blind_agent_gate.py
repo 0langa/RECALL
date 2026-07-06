@@ -11,19 +11,19 @@ from pathlib import Path
 
 QUESTIONS = """# Source-Blind RECALL Agent Questions
 
-Give the tested agent access only to the generated `codex_memory` folder. Block source/repo access.
+Give the tested agent access only to the generated `codex_memory` eval folder, copied from the active RECALL memory store. Block source/repo access.
 
 ## 1. Current architecture and responsibility map
 
-Based only on `codex_memory`, reconstruct the current architecture of the project. Include main components, responsibilities, interactions, owned data/artifacts, the memory workflow, boundaries, invariants, non-goals, and uncertainties.
+Based only on the generated `codex_memory` eval folder, reconstruct the current architecture of the project. Include main components, responsibilities, interactions, owned data/artifacts, the memory workflow, boundaries, invariants, non-goals, and uncertainties.
 
 ## 2. Historical decisions, reversals, and regression risks
 
-Using only `codex_memory`, identify the most important technical decisions so far. For each, explain decision, rationale, rejected alternatives, current/deprecated status, refinements, regression risks, and what future agents must not undo.
+Using only the generated `codex_memory` eval folder, identify the most important technical decisions so far. For each, explain decision, rationale, rejected alternatives, current/deprecated status, refinements, regression risks, and what future agents must not undo.
 
 ## 3. Source-free implementation planning
 
-Based only on `codex_memory`, propose a concrete implementation plan for the next high-priority feature/fix. Include affected areas, expected behavior, dependencies, steps, risks, conventions, validation, avoid-list, and what cannot be known without source access.
+Based only on the generated `codex_memory` eval folder, propose a concrete implementation plan for the next high-priority feature/fix. Include affected areas, expected behavior, dependencies, steps, risks, conventions, validation, avoid-list, and what cannot be known without source access.
 """
 
 
@@ -110,7 +110,7 @@ def main() -> None:
     (out_dir / "evaluator_scorecard.md").write_text((Path(__file__).resolve().parents[1] / "rubrics" / "scoring_template.md").read_text(encoding="utf-8"), encoding="utf-8")
     (out_dir / "fixture_inventory.json").write_text(json.dumps(build_inventory(cards), indent=2), encoding="utf-8")
     (out_dir / "README.md").write_text(
-        "Give the tested agent only `codex_memory/` and `agent_questions.md`. Keep source, repo, `evaluator_scorecard.md`, and `fixture_inventory.json` hidden.\n",
+        "Give the tested agent only generated `codex_memory/` eval data and `agent_questions.md`. Keep source, repo, `evaluator_scorecard.md`, and `fixture_inventory.json` hidden.\n",
         encoding="utf-8",
     )
 

@@ -7,14 +7,14 @@ from pathlib import Path
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Copy recall_quality_suite into a RECALL repository.")
+    parser = argparse.ArgumentParser(description="Copy RECALL_quality_suite into a RECALL repository.")
     parser.add_argument("repo_root", help="Path to the RECALL repository root")
     parser.add_argument("--with-ci", action="store_true", help="Also copy the GitHub Actions workflow template")
     args = parser.parse_args()
 
     src = Path(__file__).resolve().parents[1]
     repo = Path(args.repo_root).expanduser().resolve()
-    dst = repo / "recall_quality_suite"
+    dst = repo / "RECALL_quality_suite"
 
     if dst.exists():
         shutil.rmtree(dst)

@@ -46,7 +46,7 @@ cd C:\Users\Julius\source\repos\RECALL
 python -m unittest discover -s plugins\recall\tests -q
 python RECALL_quality_suite\scripts\run_recall_quality_suite.py --repo-root . --quick
 python build_plugin.py
-python plugins\recall\scripts\smoke_recall.py --installed-plugin-root C:\Users\Julius\.codex\plugins\cache\recall-local\recall\1.0.0 --json
+python plugins\recall\scripts\smoke_recall.py --installed-plugin-root C:\Users\Julius\.codex\plugins\cache\recall-local\recall\1.3.0 --json
 ```
 
 Do not treat these commands as release proof. They only establish a clean starting point.
@@ -112,7 +112,7 @@ New-Item -ItemType Directory $scratch | Out-Null
 
 Open a fresh Codex thread in that folder.
 
-Important Codex App caveat: the app may create a `.git` folder automatically on the first prompt. Once `.git` exists, RECALL correctly treats the folder as a recognized project. In that case this phase can still verify that ordinary prompts do not create `.codex_memory`, but an explicit `@recall` mention is expected to activate the project and create `.codex_memory`.
+Important Codex App caveat: the app may create a `.git` folder automatically on the first prompt. Once `.git` exists, RECALL correctly treats the folder as a recognized project. In that case this phase can still verify that ordinary prompts do not create `.recall`, but an explicit `@recall` mention is expected to activate the project and create `.recall`.
 
 For a true unrecognized-folder test, use a folder with no `.git` and run the hook/CLI simulation outside a Codex App thread, or remove `.git` before the explicit RECALL prompt if the app does not recreate it.
 
@@ -132,7 +132,7 @@ Can you explain what memory retrieval means?
 
 Expected:
 
-- No `.codex_memory` directory is created.
+- No `.recall` directory is created.
 - Ordinary prompts produce no RECALL context injection.
 - A normal RECALL mention in an unrecognized folder does not initialize memory.
 - If Codex App auto-created `.git`, the folder is no longer unrecognized; an explicit RECALL mention may initialize project memory.
@@ -141,12 +141,12 @@ Expected:
 Check:
 
 ```powershell
-Test-Path "$scratch\.codex_memory"
+Test-Path "$scratch\.recall"
 ```
 
 Fail if:
 
-- `.codex_memory` appears after ordinary prompts.
+- `.recall` appears after ordinary prompts.
 - RECALL silently activates an unrecognized folder.
 - The plugin stores generic Q&A as project memory.
 
@@ -162,14 +162,14 @@ In the same scratch folder, submit:
 
 Expected:
 
-- `.codex_memory` is created only in the scratch root.
+- `.recall` is created only in the scratch root.
 - Config uses schema version 2.
 - Activation is enabled and project-local.
 
 Check:
 
 ```powershell
-Get-Content "$scratch\.codex_memory\memory_config.json"
+Get-Content "$scratch\.recall\memory_config.json"
 python C:\Users\Julius\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root $scratch activation-status
 ```
 
@@ -217,7 +217,7 @@ Fail if:
 
 - `RECALL_FINALIZER_REQUEST` is visible.
 - The assistant explains `apply-finalizer-batch`.
-- Memory is stored outside `C:\Users\Julius\source\test_enviroments\RECALL\project\.codex_memory`.
+- Memory is stored outside `C:\Users\Julius\source\test_enviroments\RECALL\project\.recall`.
 - The requirement is stored as `commands` or generic `project_state`.
 
 ## Phase 5: Persistent Activation Across Prompts
@@ -503,7 +503,7 @@ Perform one active Codex App UI turn in `project2`.
 
 Expected:
 
-- Debug traces are written under `.codex_memory\runtime\debug`.
+- Debug traces are written under `.recall\runtime\debug`.
 - Traces include root resolution, activation, retrieval gate decisions, capture decisions, and finalizer operations.
 - Debug traces are redacted.
 - Debug traces are not indexed as memories.
@@ -659,7 +659,7 @@ In the Codex App, open a new thread in `C:\Users\Julius\source\test_enviroments\
 
 Manual scenario:
 
-1. Ask an unrelated question. Confirm no `.codex_memory`.
+1. Ask an unrelated question. Confirm no `.recall`.
 2. Mention RECALL once with a real requirement. Confirm activation and memory creation.
 3. Make a file edit without mentioning RECALL. Confirm background capture is active.
 4. Run a passing command. Confirm no durable command spam.
@@ -683,7 +683,7 @@ Status: PASS. Release decision recorded in `docs\manual-release-notes.md`.
 
 Release candidate is acceptable only if all are true:
 
-- No accidental `.codex_memory` creation for ordinary prompts or unrecognized folders.
+- No accidental `.recall` creation for ordinary prompts or unrecognized folders.
 - One RECALL mention activates recognized projects persistently.
 - New sessions retrieve relevant project context without repeated mentions.
 - Insufficient memory produces honest uncertainty.

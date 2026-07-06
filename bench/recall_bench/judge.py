@@ -54,16 +54,21 @@ def emit_tasks(journal: list[dict[str, Any]], out_path: Path, *, seed: int, max_
             "artifact": {"injected_context": entry["text"]},
         })
 
-    saves = [
-        entry for entry in journal
-        if entry.get("kind") == "emission" and entry["channel"] == "tool_result_save" and '"result": "saved"' in entry["text"]
-    ]
-    for index, entry in enumerate(rng.sample(saves, min(max_per_rubric, len(saves)))):
+    # card_quality judges REAL cards the engine captured during scenarios
+    # (card_created events), never the synthetic probe-phase save strings —
+    # those would score 1/5 by design and poison the metric.
+    created = [entry for entry in journal if entry.get("kind") == "card_created"]
+    for entry in rng.sample(created, min(max_per_rubric, len(created))):
         tasks.append({
-            "task_id": f"card-{index}",
+            "task_id": f"card-{entry['scenario']}-s{entry['session']}-{entry['id']}",
             "rubric": "card_quality",
             "instructions": RUBRICS["card_quality"],
-            "artifact": {"save_result": entry["text"]},
+            "artifact": {
+                "category": entry["category"],
+                "summary": entry.get("summary"),
+                "content": entry["content"],
+                "source": entry.get("source"),
+            },
         })
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

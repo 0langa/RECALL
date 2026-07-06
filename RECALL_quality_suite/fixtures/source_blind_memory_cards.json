@@ -1,13 +1,13 @@
 [
   {
     "category": "architecture",
-    "content": "RECALL is a local-first Codex plugin. Runtime project memory is stored inside the active project's .codex_memory directory and is retrieved across fresh sessions.",
-    "summary": "RECALL stores project-local memory in .codex_memory.",
+    "content": "RECALL is a local-first project-memory plugin for Codex, Kimi Code, and Claude Code. Runtime project memory is stored inside the active project's .recall directory for new projects, with existing .codex_memory stores supported as legacy fallback, and is retrieved across fresh sessions.",
+    "summary": "RECALL stores project-local memory in .recall, with legacy .codex_memory fallback.",
     "details": "The architecture uses a public skill adapter, an internal memory manager, storage backends, deterministic local embedding/index files, retrieval ranking, and lifecycle hooks.",
     "tags": [
       "architecture",
       "local-first",
-      "codex-memory",
+      "recall-memory",
       "synthetic-baseline"
     ],
     "source": "source-blind-fixture",

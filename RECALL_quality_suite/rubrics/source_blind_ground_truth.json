@@ -5,7 +5,7 @@
     {
       "id": "architecture",
       "required_facts": [
-        "project-local .codex_memory storage",
+        "project-local .recall storage with legacy .codex_memory fallback",
         "public recall_skill.py adapter",
         "SQLite default storage",
         "explicit-activation lifecycle hooks"

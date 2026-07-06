@@ -5,7 +5,7 @@
 Create a file under:
 
 ```text
-recall_quality_suite/tests/test_<area>_contract.py
+RECALL_quality_suite/tests/test_<area>_contract.py
 ```
 
 Use only stdlib `unittest` unless the project intentionally adopts a new test dependency.
@@ -23,7 +23,7 @@ If the new check changes required workflow or release truth, update the control 
 Edit:
 
 ```text
-recall_quality_suite/fixtures/source_blind_memory_cards.json
+RECALL_quality_suite/fixtures/source_blind_memory_cards.json
 ```
 
 Each card should include:
@@ -53,7 +53,7 @@ Prefer real project-history-backed cases once they can be verified. Do not keep 
 Edit:
 
 ```text
-recall_quality_suite/perf/perf_thresholds.json
+RECALL_quality_suite/perf/perf_thresholds.json
 ```
 
 Keep thresholds conservative across Windows/macOS/Linux. Do not use thresholds that only pass on the maintainer's fastest machine.
@@ -64,7 +64,7 @@ Keep the quick profile strict enough for developer-loop regression detection and
 Edit:
 
 ```text
-recall_quality_suite/rubrics/production_release_criteria.md
+RECALL_quality_suite/rubrics/production_release_criteria.md
 ```
 
 Record what is blocked, which stage is blocked, and what evidence exposed the issue.

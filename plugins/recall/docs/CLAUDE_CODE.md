@@ -52,10 +52,11 @@ The MCP `initialize` handshake also returns the compact contract as server
 
 ## Hooks
 
-Claude Code loads `hooks/hooks.json` directly from the plugin manifest — the
-same file Codex discovers via its own convention. No separate hook
-configuration step is required beyond Claude Code's normal hook trust review
-for plugin-bundled hooks.
+Claude Code auto-loads `hooks/hooks.json` from the plugin bundle by convention
+— the same file Codex discovers via its own convention. Do not add an explicit
+hooks entry to `.claude-plugin/plugin.json`; that duplicates hook discovery and
+breaks plugin load. No separate hook configuration step is required beyond
+Claude Code's normal hook trust review for plugin-bundled hooks.
 
 ## Required Environment Variables
 

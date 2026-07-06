@@ -79,7 +79,7 @@ def main() -> None:
     categories = ["architecture", "requirements", "risks", "commands", "debug_history", "tasks", "decisions"]
     query_texts = [
         "architecture hooks memory storage",
-        "requirements local first codex_memory",
+        "requirements local first recall codex_memory",
         "risks hook payload drift",
         "commands unittest smoke recall",
         "debug history failure assertion",

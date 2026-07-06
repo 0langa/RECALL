@@ -39,20 +39,20 @@ Use these as the development-control system for RECALL:
 From the repository root:
 
 ```bash
-python recall_quality_suite/scripts/run_recall_quality_suite.py --repo-root .
+python RECALL_quality_suite/scripts/run_recall_quality_suite.py --repo-root .
 ```
 
 From the plugin root:
 
 ```bash
 cd plugins/recall
-python ../../recall_quality_suite/scripts/run_recall_quality_suite.py --plugin-root .
+python ../../RECALL_quality_suite/scripts/run_recall_quality_suite.py --plugin-root .
 ```
 
 Fast local loop:
 
 ```bash
-python recall_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick
+python RECALL_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick
 ```
 
 The runner executes independent gates in parallel by default. The quick runner also uses the smaller performance benchmark profile for active development. Full release evidence still requires the non-quick run.
@@ -60,7 +60,7 @@ The runner executes independent gates in parallel by default. The quick runner a
 Serial diagnostic run:
 
 ```bash
-python recall_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick --serial
+python RECALL_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick --serial
 ```
 
 Use `--jobs <n>` to cap concurrent gates when the machine is already under load.
@@ -68,13 +68,13 @@ Use `--jobs <n>` to cap concurrent gates when the machine is already under load.
 Performance-only:
 
 ```bash
-python recall_quality_suite/perf/benchmark_recall_memory.py --plugin-root plugins/recall --records 500 --queries 30
+python RECALL_quality_suite/perf/benchmark_recall_memory.py --plugin-root plugins/recall --records 500 --queries 30
 ```
 
 Package hygiene, after building `dist/recall.zip`:
 
 ```bash
-python recall_quality_suite/scripts/package_hygiene_check.py --plugin-root plugins/recall --zip plugins/recall/dist/recall.zip
+python RECALL_quality_suite/scripts/package_hygiene_check.py --plugin-root plugins/recall --zip plugins/recall/dist/recall.zip
 ```
 
 ## Output

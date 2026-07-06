@@ -37,7 +37,7 @@ Read these before editing:
 Always run at least:
 
 ```bash
-python recall_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick
+python RECALL_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick
 ```
 
 If plugin code changed, also run:

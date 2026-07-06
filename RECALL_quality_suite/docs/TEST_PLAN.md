@@ -9,7 +9,7 @@ This suite must also govern the path from alpha-stage to final product, not mere
 ## Surfaces under test
 
 1. Plugin metadata and marketplace shape.
-2. `.codex_memory` project-local runtime storage.
+2. `.recall/` project-local runtime storage, plus legacy `.codex_memory/` fallback and migration behavior.
 3. SQLite and JSONL storage behavior.
 4. Deterministic local embedding/index behavior.
 5. Weighted retrieval and structured memory-card ranking.

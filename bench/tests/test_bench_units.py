@@ -176,9 +176,9 @@ class JudgeTests(unittest.TestCase):
                 "chars": 10, "words": 2, "est_tokens": 3, "text": "ctx one",
             },
             {
-                "kind": "emission", "channel": "tool_result_save", "fixed": False,
-                "scenario": "s", "session": 1, "turn": 2,
-                "chars": 30, "words": 5, "est_tokens": 8, "text": '{"result": "saved", "id": 5}',
+                "kind": "card_created", "scenario": "s", "session": 1, "id": 5,
+                "category": "decisions", "content": "Use SQLite for the ingest store.",
+                "summary": "SQLite for ingest.", "source": "finalizer",
             },
         ]
         with tempfile.TemporaryDirectory() as tmp:

@@ -39,7 +39,7 @@ Run from repo root unless noted otherwise.
 
 | Change class | Required validation |
 |---|---|
-| Docs-only in suite | `python recall_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick` |
+| Docs-only in suite | `python RECALL_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick` |
 | Plugin code touched | `cd plugins/recall`, `python -m unittest discover -s tests`, `python ./scripts/smoke_recall.py --json`, then repo-root quick suite |
 | Hook/storage/retrieval touched | Full plugin tests, smoke, repo-root quick suite, and performance benchmark if cost profile may change |
 | Packaging/install touched | Plugin tests, smoke, build, package inspection/hygiene, repo-root full suite when feasible |
@@ -48,13 +48,13 @@ Run from repo root unless noted otherwise.
 Minimum suite command:
 
 ```bash
-python recall_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick
+python RECALL_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick
 ```
 
 Escalate to full suite when performance, package, or release evidence changed:
 
 ```bash
-python recall_quality_suite/scripts/run_recall_quality_suite.py --repo-root .
+python RECALL_quality_suite/scripts/run_recall_quality_suite.py --repo-root .
 ```
 
 ## When docs must be updated

@@ -1,11 +1,11 @@
 {
   "meta": {
     "bench_schema_version": 1,
-    "emission_hash": "b4070b73430514d47bc22a47b7d154f1d0c41c53f1ca85732b41e2c97b6ed8fb",
-    "journal": "C:\\Users\\Julius\\source\\repos\\RECALL\\bench\\runs\\complete-1337\\journal.jsonl",
+    "emission_hash": "8beae82f311a142286e213d83e656bc2f8e3cc5062c133477ec052343ed038af",
+    "journal": "bench\\runs\\complete-1337\\journal.jsonl",
     "judge_tasks": {
-      "path": "C:\\Users\\Julius\\source\\repos\\RECALL\\bench\\runs\\complete-1337\\judge_tasks.jsonl",
-      "tasks_emitted": 14
+      "path": "bench\\runs\\complete-1337\\judge_tasks.jsonl",
+      "tasks_emitted": 17
     },
     "mode": "complete",
     "recall_version": "1.3.0",
@@ -31,33 +31,33 @@
     "latency": {
       "hook.post_tool_use": {
         "count": 71,
-        "max_ms": 138.13,
-        "p50_ms": 105.82,
-        "p95_ms": 119.01
+        "max_ms": 218.73,
+        "p50_ms": 115.6,
+        "p95_ms": 147.24
       },
       "hook.pre_compact": {
         "count": 3,
-        "max_ms": 111.12,
-        "p50_ms": 110.98,
-        "p95_ms": 111.12
+        "max_ms": 133.05,
+        "p50_ms": 120.41,
+        "p95_ms": 133.05
       },
       "hook.prompt_inspector": {
         "count": 207,
-        "max_ms": 345.87,
-        "p50_ms": 194.37,
-        "p95_ms": 254.05
+        "max_ms": 509.57,
+        "p50_ms": 212.71,
+        "p95_ms": 309.96
       },
       "hook.session_start": {
         "count": 65,
-        "max_ms": 163.64,
-        "p50_ms": 114.92,
-        "p95_ms": 137.21
+        "max_ms": 267.8,
+        "p50_ms": 132.26,
+        "p95_ms": 196.4
       },
       "hook.stop": {
         "count": 207,
-        "max_ms": 871.59,
-        "p50_ms": 165.25,
-        "p95_ms": 387.22
+        "max_ms": 640.02,
+        "p50_ms": 173.09,
+        "p95_ms": 411.5
       }
     },
     "quality": {
@@ -239,10 +239,10 @@
       }
     },
     "tokens": {
-      "conditional_static_est_tokens": 38745,
+      "conditional_static_est_tokens": 38817,
       "fixed_overhead_per_session_est_tokens": 5752,
-      "marginal_per_turn_est_tokens": 238.4,
-      "marginal_total_est_tokens": 30989,
+      "marginal_per_turn_est_tokens": 105.5,
+      "marginal_total_est_tokens": 13721,
       "per_channel": {
         "mcp_initialize_instructions": {
           "chars": 1061,
@@ -257,9 +257,9 @@
           "fixed": true
         },
         "prompt_injection": {
-          "chars": 122262,
+          "chars": 53317,
           "count": 128,
-          "est_tokens": 30617,
+          "est_tokens": 13349,
           "fixed": false
         },
         "session_start_context": {
@@ -275,9 +275,9 @@
           "fixed": true
         },
         "skill_body_invoked": {
-          "chars": 60087,
+          "chars": 60378,
           "count": 7,
-          "est_tokens": 15025,
+          "est_tokens": 15097,
           "fixed": false
         },
         "skill_registry_metadata": {
@@ -317,9 +317,7 @@
           "fixed": false
         }
       },
-      "price_per_million_used": 3.0,
-      "projected_session_cost_usd_20_turns": 0.03156,
-      "projected_session_est_tokens_20_turns": 10520,
+      "projected_session_est_tokens_20_turns": 7862,
       "sessions_measured": 66,
       "turns_measured": 130
     }
