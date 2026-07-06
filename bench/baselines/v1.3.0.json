@@ -1,14 +1,14 @@
 {
   "meta": {
     "bench_schema_version": 1,
-    "emission_hash": "a999665fa622e52feadfa006d1c5f35f894592fe086dbb35c475b10df30cc615",
+    "emission_hash": "a1c5c57f7a14e78b778ed2e956dfecd59c34a5ab03d7a695040f987bf6438669",
     "journal": "C:\\Users\\Julius\\source\\repos\\RECALL\\bench\\runs\\complete-1337\\journal.jsonl",
     "judge_tasks": {
       "path": "C:\\Users\\Julius\\source\\repos\\RECALL\\bench\\runs\\complete-1337\\judge_tasks.jsonl",
       "tasks_emitted": 17
     },
     "mode": "complete",
-    "recall_version": "1.4.0",
+    "recall_version": "1.5.0",
     "scenarios": [
       "bugfix_loop",
       "feature_work",
@@ -31,33 +31,33 @@
     "latency": {
       "hook.post_tool_use": {
         "count": 71,
-        "max_ms": 277.42,
-        "p50_ms": 150.72,
-        "p95_ms": 237.2
+        "max_ms": 192.13,
+        "p50_ms": 128.61,
+        "p95_ms": 158.16
       },
       "hook.pre_compact": {
         "count": 3,
-        "max_ms": 173.24,
-        "p50_ms": 163.78,
-        "p95_ms": 173.24
+        "max_ms": 139.31,
+        "p50_ms": 131.14,
+        "p95_ms": 139.31
       },
       "hook.prompt_inspector": {
         "count": 207,
-        "max_ms": 693.91,
-        "p50_ms": 318.65,
-        "p95_ms": 578.33
+        "max_ms": 506.14,
+        "p50_ms": 243.15,
+        "p95_ms": 328.83
       },
       "hook.session_start": {
         "count": 65,
-        "max_ms": 266.33,
-        "p50_ms": 156.97,
-        "p95_ms": 229.46
+        "max_ms": 205.06,
+        "p50_ms": 135.39,
+        "p95_ms": 166.44
       },
       "hook.stop": {
         "count": 207,
-        "max_ms": 870.35,
-        "p50_ms": 242.66,
-        "p95_ms": 566.24
+        "max_ms": 714.75,
+        "p50_ms": 192.87,
+        "p95_ms": 423.17
       }
     },
     "quality": {
@@ -251,8 +251,8 @@
       }
     },
     "tokens": {
-      "conditional_static_est_tokens": 45942,
-      "fixed_overhead_per_session_est_tokens": 5752,
+      "conditional_static_est_tokens": 45919,
+      "fixed_overhead_per_session_est_tokens": 5713,
       "marginal_per_turn_est_tokens": 95.6,
       "marginal_total_est_tokens": 12432,
       "per_channel": {
@@ -281,15 +281,15 @@
           "fixed": true
         },
         "skill_body_autoload": {
-          "chars": 11027,
+          "chars": 10870,
           "count": 1,
-          "est_tokens": 2757,
+          "est_tokens": 2718,
           "fixed": true
         },
         "skill_body_invoked": {
-          "chars": 60378,
+          "chars": 60286,
           "count": 7,
-          "est_tokens": 15097,
+          "est_tokens": 15074,
           "fixed": false
         },
         "skill_registry_metadata": {
@@ -329,7 +329,7 @@
           "fixed": false
         }
       },
-      "projected_session_est_tokens_20_turns": 7664,
+      "projected_session_est_tokens_20_turns": 7625,
       "sessions_measured": 66,
       "turns_measured": 130
     }

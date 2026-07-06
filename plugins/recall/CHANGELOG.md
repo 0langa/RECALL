@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0 - 2026-07-06
+
+Quality-gate hardening + skill polish, found during a v1.4.0 release-validation pass. No retrieval/ranking changes.
+
+- Fixed a secret-scanner false positive: the keyword=value pattern shared by the build-time package inspector and the runtime redact_text/contains_secret path matched any `token`/`password`/etc. identifier directly followed by `:` or `=`, so an ordinary type-annotated function parameter or a variable reassigned from a slice of itself tripped it exactly like a real hardcoded credential. Added a plausibility filter (reject common type keywords and self-referential values) to both paths. Caught and fixed a second bug while writing it: a regex match's group-end offset is relative to the full searched text, not to the matched substring — an unrelativized slice was silently returning an empty string (no protection at all) for any match not at position 0.
+- Fixed `using-recall` and `define-category` scoring Gold instead of Platinum on PluginEval's `orchestration_fitness` dimension: the judge penalizes "if request is about X, use skill Y" conditional-dispatch phrasing as supervisor/orchestrator language, even in skills whose legitimate job is routing or stating scope boundaries. Reframed (not removed) the routing content as declarative recommendations; trimmed a routing table that fully duplicated the Handoff Map; aligned worked examples to each skill's own declared Output Format instead of inventing sibling-owned parameters. Verified via before/after judge re-score (using-recall orchestration_fitness 0.75 -> 0.92; define-category 0.72 -> 0.85).
+- Fixed the CI `bench-light` job, which had failed at its first step ("No module named pytest") on every run since the benchmark harness was added — silently masked by `continue-on-error: true`, so the actual benchmark comparison step had never executed even once. Added the missing `pip install pytest` step.
+- Flipped `bench-light` to a blocking `--strict` gate: with the above fix landed, 2 consecutive Linux CI runs plus a local Windows run all produced the identical `emission_hash` against the light-mode baseline, satisfying the "two stable consecutive baselines" bar the job had been waiting on since the harness shipped.
+- WORK_STATUS.md's "Deferred" list marked 4 items resolved that had actually been closed in the 1.3.0 batch but never updated.
+
 ## 1.4.0 - 2026-07-06
 
 Closes the last open retrieval frontier from 1.3.0: semantic matching beyond raw lexical overlap. Measured honestly with a new benchmark metric before optimizing, then improved ranking end to end with zero regressions on every existing quality gate.
