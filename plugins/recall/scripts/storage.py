@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
@@ -181,55 +182,71 @@ def init_store(root: str | Path | None = None) -> None:
         jsonl_dir(root).mkdir(parents=True, exist_ok=True)
 
 
+def _ensure_runtime_indexes(connection: sqlite3.Connection) -> None:
+    """Additive, idempotent indexes safe to (re)create on every init.
+
+    Kept outside the schema_version-gated migration block below so already
+    -installed stores pick up new indexes on next open, not only on a
+    version bump (no data migration involved, purely a perf/lookup aid).
+    """
+
+    if not _table_exists(connection, "memories"):
+        return
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memories_idempotency "
+        "ON memories(json_extract(metadata, '$.idempotency_key'))"
+    )
+
+
 def init_sqlite(root: str | Path | None = None) -> None:
     path = db_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     with closing(connect_sqlite(root)) as connection:
         previous_version = _stored_schema_version(connection)
-        if previous_version == SCHEMA_VERSION:
-            return
-        if 0 < previous_version < SCHEMA_VERSION:
-            _backup_before_migration(connection, root, previous_version)
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS memories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                category TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                content TEXT NOT NULL,
-                metadata TEXT NOT NULL DEFAULT '{}',
-                embedding TEXT NOT NULL
+        if previous_version < SCHEMA_VERSION:
+            if 0 < previous_version < SCHEMA_VERSION:
+                _backup_before_migration(connection, root, previous_version)
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS memories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    category TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    embedding TEXT NOT NULL
+                )
+                """
             )
-            """
-        )
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS recall_meta (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS recall_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+                """
             )
-            """
-        )
-        columns = {row[1] for row in connection.execute("PRAGMA table_info(memories)").fetchall()}
-        if "embedding" not in columns:
-            connection.execute("ALTER TABLE memories ADD COLUMN embedding TEXT NOT NULL DEFAULT '[]'")
-        if previous_version < 2:
-            _migrate_to_v2(connection)
-        connection.execute("CREATE INDEX IF NOT EXISTS idx_memories_category ON memories(category)")
-        connection.execute("CREATE INDEX IF NOT EXISTS idx_memories_timestamp ON memories(timestamp)")
-        connection.execute("CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status)")
-        connection.execute("CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(memory_type)")
-        connection.execute("CREATE INDEX IF NOT EXISTS idx_memories_source_path ON memories(source_path)")
-        connection.execute("CREATE INDEX IF NOT EXISTS idx_memories_updated_at ON memories(updated_at)")
-        fts5_available = _init_fts(connection)
-        connection.execute(
-            "INSERT OR REPLACE INTO recall_meta (key, value) VALUES ('schema_version', ?)",
-            (str(SCHEMA_VERSION),),
-        )
-        connection.execute(
-            "INSERT OR REPLACE INTO recall_meta (key, value) VALUES ('fts5_available', ?)",
-            ("1" if fts5_available else "0",),
-        )
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(memories)").fetchall()}
+            if "embedding" not in columns:
+                connection.execute("ALTER TABLE memories ADD COLUMN embedding TEXT NOT NULL DEFAULT '[]'")
+            if previous_version < 2:
+                _migrate_to_v2(connection)
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_memories_category ON memories(category)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_memories_timestamp ON memories(timestamp)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(memory_type)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_memories_source_path ON memories(source_path)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_memories_updated_at ON memories(updated_at)")
+            fts5_available = _init_fts(connection)
+            connection.execute(
+                "INSERT OR REPLACE INTO recall_meta (key, value) VALUES ('schema_version', ?)",
+                (str(SCHEMA_VERSION),),
+            )
+            connection.execute(
+                "INSERT OR REPLACE INTO recall_meta (key, value) VALUES ('fts5_available', ?)",
+                ("1" if fts5_available else "0",),
+            )
+        _ensure_runtime_indexes(connection)
         connection.commit()
 
 
@@ -289,6 +306,89 @@ def add_record(
                 + "\n"
             )
     return MemoryRecord(record_id, category, timestamp, content, metadata, embedding=embedding)
+
+
+def find_by_idempotency_key(idempotency_key: str, root: str | Path | None = None) -> MemoryRecord | None:
+    init_store(root)
+    cfg = recall_config.load_config(root)
+    if cfg["backend"] == "sqlite":
+        init_sqlite(root)
+        with closing(connect_sqlite(root)) as connection:
+            row = connection.execute(
+                "SELECT id, category, timestamp, content, metadata, embedding FROM memories "
+                "WHERE json_extract(metadata, '$.idempotency_key') = ? ORDER BY id DESC LIMIT 1",
+                (idempotency_key,),
+            ).fetchone()
+        if row is None:
+            return None
+        return MemoryRecord(
+            int(row[0]), row[1], row[2], row[3],
+            json.loads(row[4] or "{}"), embedding=json.loads(row[5] or "[]"),
+        )
+    for record in iter_jsonl_records(root):
+        if str((record.metadata or {}).get("idempotency_key") or "") == idempotency_key:
+            return record
+    return None
+
+
+def add_record_if_new(
+    category: str,
+    timestamp: str,
+    content: str,
+    metadata: dict[str, Any],
+    embedding: list[float],
+    idempotency_key: str,
+    root: str | Path | None = None,
+) -> tuple[MemoryRecord, bool]:
+    """Insert unless a record with this idempotency_key already exists.
+
+    For the SQLite backend the existence check and the insert run inside one
+    `BEGIN IMMEDIATE` transaction, so two concurrent sessions replaying the
+    same call can't both pass the check and double-insert (the second
+    session's transaction blocks on the write lock until the first commits,
+    then sees the row that just landed). Returns (record, inserted).
+    """
+
+    content = security.redact_text(content)
+    metadata = dict(security.redact_value(metadata))
+    metadata["idempotency_key"] = idempotency_key
+    cfg = recall_config.load_config(root)
+    if cfg["backend"] != "sqlite":
+        existing = find_by_idempotency_key(idempotency_key, root)
+        if existing is not None:
+            return existing, False
+        return add_record(category, timestamp, content, metadata, embedding, root), True
+    init_sqlite(root)
+    normalized = _normalized_fields(metadata, timestamp)
+    with closing(connect_sqlite(root)) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            row = connection.execute(
+                "SELECT id, category, timestamp, content, metadata, embedding FROM memories "
+                "WHERE json_extract(metadata, '$.idempotency_key') = ? ORDER BY id DESC LIMIT 1",
+                (idempotency_key,),
+            ).fetchone()
+            if row is not None:
+                connection.rollback()
+                return MemoryRecord(
+                    int(row[0]), row[1], row[2], row[3],
+                    json.loads(row[4] or "{}"), embedding=json.loads(row[5] or "[]"),
+                ), False
+            cursor = connection.execute(
+                """INSERT INTO memories (
+                    category, timestamp, content, metadata, embedding,
+                    memory_type, title, status, trust, confidence, importance,
+                    source_kind, source_path, source_hash, source_revision,
+                    created_at, updated_at, confirmed_at, accessed_at, expires_at, lineage
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (category, timestamp, content, json.dumps(metadata, sort_keys=True), json.dumps(embedding), *normalized.values()),
+            )
+            record_id = int(cursor.lastrowid or 0)
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+    return MemoryRecord(record_id, category, timestamp, content, metadata, embedding=embedding), True
 
 
 def add_records_batch(
@@ -641,6 +741,50 @@ def sqlite_diagnostics(root: str | Path | None = None) -> dict[str, Any]:
 
 def backend(root: str | Path | None = None) -> str:
     return str(recall_config.load_config(root)["backend"])
+
+
+def integrity_check(root: str | Path | None = None) -> dict[str, Any]:
+    """Run PRAGMA integrity_check; also catches file-level corruption that
+    would otherwise raise unhandled from the first connect (truncated by
+    disk-full, killed mid-write) so `doctor()` can report it instead of
+    crashing the caller."""
+
+    if backend(root) != "sqlite":
+        return {"ok": True, "errors": []}
+    path = db_path(root)
+    if not path.exists():
+        return {"ok": True, "errors": []}
+    try:
+        with closing(sqlite3.connect(path, timeout=SQLITE_BUSY_TIMEOUT_MS / 1000)) as connection:
+            rows = connection.execute("PRAGMA integrity_check").fetchall()
+    except sqlite3.DatabaseError as exc:
+        return {"ok": False, "errors": [str(exc)]}
+    errors = [str(row[0]) for row in rows if str(row[0]).lower() != "ok"]
+    return {"ok": not errors, "errors": errors}
+
+
+def latest_backup(root: str | Path | None = None) -> Path | None:
+    backups = sorted((recall_config.memory_dir(root) / "backups").glob("memory-v*.sqlite"))
+    return backups[-1] if backups else None
+
+
+def restore_from_backup(root: str | Path | None = None) -> Path:
+    """Restore memory.sqlite from the newest migration backup.
+
+    Only ever called from an explicit `repair --restore-backup` step, never
+    automatically — it overwrites the live (corrupted) database file. The
+    corrupt file is preserved alongside it as `memory.sqlite.corrupt` first.
+    """
+
+    backup = latest_backup(root)
+    if backup is None:
+        raise RuntimeError("No backup available to restore from.")
+    target = db_path(root)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        shutil.copy2(target, target.with_suffix(".sqlite.corrupt"))
+    shutil.copy2(backup, target)
+    return backup
 
 
 def fts5_rerank_scores(record_texts: dict[int, str], tokens: set[str]) -> dict[int, float]:

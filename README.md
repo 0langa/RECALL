@@ -30,7 +30,7 @@ RECALL does not use a hosted database or network embedding service. It is design
 Requires Codex CLI with plugin marketplace support and a local Python runtime.
 
 ```bash
-codex plugin marketplace add 0langa/RECALL --ref v1.4.0
+codex plugin marketplace add 0langa/RECALL --ref v1.5.0
 codex plugin add recall@recall-local
 ```
 
@@ -157,6 +157,46 @@ RECALL writes runtime data to the active project:
 
 `.recall/` should stay out of source control. If a project only has a legacy `.codex_memory/` store, RECALL keeps using it so existing history stays visible. Once `.recall/` exists, `.recall/` wins and `.codex_memory/` is legacy history unless you explicitly migrate or inspect it.
 
+## Troubleshooting
+
+Run the built-in diagnostics from `plugins/recall` (or wherever the plugin is installed):
+
+```bash
+python ./scripts/recall_skill.py doctor
+```
+
+`doctor` reports schema version, index/JSONL drift, and (SQLite) journal mode, FTS5 availability, and integrity. If it reports `"storage_corrupted": true`, restore from the newest automatic migration backup instead of deleting the store:
+
+```bash
+python ./scripts/recall_skill.py repair --restore-backup
+```
+
+This copies the corrupted `memory.sqlite` aside as `memory.sqlite.corrupt` before restoring, so nothing is silently discarded. For non-corruption drift (a stale or incomplete index), plain `repair` (no flag) rebuilds the index instead.
+
+If hooks don't seem to run, confirm the host provider has trusted/enabled RECALL's bundled hooks (Codex and Claude Code both ask before auto-capture/retrieval hooks run) and that a local Python runtime is on `PATH`.
+
+## Migrating From `.codex_memory/`
+
+Projects with only a legacy `.codex_memory/` store keep working as-is — RECALL reads it for backward compatibility. To move onto the current `.recall/` store and its full feature set (health flags, hygiene, lifecycle ops):
+
+```bash
+python ./scripts/recall_skill.py migrate-store          # dry-run plan
+python ./scripts/recall_skill.py migrate-store --apply  # perform the migration
+```
+
+## Uninstalling
+
+Remove the plugin through the provider's own command, then optionally delete the project-local store:
+
+```bash
+codex plugin remove recall@recall-local        # Codex
+claude plugin uninstall recall@recall-local    # Claude Code
+```
+
+For Kimi Code, open the interactive plugin manager with `/plugins` and remove RECALL from there — Kimi Code's docs don't document a direct uninstall slash-command syntax at this time.
+
+Uninstalling the plugin does not delete stored memory. Remove `.recall/` (and `.codex_memory/` if still present) from a project to delete its RECALL data entirely — this is destructive and not reversible without a prior `export-memory` backup.
+
 ## Security Model
 
 RECALL is local-first:
@@ -186,12 +226,16 @@ through live hook-injected context.
 v1.4.0 (retrieval ranking + local embedder v2) was validated with the full
 plugin test suite, blocking lint/type gates, and complete-mode benchmark runs
 (package/zip/marketplace smoke not re-run this pass).
+v1.5.0 (quality-gate hardening: secret-scanner fix, skill orchestration_fitness
+fix, CI bench-light flipped to a blocking gate) was validated with the full
+plugin test suite (237/237), blocking lint/type gates, and bench-light CI
+green including the newly-blocking benchmark step.
 
 ## Release Status
 
-Current stable release: `v1.4.0`
+Current stable release: `v1.5.0`
 
-The GitHub release asset is `recall.zip`. Users who install from GitHub should pin `--ref v1.4.0` for a stable install.
+The GitHub release asset is `recall.zip`. Users who install from GitHub should pin `--ref v1.5.0` for a stable install.
 
 ## License
 

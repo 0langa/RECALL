@@ -106,6 +106,28 @@ class PackageMetadataTests(unittest.TestCase):
         self.assertTrue((ROOT / "hooks" / "hooks.json").is_file())
         self.assertTrue((ROOT / "docs" / "CLAUDE_CODE.md").is_file())
 
+    def test_install_docs_pin_ref_to_current_version(self) -> None:
+        """READMEs/INSTALL.md tell users to `--ref vX.Y.Z` a specific tag —
+        that string isn't covered by the manifest-version parity test above,
+        so it silently drifted to a stale tag once already (v1.4.0 install
+        docs survived the v1.5.0 bump undetected until this test)."""
+
+        version = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]
+        expected_ref = f"--ref v{version}"
+        for path in (
+            REPO_ROOT / "README.md",
+            ROOT / "README.md",
+            ROOT / "docs" / "INSTALL.md",
+        ):
+            text = path.read_text(encoding="utf-8")
+            if "--ref v" not in text:
+                continue
+            self.assertIn(expected_ref, text, path)
+            for stale in ("--ref v1.4.0", "--ref v1.3.0", "--ref v1.2.0", "--ref v1.1.0"):
+                if stale == expected_ref:
+                    continue
+                self.assertNotIn(stale, text, path)
+
     def test_cross_platform_python_builder_is_present(self) -> None:
         self.assertTrue((REPO_ROOT / "build_plugin.py").is_file())
         self.assertTrue((ROOT / "scripts" / "build_plugin.py").is_file())

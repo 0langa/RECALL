@@ -247,6 +247,47 @@ def add_record(
     return record
 
 
+def add_record_if_new_idempotency(
+    category: str,
+    content: str,
+    metadata: dict[str, Any],
+    idempotency_key: str,
+    root: str | Path | None = None,
+) -> tuple[MemoryRecord, bool]:
+    """Same preprocessing as `add_record`, but the final insert is atomic
+    with respect to `idempotency_key` (see `storage.add_record_if_new`) —
+    closes the race where two concurrent replays of the same call both pass
+    an earlier "does this key exist" check and double-insert."""
+
+    cfg = recall_config.load_config(root)
+    normalized_category = recall_config.normalize_category(category)
+    metadata = redact_metadata(dict(metadata or {}))
+    if normalized_category not in cfg["categories"]:
+        recall_config.add_category(
+            normalized_category,
+            f"Auto-created custom category `{normalized_category}`.",
+            1.0,
+            root,
+        )
+        metadata["recall_warning"] = "Category was auto-created. Refine its description and weight when useful."
+
+    safe_content = redact_secrets(content.strip())
+    if not safe_content:
+        raise ValueError("Cannot store an empty RECALL memory.")
+    record, inserted = storage.add_record_if_new(
+        normalized_category,
+        utc_now(),
+        safe_content,
+        metadata,
+        embed(safe_content),
+        idempotency_key,
+        root,
+    )
+    if inserted:
+        index_store.append_record(record, root)
+    return record, inserted
+
+
 def add_records_batch(
     cards: list[dict[str, Any]],
     root: str | Path | None = None,
@@ -290,9 +331,9 @@ def add_record_if_useful(
         }
     idempotency_key = str(metadata.get("idempotency_key") or "").strip()
     if idempotency_key:
-        for existing in storage.iter_records(root):
-            if str((existing.metadata or {}).get("idempotency_key") or "") == idempotency_key:
-                return {"action": "ignored", "record": existing, "duplicate_id": existing.id, "reason": "idempotent_replay"}
+        existing = storage.find_by_idempotency_key(idempotency_key, root)
+        if existing is not None:
+            return {"action": "ignored", "record": existing, "duplicate_id": existing.id, "reason": "idempotent_replay"}
     preference = preference_service.evaluate(recall_config.normalize_category(category), metadata, root)
     if preference.action == "ignore":
         return {"action": "ignored", "record": None, "duplicate_id": None, "reason": preference.reason}
@@ -329,7 +370,12 @@ def add_record_if_useful(
         metadata["related_to"] = memory_lifecycle.add_ids(metadata.get("related_to"), decision.related_id)
         metadata["related_similarity"] = round(decision.similarity, 4)
         action = "saved_related"
-    record = add_record(category, safe_content, metadata, root)
+    if idempotency_key:
+        record, inserted = add_record_if_new_idempotency(category, safe_content, metadata, idempotency_key, root)
+        if not inserted:
+            return {"action": "ignored", "record": record, "duplicate_id": record.id, "reason": "idempotent_replay"}
+    else:
+        record = add_record(category, safe_content, metadata, root)
     if decision.supersedes_id is not None:
         memory_lifecycle.supersede(decision.supersedes_id, record.id, root, "Automatic write policy supersession cue.")
     return {"action": action, "record": record, "duplicate_id": None}
@@ -376,6 +422,18 @@ def rebuild_index(root: str | Path | None = None) -> dict[str, Any]:
 
 
 def doctor(root: str | Path | None = None) -> dict[str, Any]:
+    integrity = storage.integrity_check(root)
+    if not integrity["ok"]:
+        backup = storage.latest_backup(root)
+        return {
+            "backend": storage.backend(root),
+            "storage_corrupted": True,
+            "integrity_errors": integrity["errors"],
+            "warnings": [f"SQLite store failed integrity_check: {'; '.join(integrity['errors'])}"],
+            "repairs_available": ["restore-backup"] if backup else [],
+            "storage_path": str(db_path(root)),
+            "backup_available": str(backup) if backup else None,
+        }
     storage.init_store(root)
     index_report = index_store.diagnostics(root)
     backend = storage.backend(root)
@@ -403,6 +461,8 @@ def doctor(root: str | Path | None = None) -> dict[str, Any]:
         repairs_available.append("migrate-store")
     return {
         "backend": backend,
+        "storage_corrupted": False,
+        "integrity_errors": [],
         "schema_version": storage.schema_version(root),
         "records": index_report["records"],
         "index_records": index_report["index_records"],
@@ -420,7 +480,10 @@ def doctor(root: str | Path | None = None) -> dict[str, Any]:
     }
 
 
-def repair(root: str | Path | None = None) -> dict[str, Any]:
+def repair(root: str | Path | None = None, restore_backup: bool = False) -> dict[str, Any]:
+    if restore_backup:
+        restored_from = storage.restore_from_backup(root)
+        return {"restored_from": str(restored_from), "doctor": doctor(root)}
     storage.init_store(root)
     rebuild_report = rebuild_index(root)
     return {"repair": rebuild_report, "doctor": doctor(root)}
@@ -509,7 +572,8 @@ def main() -> None:
 
     subparsers.add_parser("rebuild-index")
     subparsers.add_parser("doctor")
-    subparsers.add_parser("repair")
+    repair_parser = subparsers.add_parser("repair")
+    repair_parser.add_argument("--restore-backup", action="store_true", help="Restore memory.sqlite from the newest migration backup (use after doctor reports storage_corrupted).")
 
     args = parser.parse_args()
     if args.command == "init":
@@ -554,7 +618,7 @@ def main() -> None:
     elif args.command == "doctor":
         print(json.dumps(doctor(args.root), indent=2, sort_keys=True))
     elif args.command == "repair":
-        print(json.dumps(repair(args.root), indent=2, sort_keys=True))
+        print(json.dumps(repair(args.root, args.restore_backup), indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":

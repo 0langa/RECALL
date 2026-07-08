@@ -6,6 +6,7 @@ dist/
 __pycache__/
 *.pyc
 .ruff_cache/
+.coverage
 quality_results/
 source_blind_eval_pack/
 Persistent Memory Plugins for OpenAI Codex — Architecture Spec & Design Blueprint.md
