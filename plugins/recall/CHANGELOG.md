@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.1 - 2026-07-11
+
+Production-readiness hardening pass found via code audit, not a wishlist. No retrieval/ranking changes.
+
+- Fixed a real concurrency bug in `storage.add_record_if_new`: the replay-dedup check and the insert were two separate DB round trips, letting two concurrent sessions double-insert. Now one `BEGIN IMMEDIATE` transaction plus an indexed `json_extract` lookup (`idx_memories_idempotency`), applied to already-migrated stores too via an unconditional `_ensure_runtime_indexes`.
+- `doctor()`/`repair()` now detect SQLite corruption (`PRAGMA integrity_check`) instead of crashing unhandled; new `repair --restore-backup` recovers from the existing migration-backup snapshot, preserving the corrupt file first.
+- Fixed README/INSTALL install docs still pinned to `--ref v1.4.0`, missed by the existing version-parity test; fixed and pinned by a new test (`test_install_docs_pin_ref_to_current_version`) so it can't drift silently again.
+- CI: pinned ruff/mypy/pytest versions; added a non-blocking coverage job.
+- Added `SECURITY.md`; added README troubleshooting/migration/uninstall sections.
+
 ## 1.5.0 - 2026-07-06
 
 Quality-gate hardening + skill polish, found during a v1.4.0 release-validation pass. No retrieval/ranking changes.

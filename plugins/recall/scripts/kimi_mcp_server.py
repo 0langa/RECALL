@@ -492,7 +492,7 @@ def handle(request: Json) -> Json | None:
             result = {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "recall", "version": "1.5.0"},
+                "serverInfo": {"name": "recall", "version": "1.5.1"},
                 "instructions": recall_contract.compact_contract_text(),
             }
         elif method == "tools/list":

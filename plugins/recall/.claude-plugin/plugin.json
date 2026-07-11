@@ -1,6 +1,6 @@
 {
   "name": "recall",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Local-first project memory for Claude Code, shared with Codex and Kimi Code stores.",
   "author": {
     "name": "RECALL contributors"
