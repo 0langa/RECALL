@@ -30,7 +30,7 @@ RECALL does not use a hosted database or network embedding service. It is design
 Requires Codex CLI with plugin marketplace support and a local Python runtime.
 
 ```bash
-codex plugin marketplace add 0langa/RECALL --ref v1.5.1
+codex plugin marketplace add 0langa/RECALL --ref v1.5.2
 codex plugin add recall@recall-local
 ```
 
@@ -233,9 +233,9 @@ green including the newly-blocking benchmark step.
 
 ## Release Status
 
-Current stable release: `v1.5.1`
+Current stable release: `v1.5.2`
 
-The GitHub release asset is `recall.zip`. Users who install from GitHub should pin `--ref v1.5.1` for a stable install.
+The GitHub release asset is `recall.zip`. Users who install from GitHub should pin `--ref v1.5.2` for a stable install.
 
 ## License
 

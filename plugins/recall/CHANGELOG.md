@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.2 - 2026-07-12
+
+- Added marketplace artwork metadata for Codex install surfaces.
+- Kept provider manifests and MCP server metadata version-aligned.
+
 ## 1.5.1 - 2026-07-11
 
 Production-readiness hardening pass found via code audit, not a wishlist. No retrieval/ranking changes.

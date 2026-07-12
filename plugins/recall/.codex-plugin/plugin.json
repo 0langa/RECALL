@@ -1,6 +1,6 @@
 {
   "name": "recall",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Local-first project memory for Codex agents.",
   "author": {
     "name": "RECALL contributors"
@@ -33,6 +33,9 @@
     "brandColor": "#256D5A",
     "composerIcon": "./assets/icon.png",
     "logo": "./assets/logo.png",
+    "screenshots": [
+      "./assets/screenshot-1.png"
+    ],
     "defaultPrompt": [
       "Remember this project decision.",
       "Recall the relevant project context.",
