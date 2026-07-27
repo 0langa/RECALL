@@ -2,9 +2,9 @@
   "meta": {
     "bench_schema_version": 1,
     "emission_hash": "a1c5c57f7a14e78b778ed2e956dfecd59c34a5ab03d7a695040f987bf6438669",
-    "journal": "C:\\Users\\Julius\\source\\repos\\RECALL\\bench\\runs\\complete-1337\\journal.jsonl",
+    "journal": "C:\\Users\\ExampleUser\\source\\repos\\RECALL\\bench\\runs\\complete-1337\\journal.jsonl",
     "judge_tasks": {
-      "path": "C:\\Users\\Julius\\source\\repos\\RECALL\\bench\\runs\\complete-1337\\judge_tasks.jsonl",
+      "path": "C:\\Users\\ExampleUser\\source\\repos\\RECALL\\bench\\runs\\complete-1337\\judge_tasks.jsonl",
       "tasks_emitted": 17
     },
     "mode": "complete",

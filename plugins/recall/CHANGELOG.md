@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.3 - 2026-07-27
+
+- Replaced workstation-specific names and paths in public manuals, baselines, and test fixtures.
+- Added release regression coverage preventing private Windows identity data from entering tracked files.
+
 ## 1.5.2 - 2026-07-12
 
 - Added marketplace artwork metadata for Codex install surfaces.

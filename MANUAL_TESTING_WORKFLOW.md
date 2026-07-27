@@ -2,13 +2,13 @@
 
 This workflow is for finding real-world gaps that automated tests and PluginEval can miss. It focuses on user-visible behavior, project-scoped activation, auto-memory management, corpus quality, quiet-mode hooks, and installed-plugin readiness.
 
-Run this from `C:\Users\Julius\source\repos\RECALL` unless a step says otherwise.
+Run this from `C:\Users\ExampleUser\source\repos\RECALL` unless a step says otherwise.
 
 Current UI-app manual fixture paths:
 
-- Main activated project: `C:\Users\Julius\source\test_enviroments\RECALL\project`
-- Second activated project: `C:\Users\Julius\source\test_enviroments\RECALL\project2`
-- Non-project/greenfield fixture: `C:\Users\Julius\source\test_enviroments\RECALL\recall-nonproject-manual`
+- Main activated project: `C:\Users\ExampleUser\source\test_enviroments\RECALL\project`
+- Second activated project: `C:\Users\ExampleUser\source\test_enviroments\RECALL\project2`
+- Non-project/greenfield fixture: `C:\Users\ExampleUser\source\test_enviroments\RECALL\recall-nonproject-manual`
 
 The phases below assume you are testing primarily in the Codex App UI. Use terminal commands only as an external audit/check after the UI turn has finished.
 
@@ -42,11 +42,11 @@ The final release decision is recorded in `docs\manual-release-notes.md`. Keep t
 Recommended baseline commands:
 
 ```powershell
-cd C:\Users\Julius\source\repos\RECALL
+cd C:\Users\ExampleUser\source\repos\RECALL
 python -m unittest discover -s plugins\recall\tests -q
 python RECALL_quality_suite\scripts\run_recall_quality_suite.py --repo-root . --quick
 python build_plugin.py
-python plugins\recall\scripts\smoke_recall.py --installed-plugin-root C:\Users\Julius\.codex\plugins\cache\recall-local\recall\1.3.0 --json
+python plugins\recall\scripts\smoke_recall.py --installed-plugin-root C:\Users\ExampleUser\.codex\plugins\cache\recall-local\recall\1.3.0 --json
 ```
 
 Do not treat these commands as release proof. They only establish a clean starting point.
@@ -83,7 +83,7 @@ python build_plugin.py
 codex plugin add recall@recall-local
 ```
 
-2. Open a fresh Codex thread in `C:\Users\Julius\source\repos\RECALL`.
+2. Open a fresh Codex thread in `C:\Users\ExampleUser\source\repos\RECALL`.
 
 3. Confirm these are true in the UI:
 
@@ -105,7 +105,7 @@ Status: PASS. Covered by unattended hook/skill simulation; evidence in `quality_
 Use a non-project folder:
 
 ```powershell
-$scratch = "C:\Users\Julius\source\test_enviroments\RECALL\recall-nonproject-manual"
+$scratch = "C:\Users\ExampleUser\source\test_enviroments\RECALL\recall-nonproject-manual"
 Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
 New-Item -ItemType Directory $scratch | Out-Null
 ```
@@ -170,7 +170,7 @@ Check:
 
 ```powershell
 Get-Content "$scratch\.recall\memory_config.json"
-python C:\Users\Julius\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root $scratch activation-status
+python C:\Users\ExampleUser\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root $scratch activation-status
 ```
 
 Fail if:
@@ -186,13 +186,13 @@ Status: PASS. Covered by installed-cache fresh project E2E simulation; evidence 
 Create a real project fixture:
 
 ```powershell
-$project = "C:\Users\Julius\source\test_enviroments\RECALL\project"
+$project = "C:\Users\ExampleUser\source\test_enviroments\RECALL\project"
 Remove-Item -Recurse -Force $project -ErrorAction SilentlyContinue
 New-Item -ItemType Directory $project | Out-Null
 Set-Content "$project\pyproject.toml" "[project]`nname='recall-manual'`nversion='0.1.0'`n"
 ```
 
-Open a fresh Codex App thread in `C:\Users\Julius\source\test_enviroments\RECALL\project`.
+Open a fresh Codex App thread in `C:\Users\ExampleUser\source\test_enviroments\RECALL\project`.
 
 Submit:
 
@@ -210,14 +210,14 @@ Expected:
 Check:
 
 ```powershell
-python C:\Users\Julius\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\Julius\source\test_enviroments\RECALL\project review-memory --category requirements --limit 10
+python C:\Users\ExampleUser\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\ExampleUser\source\test_enviroments\RECALL\project review-memory --category requirements --limit 10
 ```
 
 Fail if:
 
 - `RECALL_FINALIZER_REQUEST` is visible.
 - The assistant explains `apply-finalizer-batch`.
-- Memory is stored outside `C:\Users\Julius\source\test_enviroments\RECALL\project\.recall`.
+- Memory is stored outside `C:\Users\ExampleUser\source\test_enviroments\RECALL\project\.recall`.
 - The requirement is stored as `commands` or generic `project_state`.
 
 ## Phase 5: Persistent Activation Across Prompts
@@ -244,8 +244,8 @@ Expected:
 Check:
 
 ```powershell
-python C:\Users\Julius\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\Julius\source\test_enviroments\RECALL\project review-memory --category commands --limit 20
-python C:\Users\Julius\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\Julius\source\test_enviroments\RECALL\project review-memory --category project_state --limit 20
+python C:\Users\ExampleUser\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\ExampleUser\source\test_enviroments\RECALL\project review-memory --category commands --limit 20
+python C:\Users\ExampleUser\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\ExampleUser\source\test_enviroments\RECALL\project review-memory --category project_state --limit 20
 ```
 
 Fail if:
@@ -258,7 +258,7 @@ Fail if:
 
 Status: PASS. Prior manual transcript confirmed release-notes retrieval; evidence in `quality_results\manual\manual_test_notes.md`.
 
-Close the thread. Open a new Codex App thread in `C:\Users\Julius\source\test_enviroments\RECALL\project`.
+Close the thread. Open a new Codex App thread in `C:\Users\ExampleUser\source\test_enviroments\RECALL\project`.
 
 Submit:
 
@@ -295,7 +295,7 @@ Status: PASS. Prior manual transcript confirmed calibrated insufficiency for unk
 Open or keep using a Codex App thread in:
 
 ```text
-C:\Users\Julius\source\test_enviroments\RECALL\project
+C:\Users\ExampleUser\source\test_enviroments\RECALL\project
 ```
 
 Ask explicit memory questions that should not be answerable from the current project memory:
@@ -328,7 +328,7 @@ Status: PASS after fix. Failure capture and conditional command capture were ver
 In the Codex App UI for:
 
 ```text
-C:\Users\Julius\source\test_enviroments\RECALL\project
+C:\Users\ExampleUser\source\test_enviroments\RECALL\project
 ```
 
 Ask Codex to intentionally run a failing command:
@@ -353,7 +353,7 @@ Expected:
 Check:
 
 ```powershell
-python C:\Users\Julius\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\Julius\source\test_enviroments\RECALL\project review-memory --category debug_history --limit 20
+python C:\Users\ExampleUser\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\ExampleUser\source\test_enviroments\RECALL\project review-memory --category debug_history --limit 20
 ```
 
 Fail if:
@@ -394,7 +394,7 @@ Status: PASS after fix. Release-notes path correction supersession was verified;
 Use `project2` for conflict testing so the main `project` fixture keeps its clean Phase 6/7 release-notes record:
 
 ```text
-C:\Users\Julius\source\test_enviroments\RECALL\project2
+C:\Users\ExampleUser\source\test_enviroments\RECALL\project2
 ```
 
 In a Codex App thread for `project2`, store a requirement:
@@ -418,7 +418,7 @@ Expected:
 Check:
 
 ```powershell
-python C:\Users\Julius\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\Julius\source\test_enviroments\RECALL\project2 review-memory --category requirements --limit 20
+python C:\Users\ExampleUser\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\ExampleUser\source\test_enviroments\RECALL\project2 review-memory --category requirements --limit 20
 ```
 
 Fail if:
@@ -436,8 +436,8 @@ Use `project2` for deactivation testing unless you intentionally want to pause t
 From an external terminal, run:
 
 ```powershell
-python C:\Users\Julius\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\Julius\source\test_enviroments\RECALL\project2 deactivate-project
-python C:\Users\Julius\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\Julius\source\test_enviroments\RECALL\project2 activation-status
+python C:\Users\ExampleUser\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\ExampleUser\source\test_enviroments\RECALL\project2 deactivate-project
+python C:\Users\ExampleUser\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\ExampleUser\source\test_enviroments\RECALL\project2 activation-status
 ```
 
 In a new Codex App thread in `project2`, submit:
@@ -496,7 +496,7 @@ Status: PASS. Debug trace behavior was verified by terminal simulation; evidence
 Enable debug mode only for development. Use `project2` so debug artifacts do not muddy the main fixture:
 
 ```powershell
-python C:\Users\Julius\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\Julius\source\test_enviroments\RECALL\project2 configure-observability debug
+python C:\Users\ExampleUser\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\ExampleUser\source\test_enviroments\RECALL\project2 configure-observability debug
 ```
 
 Perform one active Codex App UI turn in `project2`.
@@ -512,7 +512,7 @@ Expected:
 Return to quiet mode:
 
 ```powershell
-python C:\Users\Julius\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\Julius\source\test_enviroments\RECALL\project2 configure-observability quiet
+python C:\Users\ExampleUser\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\ExampleUser\source\test_enviroments\RECALL\project2 configure-observability quiet
 ```
 
 Fail if:
@@ -528,8 +528,8 @@ Status: PASS. Corpus review found no active automatic command-noise candidates i
 Run category review for both UI fixtures from an external terminal:
 
 ```powershell
-python C:\Users\Julius\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\Julius\source\test_enviroments\RECALL\project review-memory --limit 100
-python C:\Users\Julius\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\Julius\source\test_enviroments\RECALL\project2 review-memory --limit 100
+python C:\Users\ExampleUser\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\ExampleUser\source\test_enviroments\RECALL\project review-memory --limit 100
+python C:\Users\ExampleUser\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\ExampleUser\source\test_enviroments\RECALL\project2 review-memory --limit 100
 ```
 
 Audit the corpus manually:
@@ -569,21 +569,21 @@ Use a copied project or backup corpus.
 Do not run migration against the only copy of `project` or `project2`. First copy one fixture:
 
 ```powershell
-$migration = "C:\Users\Julius\source\test_enviroments\RECALL\migration-copy"
+$migration = "C:\Users\ExampleUser\source\test_enviroments\RECALL\migration-copy"
 Remove-Item -Recurse -Force $migration -ErrorAction SilentlyContinue
-Copy-Item -Recurse C:\Users\Julius\source\test_enviroments\RECALL\project $migration
+Copy-Item -Recurse C:\Users\ExampleUser\source\test_enviroments\RECALL\project $migration
 ```
 
 Dry run:
 
 ```powershell
-python C:\Users\Julius\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\Julius\source\test_enviroments\RECALL\migration-copy migrate-corpus --dry-run
+python C:\Users\ExampleUser\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\ExampleUser\source\test_enviroments\RECALL\migration-copy migrate-corpus --dry-run
 ```
 
 Apply only after reviewing:
 
 ```powershell
-python C:\Users\Julius\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\Julius\source\test_enviroments\RECALL\migration-copy migrate-corpus --apply
+python C:\Users\ExampleUser\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\ExampleUser\source\test_enviroments\RECALL\migration-copy migrate-corpus --apply
 ```
 
 Expected:
@@ -608,7 +608,7 @@ Status: PASS after fix. All three source-blind prompts were exercised through `c
 Use a fresh Codex App thread in:
 
 ```text
-C:\Users\Julius\source\test_enviroments\RECALL\project
+C:\Users\ExampleUser\source\test_enviroments\RECALL\project
 ```
 
 Ask the assistant to use only automatically provided RECALL memory, not source files or terminal commands.
@@ -649,13 +649,13 @@ Status: PASS after fixes. Installed-cache E2E simulation covered activation, mem
 Use this current fixture path for installed-plugin E2E:
 
 ```powershell
-$fresh = "C:\Users\Julius\source\test_enviroments\RECALL\installed-e2e"
+$fresh = "C:\Users\ExampleUser\source\test_enviroments\RECALL\installed-e2e"
 Remove-Item -Recurse -Force $fresh -ErrorAction SilentlyContinue
 New-Item -ItemType Directory $fresh | Out-Null
 Set-Content "$fresh\package.json" "{`"name`":`"recall-installed-e2e`",`"version`":`"0.1.0`"}"
 ```
 
-In the Codex App, open a new thread in `C:\Users\Julius\source\test_enviroments\RECALL\installed-e2e`.
+In the Codex App, open a new thread in `C:\Users\ExampleUser\source\test_enviroments\RECALL\installed-e2e`.
 
 Manual scenario:
 

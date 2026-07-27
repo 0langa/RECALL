@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import json
 from pathlib import Path
+import subprocess
 import sys
 
 
@@ -41,6 +42,35 @@ def card(content: str, *, category: str = "requirements", explicit: bool = False
 
 
 class ReleaseHardeningTests(unittest.TestCase):
+    def test_tracked_files_do_not_expose_private_windows_identity(self) -> None:
+        repo = ROOT.parents[1]
+        private_name = "Ju" + "lius"
+        forbidden = (
+            private_name.casefold(),
+            f"c:/users/{private_name}".casefold(),
+            f"c:\\users\\{private_name}".casefold(),
+        )
+        tracked = subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        ).stdout.split(b"\0")
+
+        leaks: list[str] = []
+        for raw_path in tracked:
+            if not raw_path:
+                continue
+            relative = raw_path.decode("utf-8")
+            data = (repo / relative).read_bytes()
+            if b"\0" in data:
+                continue
+            text = data.decode("utf-8", errors="replace").casefold()
+            if any(value in text for value in forbidden):
+                leaks.append(relative)
+
+        self.assertEqual(leaks, [])
+
     def test_unrecognized_directory_resolves_to_no_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             self.assertIsNone(project_context.resolve_project_root(tmp))
@@ -279,7 +309,7 @@ class ReleaseHardeningTests(unittest.TestCase):
                 {
                     "durable_candidate": True,
                     "signal": "file_patch",
-                    "summary": "Edited file(s): C:\\Users\\Julius\\source\\repos\\RECALL\\plugins\\recall\\scripts\\turn_buffer.py, C:\\Users\\Julius\\source\\repos\\RECALL\\plugins\\recall\\scripts\\finalizer_prompt.py",
+                    "summary": "Edited file(s): C:\\Users\\ExampleUser\\source\\repos\\RECALL\\plugins\\recall\\scripts\\turn_buffer.py, C:\\Users\\ExampleUser\\source\\repos\\RECALL\\plugins\\recall\\scripts\\finalizer_prompt.py",
                     "details": "Tool: apply_patch\nFiles: README.md\nResult: success",
                     "command": patch,
                     "category_hint": "commands",
@@ -302,7 +332,7 @@ class ReleaseHardeningTests(unittest.TestCase):
             self.assertLess(len(prompt), 1400)
             self.assertNotIn("*** Begin Patch", prompt)
             self.assertNotIn("+line 299", prompt)
-            self.assertNotIn("C:\\Users\\Julius", prompt)
+            self.assertNotIn("C:\\Users\\ExampleUser", prompt)
             self.assertNotIn("turn_buffer.py", prompt)
             self.assertIn("signal_counts", prompt)
 
