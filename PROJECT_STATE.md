@@ -78,7 +78,7 @@ confusion matrix, golden retrieval, hygiene detection, secret leak sweep.
 ## Quality gates (run before release)
 
 - Lint: `python -m ruff check .` and `python -m mypy --config-file pyproject.toml` (repo root; blocking in CI)
-- Bench: `python -m pytest bench/tests -q` and `python bench/run_bench.py run --mode light --baseline bench/baselines/<latest>.json` (CI job non-blocking for now)
+- Bench: `python -m pytest bench/tests -q` and `python bench/run_bench.py run --mode light --baseline bench/baselines/<latest>.json --strict` (blocking in CI)
 - Unit: `cd plugins/recall && python -m pytest tests/ -x -q`
 - Smoke: `python scripts/smoke_recall.py --json`
 - Quality suite: `python RECALL_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick --skip-existing-unit`
