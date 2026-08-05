@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.4 - 2026-08-05
+
+- Refreshed release-roadmap truth and moved quality workflow actions to Node 24 runtimes.
+
 ## 1.5.3 - 2026-07-27
 
 - Replaced workstation-specific names and paths in public manuals, baselines, and test fixtures.
