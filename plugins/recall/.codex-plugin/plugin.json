@@ -1,6 +1,6 @@
 {
   "name": "recall",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "description": "Local-first project memory for Codex agents.",
   "author": {
     "name": "RECALL contributors"
@@ -16,6 +16,18 @@
     "context"
   ],
   "skills": "./skills/",
+  "mcpServers": {
+    "recall": {
+      "command": "python",
+      "args": [
+        "./scripts/kimi_mcp_server.py"
+      ],
+      "cwd": "./",
+      "env": {
+        "RECALL_DEFAULT_PROVIDER": "codex"
+      }
+    }
+  },
   "interface": {
     "displayName": "RECALL",
     "shortDescription": "Project memory that stays on your machine.",

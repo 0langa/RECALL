@@ -5,14 +5,14 @@ RECALL's installable plugin is kept at `plugins/recall/`. The same folder contai
 ## Install From GitHub
 
 ```bash
-codex plugin marketplace add 0langa/RECALL --ref v1.5.4
+codex plugin marketplace add 0langa/RECALL --ref v1.5.5
 codex plugin add recall@recall-local
 ```
 
 You can also use the HTTPS Git URL:
 
 ```bash
-codex plugin marketplace add https://github.com/0langa/RECALL --ref v1.5.4
+codex plugin marketplace add https://github.com/0langa/RECALL --ref v1.5.5
 codex plugin add recall@recall-local
 ```
 

@@ -27,7 +27,7 @@ RECALL is local-first project memory for Codex, Kimi Code, and Claude Code. It s
 From GitHub:
 
 ```bash
-codex plugin marketplace add 0langa/RECALL --ref v1.5.4
+codex plugin marketplace add 0langa/RECALL --ref v1.5.5
 codex plugin add recall@recall-local
 ```
 

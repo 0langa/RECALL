@@ -1,5 +1,5 @@
 # RECALL — Status & Roadmap
-_Maintenance audit: 2026-08-05_
+_Maintenance audit: 2026-08-19_
 
 ## What this is
 
@@ -15,18 +15,18 @@ hash embeddings, three provider manifests (`.codex-plugin/`, `.claude-plugin/`,
 
 ## Current state
 
-- **Released: v1.5.4** — tag `v1.5.4` is the current shipped release and its GitHub release
-  contains `recall.zip`; stable Codex installation is pinned to `--ref v1.5.4`. One shared source
+- **Released: v1.5.5** — tag `v1.5.5` is the current shipped release and its GitHub release
+  contains `recall.zip`; stable Codex installation is pinned to `--ref v1.5.5`. One shared source
   tree continues to ship the Codex, Claude Code, and Kimi manifests.
 - **Batch-5 production hardening shipped as v1.5.1**, rather than remaining an unreleased v1.6.0
   candidate: idempotency-key writes are transactional, `doctor`/`repair` handle store corruption,
   install pins have regression coverage, and CI tools are pinned. v1.5.2 added Codex artwork
   metadata; v1.5.3 removed workstation-specific public metadata and added a regression guard.
-- **Current validation (2026-08-05)**: the CI-style non-smoke runner passes all 29 test modules;
-  exact CI-pinned Ruff and Mypy pass; the 17 bench-harness tests and strict light benchmark pass
-  with zero secret leaks; the quick quality suite and documented portable package build pass.
-  The latest remote `RECALL Quality` workflow completed successfully; v1.5.4 remains the current
-  shipped baseline.
+- **Current validation (2026-08-19)**: the CI-style non-smoke runner passes all 29 test modules;
+  Ruff and Mypy pass (locally at 0.15.12 / 1.19.1 against the CI pins 0.15.20 / 2.1.0); the 17
+  bench-harness tests and the strict light benchmark pass with zero secret leaks and an
+  unchanged emission hash; the quick quality suite passes; the full package build passes every
+  stage including the Codex plugin validator. v1.5.5 is the current shipped baseline.
 - **Quality gates**: `.github/workflows/recall-quality.yml` runs lint, strict `bench-light`, a
   six-way unit matrix, coverage, three-OS smoke, quality suite, and package jobs. The release
   build validates the manifest when the local validator is available, runs source smoke, and
@@ -43,7 +43,7 @@ hash embeddings, three provider manifests (`.codex-plugin/`, `.claude-plugin/`,
 
 ## Release discipline
 
-v1.5.4 is the current shipped baseline. Do not cut v1.6.0 merely to re-release Batch-5 work that
+v1.5.5 is the current shipped baseline. Do not cut v1.6.0 merely to re-release Batch-5 work that
 already shipped in v1.5.1. A future release should have a deliberate user-facing scope and:
 
 - version alignment in the three manifests, `kimi_mcp_server.py`, and

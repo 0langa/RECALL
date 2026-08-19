@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.5.5 - 2026-08-19
+
+Codex install fix. The Codex manifest never declared the MCP server, so a Codex
+install got RECALL's skills but none of its tools: the agent was told to call
+`retrieve_memory` and found nothing. The only way to get tools was a hand-written
+`[mcp_servers.recall]` block in `~/.codex/config.toml` with an absolute path that
+hardcoded the plugin version, and therefore broke on every update.
+
+- `.codex-plugin/plugin.json` now declares `mcpServers` inline, matching the Claude
+  Code and Kimi manifests. Codex installs get the tools with no user config.
+- Declared inline rather than through a companion file on purpose: the Codex plugin
+  validator requires a path-form `mcpServers` to resolve to `.mcp.json`, and Claude
+  Code auto-discovers a plugin-root `.mcp.json` and merges it with the inline block
+  already in `.claude-plugin/plugin.json` — which would register the server twice
+  there.
+- Users who added a manual `[mcp_servers.recall]` block to `~/.codex/config.toml`
+  should delete it after updating to 1.5.5.
+
 ## 1.5.4 - 2026-08-05
 
 - Refreshed release-roadmap truth and moved quality workflow actions to Node 24 runtimes.
