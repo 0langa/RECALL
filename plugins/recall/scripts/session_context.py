@@ -87,7 +87,9 @@ def render_grouped(
         lines.append((f"{category}:", None))
         for record in category_records:
             flags = record.get("flags", [record.get("flag", "current")])
-            lines.append((f"- #{record.get('id')} [{','.join(flags)}] {record_text(record)}", record))
+            warnings = [flag for flag in flags if flag != retrieval.FLAG_CURRENT]
+            warning_text = f" [{','.join(warnings)}]" if warnings else ""
+            lines.append((f"- #{record.get('id')}{warning_text} {record_text(record)}", record))
     output: list[str] = []
     shown: list[dict[str, Any]] = []
     # Reserve one whitespace token for health. This single-token header is
@@ -103,16 +105,18 @@ def render_grouped(
             shown.append(line_record)
         used += line_tokens
     health = retrieval.selection_health(known_health or retrieval.health_summary(records), shown)
-    known = health["known_flag_counts"]
     omitted_flags = health["omitted_flag_counts"]
     omitted = max(0, health.get("known_record_count", len(records)) - len(shown))
-    counts = ",".join(f"{flag}={count}" for flag, count in sorted(known.items())) or "none"
-    omitted_counts = ",".join(f"{flag}={count}" for flag, count in sorted(omitted_flags.items())) or "none"
+    omitted_counts = ",".join(
+        f"{flag}={count}"
+        for flag, count in sorted(omitted_flags.items())
+        if flag != retrieval.FLAG_CURRENT
+    ) or "none"
     truncated = omitted > 0 or any("[truncated]" in line for line in output)
     empty_reason = ""
     if not shown:
         empty_reason = ";empty_reason=all_cards_omitted" if not records else ";empty_reason=token_budget"
-    header = f"RECALL[health:{counts};omitted={omitted};omitted_health:{omitted_counts};truncated={str(truncated).lower()}{empty_reason}]"
+    header = f"RECALL[omitted={omitted};omitted_health:{omitted_counts};truncated={str(truncated).lower()}{empty_reason}]"
     return "\n".join([header, *output])
 
 

@@ -215,7 +215,7 @@ class ContractConsistencyTests(unittest.TestCase):
             )
             context = json.loads(completed.stdout)["hookSpecificOutput"]["additionalContext"]
             self.assertTrue(context.startswith(recall_contract.compact_contract_text()))
-            self.assertIn("The store is empty. This is valid; RECALL does not require a save.", context)
+            self.assertIn(recall_contract.EMPTY_RESULT_RULE, context)
 
     def test_cli_contract_output_matches_canonical_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

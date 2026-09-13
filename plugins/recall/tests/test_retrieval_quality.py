@@ -28,7 +28,6 @@ class RetrievalQualityTests(unittest.TestCase):
                     context = session_context.build_session_context(
                         tmp, "storage", limit, token_budget=budget, exclude_session_id=excluded_session,
                     )
-                    self.assertIn("health:conflicting=2", context)
                     self.assertIn("omitted=2", context)
                     self.assertIn("omitted_health:conflicting=2", context)
                     self.assertIn("truncated=true", context)
@@ -44,7 +43,6 @@ class RetrievalQualityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             memory_manager.add_record("decisions", "Storage uses retired policy.", {"status": "stale"}, tmp)
             context = session_context.build_session_context(tmp, "storage", 0, token_budget=100)
-            self.assertIn("health:stale=1", context)
             self.assertIn("omitted_health:stale=1", context)
             self.assertIn("empty_reason=all_cards_omitted", context)
             self.assertNotIn("retired policy", context)
