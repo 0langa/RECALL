@@ -23,7 +23,7 @@ from store_lock import exclusive_lock
 
 
 SCHEMA_VERSION = 2
-SQLITE_BUSY_TIMEOUT_MS = 5000
+SQLITE_BUSY_TIMEOUT_MS = 15000
 
 V2_COLUMNS: dict[str, str] = {
     "memory_type": "TEXT NOT NULL DEFAULT 'fact'",

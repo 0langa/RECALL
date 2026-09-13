@@ -16,7 +16,7 @@ else:
 
 
 @contextmanager
-def exclusive_lock(path: Path, timeout: float = 5.0) -> Iterator[None]:
+def exclusive_lock(path: Path, timeout: float = 15.0) -> Iterator[None]:
     """Lock a stable file, never delete it or infer ownership from its age."""
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
