@@ -85,8 +85,8 @@ class RuntimeInterlockTests(unittest.TestCase):
                 recall_config.activate_project(tmp)
                 recall_config.set_capture_mode("standard", tmp)
                 base = {"cwd": tmp, "provider": provider, "session_id": "same"}
-                def tool(turn, marker, session="same"):
-                    return run_hook("post_tool_use.py", {**base, "session_id": session, "turn_id": turn,
+                def tool(turn, marker, session="same", payload_base=base):
+                    return run_hook("post_tool_use.py", {**payload_base, "session_id": session, "turn_id": turn,
                         "tool_name": "Bash", "tool_input": {"command": "python -m pytest"},
                         "tool_response": {"exit_code": 1, "stdout": "FAILED " + marker}})
                 self.assertNotIn("memory_action", tool("legacy", "LEGACY-CAPTURE-ALLOWED"))
