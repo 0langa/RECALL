@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -153,6 +154,7 @@ def update_record_metadata(
     return storage.update_record_metadata(record_id, metadata, root)
 
 
+@storage.atomic_write
 def edit_record(
     record_id: int,
     root: str | Path | None = None,
@@ -246,16 +248,35 @@ def edit_record(
         embedding=embed(safe_content),
         root=root,
     )
-    index_store.rebuild(root)
+    _maintain_index(root)
     return edited
 
 
+@storage.atomic_write
 def delete_record(record_id: int, root: str | Path | None = None) -> MemoryRecord:
     deleted = storage.delete_record(record_id, root)
-    index_store.rebuild(root)
+    _maintain_index(root)
     return deleted
 
 
+def _maintain_index(root: str | Path | None, record: MemoryRecord | None = None) -> None:
+    """A derived index failure cannot turn a committed save into a failure."""
+    def update() -> None:
+        try:
+            if record is None:
+                index_store.rebuild(root)
+            else:
+                index_store.append_record(record, root)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "RECALL canonical write committed; vector index update failed. Run rebuild-index.",
+                exc_info=True,
+            )
+
+    storage.after_commit(update, root)
+
+
+@storage.atomic_write
 def add_record(
     category: str,
     content: str,
@@ -285,10 +306,11 @@ def add_record(
         embed(safe_content),
         root,
     )
-    index_store.append_record(record, root)
+    _maintain_index(root, record)
     return record
 
 
+@storage.atomic_write
 def add_record_if_new_idempotency(
     category: str,
     content: str,
@@ -326,10 +348,11 @@ def add_record_if_new_idempotency(
         root,
     )
     if inserted:
-        index_store.append_record(record, root)
+        _maintain_index(root, record)
     return record, inserted
 
 
+@storage.atomic_write
 def add_records_batch(
     cards: list[dict[str, Any]],
     root: str | Path | None = None,
@@ -349,10 +372,11 @@ def add_records_batch(
         metadata = redact_metadata(dict(card.get("metadata") or {}))
         prepared.append((category, utc_now(), content, metadata, embed(content)))
     records = storage.add_records_batch(prepared, root)
-    index_store.rebuild(root)
+    _maintain_index(root)
     return records
 
 
+@storage.atomic_write
 def add_record_if_useful(
     category: str,
     content: str,
@@ -431,7 +455,7 @@ def append_vector_index(
     root: str | Path | None = None,
 ) -> None:
     record = MemoryRecord(record_id, category, timestamp, "", {}, embedding=vector)
-    index_store.append_record(record, root)
+    _maintain_index(root, record)
 
 
 def next_jsonl_id(root: str | Path | None = None) -> int:
@@ -531,6 +555,7 @@ def repair(root: str | Path | None = None, restore_backup: bool = False) -> dict
     return {"repair": rebuild_report, "doctor": doctor(root)}
 
 
+@storage.atomic_write
 def confirm_record(record_id: int, root: str | Path | None = None, source_session: str | None = None) -> MemoryRecord:
     return memory_lifecycle.confirm(record_id, root, source_session)
 

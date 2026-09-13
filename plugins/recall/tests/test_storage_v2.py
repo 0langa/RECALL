@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import sqlite3
 import sys
 import tempfile
@@ -18,6 +19,24 @@ import storage  # noqa: E402
 
 
 class StorageV2Tests(unittest.TestCase):
+    def test_parallel_category_definitions_keep_all_updates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
+                results = list(executor.map(
+                    lambda number: recall_config.add_category(f"custom_{number}", raw_root=tmp), range(12),
+                ))
+            categories = recall_config.load_config(tmp)["categories"]
+            self.assertEqual(len(results), 12)
+            self.assertTrue({f"custom_{number}" for number in range(12)}.issubset(categories))
+
+    def test_atomic_initial_config_keeps_legacy_activation_semantics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.root_config_path(tmp).write_text(json.dumps({"backend": "jsonl"}), encoding="utf-8")
+            cfg = recall_config.load_config(tmp)
+            self.assertEqual(cfg["backend"], "jsonl")
+            self.assertTrue(cfg["activation"]["enabled"])
+            self.assertEqual(cfg["activation"]["activated_by"], "legacy_memory_store")
+
     def test_sqlite_uses_schema_v2_and_concurrency_pragmas(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             storage.init_store(tmp)

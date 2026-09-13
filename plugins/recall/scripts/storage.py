@@ -4,16 +4,22 @@
 from __future__ import annotations
 
 import json
+import inspect
+import os
+import tempfile
 import shutil
 import sqlite3
-from contextlib import closing
-from dataclasses import dataclass
+from contextlib import closing, contextmanager
+from contextvars import ContextVar
+from functools import wraps
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable, Iterator, ParamSpec, TypeVar
 
 import config as recall_config
 import security
+from store_lock import exclusive_lock
 
 
 SCHEMA_VERSION = 2
@@ -72,6 +78,113 @@ def connect_sqlite(root: str | Path | None = None) -> sqlite3.Connection:
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA journal_mode = WAL")
     return connection
+
+
+@dataclass
+class _WriteState:
+    path: Path
+    connection: sqlite3.Connection | None
+    callbacks: list[Callable[[], None]] = field(default_factory=list)
+
+
+_writes: ContextVar[tuple[_WriteState, ...]] = ContextVar("recall_writes", default=())
+_P = ParamSpec("_P")
+_T = TypeVar("_T")
+
+
+def _active_write(root: str | Path | None) -> _WriteState | None:
+    path = recall_config.memory_dir(root).resolve()
+    return next((state for state in reversed(_writes.get()) if state.path == path), None)
+
+
+@contextmanager
+def _connection(root: str | Path | None) -> Iterator[sqlite3.Connection]:
+    state = _active_write(root)
+    if state is not None and state.connection is not None:
+        yield state.connection
+    else:
+        with closing(connect_sqlite(root)) as connection:
+            yield connection
+
+
+@contextmanager
+def write_transaction(root: str | Path | None = None) -> Iterator[None]:
+    """Serialize the whole read/choice/write, including nested store operations.
+
+    SQLite readers and writers share this BEGIN IMMEDIATE connection. JSONL
+    uses an OS lock and atomic file replacement, without multi-file rollback.
+    Nested scopes join the outer transaction; only its owner commits.
+    """
+    if _active_write(root) is not None:
+        yield
+        return
+    init_store(root)
+    path = recall_config.memory_dir(root).resolve()
+    callbacks: list[Callable[[], None]] = []
+    if backend(root) == "sqlite":
+        with closing(connect_sqlite(root)) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            token = _writes.set((*_writes.get(), _WriteState(path, connection, callbacks)))
+            try:
+                yield
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+            finally:
+                _writes.reset(token)
+    else:
+        with exclusive_lock(path / ".write.lock"):
+            token = _writes.set((*_writes.get(), _WriteState(path, None, callbacks)))
+            try:
+                yield
+            finally:
+                _writes.reset(token)
+    # Canonical storage has committed and its exclusion has been released.
+    for callback in callbacks:
+        callback()
+
+
+def after_commit(callback: Callable[[], None], root: str | Path | None = None) -> None:
+    state = _active_write(root)
+    if state is None:
+        callback()
+    else:
+        state.callbacks.append(callback)
+
+
+def atomic_write(function: Callable[_P, _T]) -> Callable[_P, _T]:
+    """Join the store transaction before any read used to choose a write."""
+    signature = inspect.signature(function)
+
+    @wraps(function)
+    def wrapped(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+        root = signature.bind(*args, **kwargs).arguments.get("root")
+        with write_transaction(root):
+            return function(*args, **kwargs)
+
+    return wrapped
+
+
+@contextmanager
+def _jsonl_replacement(path: Path) -> Iterator[Any]:
+    """Keep the old file intact until the complete replacement is flushed."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                     prefix=".rewrite-", suffix=".tmp", delete=False) as handle:
+        temporary = Path(handle.name)
+        try:
+            yield handle
+            handle.flush()
+            os.fsync(handle.fileno())
+        except BaseException:
+            handle.close()
+            temporary.unlink(missing_ok=True)
+            raise
+    try:
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
@@ -199,9 +312,16 @@ def _ensure_runtime_indexes(connection: sqlite3.Connection) -> None:
 
 
 def init_sqlite(root: str | Path | None = None) -> None:
+    if _active_write(root) is not None:
+        return
+    with exclusive_lock(recall_config.memory_dir(root) / ".init.lock"):
+        _init_sqlite_unlocked(root)
+
+
+def _init_sqlite_unlocked(root: str | Path | None = None) -> None:
     path = db_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with closing(connect_sqlite(root)) as connection:
+    with _connection(root) as connection:
         previous_version = _stored_schema_version(connection)
         if previous_version < SCHEMA_VERSION:
             if 0 < previous_version < SCHEMA_VERSION:
@@ -250,6 +370,7 @@ def init_sqlite(root: str | Path | None = None) -> None:
         connection.commit()
 
 
+@atomic_write
 def add_record(
     category: str,
     timestamp: str,
@@ -264,7 +385,7 @@ def add_record(
     if cfg["backend"] == "sqlite":
         init_sqlite(root)
         normalized = _normalized_fields(metadata, timestamp)
-        with closing(connect_sqlite(root)) as connection:
+        with _connection(root) as connection:
             cursor = connection.execute(
                 """
                 INSERT INTO memories (
@@ -284,13 +405,15 @@ def add_record(
                 ),
             )
             record_id = int(cursor.lastrowid or 0)
-            connection.commit()
     else:
         jsonl_dir(root).mkdir(parents=True, exist_ok=True)
         record_id = next_jsonl_id(root)
         path = jsonl_dir(root) / f"{category}.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as handle:
+        with _jsonl_replacement(path) as handle:
+            if path.exists():
+                with path.open(encoding="utf-8") as previous:
+                    shutil.copyfileobj(previous, handle)
             handle.write(
                 json.dumps(
                     {
@@ -313,7 +436,7 @@ def find_by_idempotency_key(idempotency_key: str, root: str | Path | None = None
     cfg = recall_config.load_config(root)
     if cfg["backend"] == "sqlite":
         init_sqlite(root)
-        with closing(connect_sqlite(root)) as connection:
+        with _connection(root) as connection:
             row = connection.execute(
                 "SELECT id, category, timestamp, content, metadata, embedding FROM memories "
                 "WHERE json_extract(metadata, '$.idempotency_key') = ? ORDER BY id DESC LIMIT 1",
@@ -331,6 +454,7 @@ def find_by_idempotency_key(idempotency_key: str, root: str | Path | None = None
     return None
 
 
+@atomic_write
 def add_record_if_new(
     category: str,
     timestamp: str,
@@ -340,99 +464,30 @@ def add_record_if_new(
     idempotency_key: str,
     root: str | Path | None = None,
 ) -> tuple[MemoryRecord, bool]:
-    """Insert unless a record with this idempotency_key already exists.
-
-    For the SQLite backend the existence check and the insert run inside one
-    `BEGIN IMMEDIATE` transaction, so two concurrent sessions replaying the
-    same call can't both pass the check and double-insert (the second
-    session's transaction blocks on the write lock until the first commits,
-    then sees the row that just landed). Returns (record, inserted).
-    """
-
-    content = security.redact_text(content)
-    metadata = dict(security.redact_value(metadata))
+    """Check and insert the idempotency key under the same store exclusion."""
+    existing = find_by_idempotency_key(idempotency_key, root)
+    if existing is not None:
+        return existing, False
+    metadata = dict(metadata)
     metadata["idempotency_key"] = idempotency_key
-    cfg = recall_config.load_config(root)
-    if cfg["backend"] != "sqlite":
-        existing = find_by_idempotency_key(idempotency_key, root)
-        if existing is not None:
-            return existing, False
-        return add_record(category, timestamp, content, metadata, embedding, root), True
-    init_sqlite(root)
-    normalized = _normalized_fields(metadata, timestamp)
-    with closing(connect_sqlite(root)) as connection:
-        connection.execute("BEGIN IMMEDIATE")
-        try:
-            row = connection.execute(
-                "SELECT id, category, timestamp, content, metadata, embedding FROM memories "
-                "WHERE json_extract(metadata, '$.idempotency_key') = ? ORDER BY id DESC LIMIT 1",
-                (idempotency_key,),
-            ).fetchone()
-            if row is not None:
-                connection.rollback()
-                return MemoryRecord(
-                    int(row[0]), row[1], row[2], row[3],
-                    json.loads(row[4] or "{}"), embedding=json.loads(row[5] or "[]"),
-                ), False
-            cursor = connection.execute(
-                """INSERT INTO memories (
-                    category, timestamp, content, metadata, embedding,
-                    memory_type, title, status, trust, confidence, importance,
-                    source_kind, source_path, source_hash, source_revision,
-                    created_at, updated_at, confirmed_at, accessed_at, expires_at, lineage
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (category, timestamp, content, json.dumps(metadata, sort_keys=True), json.dumps(embedding), *normalized.values()),
-            )
-            record_id = int(cursor.lastrowid or 0)
-            connection.commit()
-        except Exception:
-            connection.rollback()
-            raise
-    return MemoryRecord(record_id, category, timestamp, content, metadata, embedding=embedding), True
+    return add_record(category, timestamp, content, metadata, embedding, root), True
 
 
+@atomic_write
 def add_records_batch(
     records: list[tuple[str, str, str, dict[str, Any], list[float]]],
     root: str | Path | None = None,
 ) -> list[MemoryRecord]:
-    """Insert records in one SQLite transaction."""
-
-    if not records:
-        return []
-    cfg = recall_config.load_config(root)
-    if cfg["backend"] != "sqlite":
-        return [add_record(category, timestamp, content, metadata, embedding, root) for category, timestamp, content, metadata, embedding in records]
-    init_sqlite(root)
-    inserted: list[MemoryRecord] = []
-    with closing(connect_sqlite(root)) as connection:
-        connection.execute("BEGIN IMMEDIATE")
-        try:
-            for category, timestamp, content, metadata, embedding in records:
-                safe_content = security.redact_text(content)
-                safe_metadata = security.redact_value(metadata)
-                normalized = _normalized_fields(safe_metadata, timestamp)
-                cursor = connection.execute(
-                    """INSERT INTO memories (
-                        category, timestamp, content, metadata, embedding,
-                        memory_type, title, status, trust, confidence, importance,
-                        source_kind, source_path, source_hash, source_revision,
-                        created_at, updated_at, confirmed_at, accessed_at, expires_at, lineage
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (category, timestamp, safe_content, json.dumps(safe_metadata, sort_keys=True), json.dumps(embedding), *normalized.values()),
-                )
-                inserted.append(MemoryRecord(int(cursor.lastrowid or 0), category, timestamp, safe_content, safe_metadata, embedding=embedding))
-            connection.commit()
-        except Exception:
-            connection.rollback()
-            raise
-    return inserted
+    """Insert records in one SQLite transaction (JSONL has per-file commits)."""
+    return [add_record(category, timestamp, content, metadata, embedding, root)
+            for category, timestamp, content, metadata, embedding in records]
 
 
 def iter_records(root: str | Path | None = None) -> Iterable[MemoryRecord]:
     init_store(root)
     cfg = recall_config.load_config(root)
     if cfg["backend"] == "sqlite":
-        with closing(connect_sqlite(root)) as connection:
+        with _connection(root) as connection:
             rows = connection.execute(
                 "SELECT id, category, timestamp, content, metadata, embedding FROM memories ORDER BY timestamp DESC"
             ).fetchall()
@@ -453,7 +508,7 @@ def get_record(record_id: int, root: str | Path | None = None) -> MemoryRecord |
     init_store(root)
     cfg = recall_config.load_config(root)
     if cfg["backend"] == "sqlite":
-        with closing(connect_sqlite(root)) as connection:
+        with _connection(root) as connection:
             row = connection.execute(
                 "SELECT id, category, timestamp, content, metadata, embedding FROM memories WHERE id = ?",
                 (record_id,),
@@ -474,12 +529,13 @@ def get_record(record_id: int, root: str | Path | None = None) -> MemoryRecord |
     return None
 
 
+@atomic_write
 def update_record_metadata(record_id: int, metadata: dict[str, Any], root: str | Path | None = None) -> MemoryRecord:
     metadata = security.redact_value(metadata)
     init_store(root)
     cfg = recall_config.load_config(root)
     if cfg["backend"] == "sqlite":
-        with closing(connect_sqlite(root)) as connection:
+        with _connection(root) as connection:
             row = connection.execute(
                 "SELECT id, category, timestamp, content, embedding FROM memories WHERE id = ?",
                 (record_id,),
@@ -492,7 +548,6 @@ def update_record_metadata(record_id: int, metadata: dict[str, Any], root: str |
                 f"UPDATE memories SET metadata = ?, {assignments} WHERE id = ?",
                 (json.dumps(metadata, sort_keys=True), *normalized.values(), record_id),
             )
-            connection.commit()
         return MemoryRecord(
             int(row[0]),
             row[1],
@@ -519,7 +574,7 @@ def update_record_metadata(record_id: int, metadata: dict[str, Any], root: str |
                 if int(payload.get("id", -1)) == record_id:
                     payload["metadata"] = metadata
                 rewritten.append(payload)
-    with path.open("w", encoding="utf-8") as handle:
+    with _jsonl_replacement(path) as handle:
         for payload in rewritten:
             handle.write(json.dumps(payload, sort_keys=True) + "\n")
     return MemoryRecord(
@@ -532,6 +587,7 @@ def update_record_metadata(record_id: int, metadata: dict[str, Any], root: str |
     )
 
 
+@atomic_write
 def update_record(
     record_id: int,
     *,
@@ -549,7 +605,7 @@ def update_record(
         raise KeyError(f"RECALL memory #{record_id} was not found.")
     cfg = recall_config.load_config(root)
     if cfg["backend"] == "sqlite":
-        with closing(connect_sqlite(root)) as connection:
+        with _connection(root) as connection:
             normalized = _normalized_fields(metadata, existing.timestamp)
             assignments = ", ".join(f"{name} = ?" for name in normalized)
             connection.execute(
@@ -567,7 +623,6 @@ def update_record(
                     record_id,
                 ),
             )
-            connection.commit()
         return MemoryRecord(
             existing.id,
             category,
@@ -620,12 +675,13 @@ def update_record(
         )
     for path, payloads in payloads_by_path.items():
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", encoding="utf-8") as handle:
+        with _jsonl_replacement(path) as handle:
             for payload in payloads:
                 handle.write(json.dumps(payload, sort_keys=True) + "\n")
     return MemoryRecord(existing.id, category, existing.timestamp, content, metadata, embedding=embedding)
 
 
+@atomic_write
 def delete_record(record_id: int, root: str | Path | None = None) -> MemoryRecord:
     init_store(root)
     existing = get_record(record_id, root)
@@ -633,9 +689,8 @@ def delete_record(record_id: int, root: str | Path | None = None) -> MemoryRecor
         raise KeyError(f"RECALL memory #{record_id} was not found.")
     cfg = recall_config.load_config(root)
     if cfg["backend"] == "sqlite":
-        with closing(connect_sqlite(root)) as connection:
+        with _connection(root) as connection:
             connection.execute("DELETE FROM memories WHERE id = ?", (record_id,))
-            connection.commit()
         return existing
 
     path = jsonl_dir(root) / f"{existing.category}.jsonl"
@@ -651,13 +706,19 @@ def delete_record(record_id: int, root: str | Path | None = None) -> MemoryRecor
                     continue
                 if int(payload.get("id", -1)) != record_id:
                     payloads.append(payload)
-        with path.open("w", encoding="utf-8") as handle:
+        with _jsonl_replacement(path) as handle:
             for payload in payloads:
                 handle.write(json.dumps(payload, sort_keys=True) + "\n")
     return existing
 
 
 def iter_jsonl_records(root: str | Path | None = None) -> Iterable[MemoryRecord]:
+    with write_transaction(root):
+        records = list(_iter_jsonl_records_unlocked(root))
+    yield from records
+
+
+def _iter_jsonl_records_unlocked(root: str | Path | None = None) -> Iterable[MemoryRecord]:
     base = jsonl_dir(root)
     if not base.exists():
         return
@@ -711,7 +772,7 @@ def schema_version(root: str | Path | None = None) -> int:
     if cfg["backend"] != "sqlite":
         return SCHEMA_VERSION
     init_sqlite(root)
-    with closing(connect_sqlite(root)) as connection:
+    with _connection(root) as connection:
         row = connection.execute(
             "SELECT value FROM recall_meta WHERE key = 'schema_version'"
         ).fetchone()
@@ -722,7 +783,7 @@ def sqlite_diagnostics(root: str | Path | None = None) -> dict[str, Any]:
     """Return SQLite migration, concurrency, and FTS state."""
 
     init_sqlite(root)
-    with closing(connect_sqlite(root)) as connection:
+    with _connection(root) as connection:
         journal_mode = str(connection.execute("PRAGMA journal_mode").fetchone()[0]).lower()
         foreign_keys = bool(connection.execute("PRAGMA foreign_keys").fetchone()[0])
         busy_timeout_ms = int(connection.execute("PRAGMA busy_timeout").fetchone()[0])

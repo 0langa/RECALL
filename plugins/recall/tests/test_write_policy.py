@@ -11,9 +11,44 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import memory_manager  # noqa: E402
 import write_policy  # noqa: E402
+import config  # noqa: E402
 
 
 class WritePolicyTests(unittest.TestCase):
+    def test_confirmation_does_not_change_exact_save_identity(self) -> None:
+        for backend in ("sqlite", "jsonl"):
+            with tempfile.TemporaryDirectory() as tmp:
+                cfg = config.load_config(tmp)
+                cfg["backend"] = backend
+                config.save_config(cfg, tmp)
+                results = [memory_manager.add_record_if_useful(
+                    "architecture", "The project stores canonical facts on local disk.",
+                    memory_manager.build_card_metadata(status="active"), tmp,
+                ) for _ in range(5)]
+                self.assertEqual({result["record"].id for result in results}, {results[0]["record"].id})
+                self.assertEqual(len(list(memory_manager.iter_records(tmp))), 1)
+                self.assertEqual(results[-1]["record"].metadata["confirmed_count"], 4)
+
+    def test_preference_evidence_respects_scope(self) -> None:
+        for backend in ("sqlite", "jsonl"):
+            with tempfile.TemporaryDirectory() as tmp:
+                cfg = config.load_config(tmp)
+                cfg["backend"] = backend
+                config.save_config(cfg, tmp)
+                ids = []
+                for provider, scope in (("all", "project"), ("codex", "project"), ("codex", "user")):
+                    metadata = {"preference_key": "test-runner", "preference_evidence_type": "approved_plan",
+                                "decision_id": "event-1", "applies_to_provider": provider, "preference_scope": scope}
+                    saved = memory_manager.add_record_if_useful("preferences", "Run the isolated test runner.", metadata, tmp)
+                    ids.append(saved["record"].id)
+                    updated = memory_manager.add_record_if_useful(
+                        "preferences", "Run the isolated test runner.", {**metadata, "decision_id": "event-2"}, tmp,
+                    )
+                    self.assertEqual(updated["record"].id, saved["record"].id)
+                    self.assertEqual(updated["record"].metadata["supporting_event_ids"], ["event-1", "event-2"])
+                self.assertEqual(len(set(ids)), 3)
+                self.assertEqual(len(list(memory_manager.iter_records(tmp))), 3)
+
     def test_low_signal_listing_command_is_ignored(self) -> None:
         decision = write_policy.classify_write(
             "commands",
