@@ -194,7 +194,10 @@ class PackageMetadataTests(unittest.TestCase):
                 package.writestr("scripts/kimi_mcp_server.py", "print('ok')\n")
                 package.writestr("scripts/hook_events.py", "print('ok')\n")
                 package.writestr("scripts/recall_skill.py", "print('ok')\n")
-                package.writestr("scripts/memory_manager.py", "print('ok')\n")
+                package.writestr(
+                    "scripts/memory_manager.py",
+                    "token = marker.group(0)\nretry_token = context_var.set((context_var.get(), 1))\n",
+                )
             completed = subprocess.run(
                 [sys.executable, str(ROOT / "scripts" / "inspect_package.py"), str(archive)],
                 text=True,

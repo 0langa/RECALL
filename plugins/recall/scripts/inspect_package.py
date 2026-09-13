@@ -65,6 +65,12 @@ def _is_plausible_secret(match: "re.Match[str]") -> bool:
         return False
     if value.lower().startswith(keyword.lower()):
         return False
+    # Ordinary Python assignments such as ``token = marker.group(0)`` and
+    # ``token = context_var.set(...)`` are executable expressions, not
+    # embedded credential values. Keep the exception narrow: an unquoted
+    # identifier such as ``token=dummy-secret-value`` must still fail.
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\(.*", value):
+        return False
     return True
 
 
