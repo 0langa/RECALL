@@ -131,6 +131,10 @@ TOOLS: list[Json] = [
                 "origin_agent": {"type": "string"},
                 "source_session": {"type": "string"},
                 "source_turn": {"type": "string"},
+                "idempotency_key": {
+                    "type": "string",
+                    "description": "Stable retry key for one save; reuse only for the same logical operation.",
+                },
                 "cwd": {"type": "string"},
                 "branch": {"type": "string"},
                 "commit": {"type": "string"},
@@ -144,6 +148,7 @@ TOOLS: list[Json] = [
                     "type": "string",
                     "description": "Required for category=preferences: stable key naming the preference.",
                 },
+                "preference_scope": {"type": "string"},
                 "preference_evidence_type": {
                     "type": "string",
                     "description": (
@@ -307,7 +312,10 @@ def call_save_insight(arguments: Json) -> Json:
         capture_channel="mcp",
         applies_to_provider=arguments.get("applies_to_provider") or "all",
     )
-    for extra_key in ("claim_key", "claim_value", "preference_key", "preference_evidence_type", "decision_id"):
+    for extra_key in (
+        "claim_key", "claim_value", "preference_key", "preference_scope",
+        "preference_evidence_type", "decision_id", "idempotency_key",
+    ):
         value = arguments.get(extra_key)
         if value is not None and str(value).strip():
             metadata[extra_key] = str(value).strip()

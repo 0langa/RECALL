@@ -7,6 +7,17 @@ from _harness import active_memory_dir, assert_memory_inside_project, memory_cmd
 
 
 class SkillCliContractTests(unittest.TestCase):
+    def test_save_retry_key_is_honored_by_public_cli(self) -> None:
+        with temp_project() as project:
+            first = run_json(skill_cmd(project, "save-insight", "decisions",
+                                       "Use SQLite as the durable project database.",
+                                       "--idempotency-key", "release-cli-save-1"))
+            replay = run_json(skill_cmd(project, "save-insight", "decisions",
+                                        "Deploy the command runner on a dedicated Windows host.",
+                                        "--idempotency-key", "release-cli-save-1"))
+            self.assertEqual(first["id"], replay["id"])
+            self.assertEqual(replay["reason"], "idempotent_replay")
+
     def test_edit_revision_and_save_identity_on_both_backends(self) -> None:
         old = "Release notes live in docs/old.md."
         new = "Release notes live in docs/new.md."

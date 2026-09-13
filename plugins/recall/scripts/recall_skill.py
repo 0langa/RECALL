@@ -185,6 +185,10 @@ def handle_save_insight(args: argparse.Namespace, root: Path | None) -> None:
         metadata_base["preference_evidence_type"] = args.preference_evidence_type
     if args.decision_id:
         metadata_base["decision_id"] = args.decision_id
+    for name in ("idempotency_key", "preference_scope"):
+        value = getattr(args, name, None)
+        if value:
+            metadata_base[name] = value
     metadata_base.update(
         memory_manager.provider_metadata(
             origin_provider=args.origin_provider,
@@ -620,6 +624,7 @@ def main() -> None:
     save.add_argument("--origin-agent")
     save.add_argument("--source-session")
     save.add_argument("--source-turn")
+    save.add_argument("--idempotency-key", help="Stable retry key for one logical save.")
     save.add_argument("--cwd")
     save.add_argument("--branch")
     save.add_argument("--commit")
@@ -631,6 +636,7 @@ def main() -> None:
     save.add_argument("--claim-key")
     save.add_argument("--claim-value")
     save.add_argument("--preference-key")
+    save.add_argument("--preference-scope")
     save.add_argument("--preference-evidence-type")
     save.add_argument("--decision-id")
     save.add_argument("--status", default="active")

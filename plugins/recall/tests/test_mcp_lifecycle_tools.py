@@ -67,6 +67,28 @@ class McpSurfaceTests(unittest.TestCase):
 
 
 class McpSaveTests(unittest.TestCase):
+    def test_explicit_retry_key_preserves_one_acknowledged_public_save(self) -> None:
+        for backend in ("sqlite", "jsonl"):
+            with self.subTest(backend=backend), tempfile.TemporaryDirectory() as tmp:
+                cfg = config.default_config()
+                cfg["backend"] = backend
+                config.save_config(cfg, tmp)
+                first = call_tool("save_insight", {
+                    "root": tmp, "category": "decisions",
+                    "content": "Use SQLite as the durable project database.",
+                    "idempotency_key": "release-test-save-1",
+                })
+                retry = call_tool("save_insight", {
+                    "root": tmp, "category": "decisions",
+                    "content": "Deploy the command runner on a dedicated Windows host.",
+                    "idempotency_key": "release-test-save-1",
+                })
+                self.assertEqual(retry["id"], first["id"])
+                self.assertEqual(retry["reason"], "idempotent_replay")
+                records = list(memory_manager.iter_records(tmp))
+                self.assertEqual(len(records), 1)
+                self.assertEqual(records[0].content, "Use SQLite as the durable project database.")
+
     def test_save_insight_rejects_secret_shaped_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             payload = call_tool(
