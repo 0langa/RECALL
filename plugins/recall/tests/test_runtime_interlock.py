@@ -26,6 +26,52 @@ from tests.test_hooks import run_hook
 
 
 class RuntimeInterlockTests(unittest.TestCase):
+    def test_unknown_explicit_events_cannot_write_after_a_prompt_scope(self):
+        for provider in ("codex", "claude", "kimi"):
+            with self.subTest(provider=provider), tempfile.TemporaryDirectory() as tmp:
+                recall_config.activate_project(tmp)
+                recall_config.set_capture_mode("standard", tmp)
+                base = {"cwd": tmp, "provider": provider, "session_id": "same"}
+                def tool(turn, marker, session="same"):
+                    return run_hook("post_tool_use.py", {**base, "session_id": session, "turn_id": turn,
+                        "tool_name": "Bash", "tool_input": {"command": "python -m pytest"},
+                        "tool_response": {"exit_code": 1, "stdout": "FAILED " + marker}})
+                self.assertNotIn("memory_action", tool("legacy", "LEGACY-CAPTURE-ALLOWED"))
+                self.assertTrue(any(b"LEGACY-CAPTURE-ALLOWED" in p.read_bytes()
+                                    for p in Path(tmp).rglob("*") if p.is_file()))
+                run_hook("prompt_inspector.py", {**base, "turn_id": "private", "prompt": "No memory for this turn."})
+                run_hook("stop.py", {**base, "turn_id": "private"})
+                for state in ("after-private-stop", "after-normal-prompt", "after-normal-stop"):
+                    if state == "after-normal-prompt":
+                        run_hook("prompt_inspector.py", {**base, "turn_id": "normal", "prompt": "Continue normal work."})
+                    elif state == "after-normal-stop":
+                        run_hook("stop.py", {**base, "turn_id": "normal"})
+                    for session in ("same", "unestablished-session"):
+                        marker = "PRIVATE-DENIED-" + state + "-" + session
+                        with patch("storage.iter_records", side_effect=AssertionError("canonical read")), \
+                             patch("turn_buffer.mark_active", side_effect=AssertionError("buffer write")):
+                            result = tool("unknown-" + state, marker, session)
+                        self.assertEqual(result.get("memory_action"), "disabled", result)
+                        self.assertFalse(any(marker.encode() in p.read_bytes()
+                                             for p in Path(tmp).rglob("*") if p.is_file()))
+
+    def test_missing_turn_delivery_replay_keeps_identity_and_current_scope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            private_payload = {"session_id": "replay", "delivery_id": "private-delivery",
+                               "prompt": "Do not use memory for this task."}
+            private = normalize_hook_event(private_payload, fallback_event="UserPromptSubmit", fallback_root=tmp)
+            turn_policy.finish_turn(tmp, private.session_id, private.turn_id)
+            normal = normalize_hook_event(
+                {"session_id": "replay", "delivery_id": "normal-delivery", "prompt": "Continue normal work."},
+                fallback_event="UserPromptSubmit", fallback_root=tmp,
+            )
+            replay = normalize_hook_event(private_payload, fallback_event="UserPromptSubmit", fallback_root=tmp)
+            self.assertEqual((replay.session_id, replay.turn_id), (private.session_id, private.turn_id))
+            self.assertTrue(turn_policy.policy_status(tmp, replay.session_id, replay.turn_id)["closed"])
+            current = turn_policy.policy_status(tmp)
+            self.assertEqual((current["session_id"], current["turn_id"]), (normal.session_id, normal.turn_id))
+            self.assertFalse(current["disabled"])
+
     def test_first_no_memory_prompt_never_reads_records_or_captures_text(self):
         for provider in ("codex", "claude", "kimi"):
             with self.subTest(provider=provider), tempfile.TemporaryDirectory() as tmp:
@@ -265,10 +311,19 @@ class RuntimeInterlockTests(unittest.TestCase):
             self.assertEqual(run_hook("stop.py", base), {"continue": True})
             self.assertEqual([(r.id, r.content, r.metadata) for r in storage.iter_records(tmp)], [(record.id, record.content, record.metadata)])
             claim = {"category": "requirements", "summary": "Production ready", "content": "The application is production ready.", "status": "validated", "confidence": 1, "explicit_user_evidence": True, "observed_evidence": record.metadata["observed_evidence"], "evidence_ids": [record.metadata["observed_evidence"]["event_id"]]}
+            normalize_hook_event(
+                {"session_id": "invented", "turn_id": "invented", "prompt": "Continue normal work."},
+                fallback_event="UserPromptSubmit", fallback_root=tmp,
+            )
             batch = {"schema": "recall.finalizer_batch.v1", "session_id": "invented", "turn_id": "invented", "operations": [{"op": "save", "card": claim}]}
             saved = apply_finalizer_batch(batch, tmp)
             claimed_id = saved["operations"][0]["id"]
-            apply_finalizer_batch({**batch, "session_id": "invented-2", "operations": [{"op": "confirm", "id": claimed_id, "explicit_confirmation": True}]}, tmp)
+            normalize_hook_event(
+                {"session_id": "invented-2", "turn_id": "invented-2", "prompt": "Continue normal work."},
+                fallback_event="UserPromptSubmit", fallback_root=tmp,
+            )
+            apply_finalizer_batch({**batch, "session_id": "invented-2", "turn_id": "invented-2",
+                                   "operations": [{"op": "confirm", "id": claimed_id, "explicit_confirmation": True}]}, tmp)
             claimed = next(r for r in storage.iter_records(tmp) if r.id == claimed_id)
             self.assertEqual(claimed.metadata["status"], "active")
             self.assertNotIn("observed_evidence", claimed.metadata)

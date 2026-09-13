@@ -82,8 +82,22 @@ def normalize_identity(event):
     if event.event_name == "SessionStart":
         if not event.session_id:
             session_id = "session-" + uuid.uuid4().hex
+    replay_state: dict[str, Any] = {}
+    if is_prompt and not event.turn_id and delivery_key:
+        replay_state = max(
+            (
+                state for state in _turn_states(event.root)
+                if state.get("provider") == event.provider
+                and state.get("session_id") == session_id
+                and state.get("delivery_key") == delivery_key
+            ),
+            key=lambda state: float(state.get("updated_at", 0)),
+            default={},
+        )
     if event.turn_id:
         turn_id = event.turn_id
+    elif replay_state.get("turn_id"):
+        turn_id = str(replay_state["turn_id"])
     elif (not is_prompt) and session_pointer.get("turn_id"):
         turn_id = str(session_pointer["turn_id"])
     else:
@@ -92,13 +106,15 @@ def normalize_identity(event):
     current = _read(path)
     replay = bool(is_prompt and delivery_key and current.get("delivery_key") == delivery_key)
     if is_prompt:
+        if replay:
+            # The first delivery owns the policy. A retry keeps that turn's
+            # closed/open state and must not replace a newer current scope.
+            return replace(event, session_id=session_id, turn_id=turn_id)
         import capture_policy
         # Evaluate before activation, tracing, capture, or any memory-data read.
         state = {"scope_known": True, "disabled": capture_policy.no_memory_requested(event.prompt),
                  "session_id": session_id, "turn_id": turn_id, "provider": event.provider,
                  "delivery_key": delivery_key, "updated_at": time.time(), "closed": False}
-        if replay:
-            state["closed"] = bool(current.get("closed"))
         _write(path, state)
         _write(_session_pointer_path(event.root, event.provider, session_token), state)
         _write(_current_scope_path(event.root), state)
@@ -122,6 +138,13 @@ def policy_status(root: str | Path | None, session_id: str | None = None, turn_i
             selected = max(active_disabled or exact, key=lambda state: float(state.get("updated_at", 0)))
         elif active_disabled:
             selected = max(active_disabled, key=lambda state: float(state.get("updated_at", 0)))
+        elif states:
+            # Once any prompt establishes policy, an event with a different
+            # explicit identity is untrusted. Fail closed before memory data
+            # access. Legacy activated projects with no prompt state remain
+            # compatible through the scope_unknown result below.
+            selected = {"scope_known": True, "disabled": True, "closed": True,
+                        "session_id": session_id, "turn_id": turn_id}
         else:
             return {"scope_known": False, "disabled": False, "reason": "scope_unknown"}
     elif session_id:

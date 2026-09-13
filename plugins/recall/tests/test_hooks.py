@@ -813,7 +813,7 @@ class HookTests(unittest.TestCase):
             self.assertEqual(len(events), 1)
             self.assertIn("AssertionError", events[0]["details"])
 
-    def test_post_tool_use_failure_uses_project_activation_when_turn_activation_is_missing(self) -> None:
+    def test_post_tool_use_failure_cannot_bypass_an_established_prompt_scope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             activate_recall(tmp, "session-project-active", "turn-setup")
             output = run_hook(
@@ -832,11 +832,9 @@ class HookTests(unittest.TestCase):
                     },
                 },
             )
-            self.assertTrue(output["continue"])
+            self.assertEqual(output.get("memory_action"), "disabled")
             events = runtime_events(tmp, "session-project-active", "turn-project-active")
-            self.assertEqual(len(events), 1)
-            self.assertEqual(events[0]["category_hint"], "debug_history")
-            self.assertEqual(events[0]["record_kind"], "failure")
+            self.assertEqual(events, [])
 
             stop = run_hook(
                 "stop.py",
@@ -848,9 +846,9 @@ class HookTests(unittest.TestCase):
                     "last_assistant_message": "The intentionally failing command failed as expected.",
                 },
             )
-            self.assertEqual(stop.get("systemMessage"), "RECALL saved 1 memory.")
+            self.assertEqual(stop.get("memory_action"), "disabled")
             result = query_memory(tmp, "does_not_exist", "debug_history")
-            self.assertEqual(len(result["results"]), 1)
+            self.assertEqual(result["results"], [])
 
     def test_kimi_post_tool_use_failure_payload_buffers_provider_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
