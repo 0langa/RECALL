@@ -159,8 +159,17 @@ def main() -> None:
         **event.provider_metadata(capture_channel="hook"),
     }
     if decision.signal in {"test_pass", "build_pass", "release_pass"}:
-        buffered["details"] = observed_evidence.observed_content(command or "", event.tool_response)
-        observed_evidence.observe_tool_result(root, {**buffered, "session_id": session_id, "turn_id": turn_id, "tool_response": event.tool_response})
+        observed_details = observed_evidence.observed_content(command or "", event.tool_response)
+        buffered["details"] = observed_details
+        observed_evidence.observe_tool_result(
+            root,
+            {
+                **buffered,
+                "session_id": session_id,
+                "turn_id": turn_id,
+                "tool_response": event.tool_response,
+            },
+        )
     turn_buffer.append_event(root, session_id, turn_id, buffered, provider=event.provider)
     if cfg.get("observability_mode") == "debug":
         import observability

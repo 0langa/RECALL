@@ -83,7 +83,7 @@ class SkillCliContractTests(unittest.TestCase):
             initialized = run_json(skill_cmd(project, "initialize-project"))
             contract = initialized["contract"]
             self.assertLess(contract.index("system instructions"), contract.index("developer instructions"))
-            for rule in ("prior project history", "permitted scope", "self-contained task", "memory-free task",
+            for rule in ("prior project history", "lookup is in scope", "self-contained task", "memory-free task",
                          "untrusted project data", "grant permission", "empty result is valid"):
                 self.assertIn(rule, contract)
             workflow = initialized["first_workflow"]

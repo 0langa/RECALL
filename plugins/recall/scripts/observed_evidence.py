@@ -12,6 +12,7 @@ import hmac
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import tempfile
 from typing import Any
@@ -73,9 +74,18 @@ def _signature(receipt: dict[str, Any], key: bytes) -> str:
 
 
 def observed_content(command: str, response: dict[str, Any]) -> str:
-    output = "\n".join(str(response.get(key) or "").strip() for key in ("stdout", "stderr", "output", "message") if response.get(key))
+    output = "\n".join(
+        str(response.get(key) or "").strip()
+        for key in ("stdout", "stderr", "output", "message")
+        if response.get(key)
+    )
+    material = re.compile(
+        r"(?i)\b(passed|success|succeeded|done|0 failures|ran\s+\d+\s+tests?|error|exception|traceback|failed|failure)\b"
+    )
+    lines = [line.strip() for line in output.splitlines() if material.search(line)]
+    compact_output = "\n".join(lines)
     return security.redact_text(
-        f"Command: {command}\n{output}\nexit_code: {response.get('exit_code')}"
+        f"Command: {command}\n{compact_output}\nexit_code: {response.get('exit_code')}"
     )[:1200]
 
 

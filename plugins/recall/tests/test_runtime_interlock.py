@@ -318,8 +318,8 @@ class RuntimeInterlockTests(unittest.TestCase):
             events = turn_buffer.load_events(tmp, "redaction", "output")
             self.assertEqual(len(events), 1)
             self.assertEqual(events[0]["details"], observed_evidence.observed_content("python -m pytest", response))
-            self.assertIn("[REDACTED]", events[0]["details"])
             self.assertNotIn("dummy-secret-value", events[0]["details"])
+            self.assertNotIn("token=", events[0]["details"])
             for path in recall_config.memory_dir(tmp).rglob("*"):
                 if path.is_file():
                     self.assertNotIn("token=dummy-secret-value", path.read_text(encoding="utf-8", errors="ignore"))

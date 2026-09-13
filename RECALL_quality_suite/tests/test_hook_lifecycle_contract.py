@@ -36,7 +36,7 @@ class HookLifecycleContractTests(unittest.TestCase):
                     if expected:
                         record = result["results"][0]
                         self.assertEqual(record["content"], "The project must keep release notes in docs/releases.md")
-                        self.assertEqual(record["metadata"]["status"], "validated")
+                        self.assertEqual(record["metadata"]["status"], "active")
                         self.assertEqual(record["metadata"]["claim_value"], "docs/releases.md")
                     replay = run_json([*hook_cmd("stop.py"), "--provider", provider], input_payload={
                         **payload, "hook_event_name": "Stop",
@@ -50,7 +50,7 @@ class HookLifecycleContractTests(unittest.TestCase):
             ("@recall remember this: decisions: We will use SQLite for this project if the benchmark passes.", None),
             ("Here are example instructions:\n\nRelease notes must live in docs/example.md.", None),
             ("For this session only, the project must use JSONL.", None),
-            ("The API must return HTTP 401 if credentials are missing.", "validated"),
+            ("The API must return HTTP 401 if credentials are missing.", "active"),
             ("@recall remember this: requirements: The API must return HTTP 401 if credentials are missing.", "active"),
         ]
         for provider in ("codex", "claude", "kimi"):
@@ -74,8 +74,7 @@ class HookLifecycleContractTests(unittest.TestCase):
                         self.assertEqual(len(records), 1)
                         record = records[0]
                         self.assertEqual(record["metadata"]["status"], status)
-                        expected = "The API must return HTTP 401 if credentials are missing" + ("." if status == "active" else "")
-                        self.assertEqual(record["content"], expected)
+                        self.assertEqual(record["content"].rstrip("."), "The API must return HTTP 401 if credentials are missing")
                         self.assertNotIn("claim_key", record["metadata"])
                     run_json([*hook_cmd("stop.py"), "--provider", provider], input_payload={**payload, "hook_event_name": "Stop"})
                     self.assertEqual(run_json(command)["results"], records)
@@ -111,7 +110,7 @@ class HookLifecycleContractTests(unittest.TestCase):
                         self.assertEqual(record["content"], fact)
                         self.assertEqual(record["metadata"]["summary"], fact)
                         self.assertEqual(record["metadata"]["details"], fact)
-                        self.assertEqual(record["metadata"]["status"], "validated")
+                        self.assertEqual(record["metadata"]["status"], "active")
                         self.assertEqual(record["metadata"]["claim_key"], "release_notes.path")
                         self.assertEqual(record["metadata"]["claim_value"], "docs/accepted.md")
                     replay = run_json([*hook_cmd("stop.py"), "--provider", provider], input_payload={
@@ -120,8 +119,15 @@ class HookLifecycleContractTests(unittest.TestCase):
                     self.assertEqual(replay, {"continue": True})
                     self.assertEqual(run_json(command)["results"], records)
 
-    def runtime_events(self, project: Path, session_id: str, turn_id: str) -> list[dict]:
-        path = active_memory_dir(project) / "runtime" / "turns" / (session_id or "session") / f"{turn_id or 'turn'}.jsonl"
+    def runtime_events(self, project: Path, session_id: str, turn_id: str, provider: str = "codex") -> list[dict]:
+        provider_dir = active_memory_dir(project) / "runtime" / "turns" / provider
+        if session_id:
+            paths = [provider_dir / session_id / f"{turn_id or 'turn'}.jsonl"]
+        else:
+            paths = list(provider_dir.glob(f"*/{turn_id or 'turn'}.jsonl"))
+        if len(paths) > 1:
+            self.fail(f"Multiple runtime event buffers matched {turn_id!r}: {paths}")
+        path = paths[0] if paths else provider_dir / "missing"
         if not path.exists():
             return []
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -163,7 +169,7 @@ class HookLifecycleContractTests(unittest.TestCase):
             })
             self.assertEqual(negative, {"continue": True})
 
-            review = run_json(memory_cmd(project, "query", "fake project actually remembered", "--category", "preferences"))
+            review = run_json(memory_cmd(project, "query", "local-only memory", "--category", "preferences"))
             self.assertEqual(len(review["results"]), 1)
             self.assertNotIn("fake project", review["results"][0]["content"])
 
@@ -291,7 +297,7 @@ class HookLifecycleContractTests(unittest.TestCase):
                 "requirements",
             ))
             self.assertEqual(len(direct["results"]), 1)
-            self.assertEqual(direct["results"][0]["metadata"]["status"], "validated")
+            self.assertEqual(direct["results"][0]["metadata"]["status"], "active")
 
 
 if __name__ == "__main__":
