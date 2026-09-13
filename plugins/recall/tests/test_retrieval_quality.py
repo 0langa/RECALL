@@ -16,6 +16,44 @@ import session_context  # noqa: E402
 
 
 class RetrievalQualityTests(unittest.TestCase):
+    def test_session_context_warns_when_all_conflicting_cards_are_cut(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for value in ("alpha", "beta"):
+                memory_manager.add_record(
+                    "decisions", f"Storage uses {value}.",
+                    {"claim_key": "storage", "claim_value": value, "status": "active", "session_id": "s1"}, tmp,
+                )
+            for limit, excluded_session, budget in ((8, "s1", 100), (0, None, 100), (8, "s1", 1), (0, None, 1), (8, None, 1)):
+                with self.subTest(limit=limit, excluded_session=excluded_session, budget=budget):
+                    context = session_context.build_session_context(
+                        tmp, "storage", limit, token_budget=budget, exclude_session_id=excluded_session,
+                    )
+                    self.assertIn("health:conflicting=2", context)
+                    self.assertIn("omitted=2", context)
+                    self.assertIn("omitted_health:conflicting=2", context)
+                    self.assertIn("truncated=true", context)
+                    reason = "token_budget" if limit and excluded_session is None else "all_cards_omitted"
+                    self.assertIn(f"empty_reason={reason}", context)
+                    self.assertNotIn("Storage uses", context)
+                    self.assertNotIn("alpha", context)
+                    self.assertNotIn("beta", context)
+                    self.assertEqual(len(context.splitlines()), 1)
+                    self.assertLessEqual(len(context.split()), budget)
+
+    def test_zero_limit_keeps_stale_health_without_card_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            memory_manager.add_record("decisions", "Storage uses retired policy.", {"status": "stale"}, tmp)
+            context = session_context.build_session_context(tmp, "storage", 0, token_budget=100)
+            self.assertIn("health:stale=1", context)
+            self.assertIn("omitted_health:stale=1", context)
+            self.assertIn("empty_reason=all_cards_omitted", context)
+            self.assertNotIn("retired policy", context)
+
+    def test_no_store_session_context_stays_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(session_context.build_session_context(tmp, "storage", 8), "")
+            self.assertFalse((Path(tmp) / ".recall").exists())
+
     def test_session_context_keeps_conflict_and_truncation_at_top_one(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             for value in ("alpha", "beta"):

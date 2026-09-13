@@ -68,8 +68,13 @@ def render_grouped(
     known_health: dict[str, Any] | None = None,
 ) -> str:
     if not records:
-        return ""
-    lines: list[tuple[str, dict[str, Any] | None]] = [
+        health = known_health or {}
+        known_counts = health.get("known_flag_counts", health.get("flag_counts", {}))
+        # Suppressing fresh healthy cards remains quiet. Suppressing a known
+        # truth warning must still disclose the warning and omitted counts.
+        if not any(flag != retrieval.FLAG_CURRENT and count for flag, count in known_counts.items()):
+            return ""
+    lines: list[tuple[str, dict[str, Any] | None]] = [] if not records else [
         ("Historical lower-confidence RECALL context:" if historical else "Curated RECALL project memory:", None)
     ]
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -85,8 +90,9 @@ def render_grouped(
             lines.append((f"- #{record.get('id')} [{','.join(flags)}] {record_text(record)}", record))
     output: list[str] = []
     shown: list[dict[str, Any]] = []
-    # Reserve one whitespace token for health. Its compact form keeps the
-    # warning present even when the content budget cannot fit a single card.
+    # Reserve one whitespace token for health. This single-token header is
+    # the stable minimum warning under this renderer's whitespace-token cap,
+    # including a one-token budget. It never spends a card/result-limit slot.
     used = 1
     for line, line_record in lines:
         line_tokens = max(1, len(line.split()))
@@ -103,7 +109,10 @@ def render_grouped(
     counts = ",".join(f"{flag}={count}" for flag, count in sorted(known.items())) or "none"
     omitted_counts = ",".join(f"{flag}={count}" for flag, count in sorted(omitted_flags.items())) or "none"
     truncated = omitted > 0 or any("[truncated]" in line for line in output)
-    header = f"RECALL[health:{counts};omitted={omitted};omitted_health:{omitted_counts};truncated={str(truncated).lower()}]"
+    empty_reason = ""
+    if not shown:
+        empty_reason = ";empty_reason=all_cards_omitted" if not records else ";empty_reason=token_budget"
+    header = f"RECALL[health:{counts};omitted={omitted};omitted_health:{omitted_counts};truncated={str(truncated).lower()}{empty_reason}]"
     return "\n".join([header, *output])
 
 
