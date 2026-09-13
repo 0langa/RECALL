@@ -178,7 +178,13 @@ TOOLS: list[Json] = [
             "op=confirm when a memory was re-verified, op=stale when its source changed, op=deprecate when "
             "it is wrong or retired, op=supersede (old id + new_id) when a new memory replaces an old one, "
             "op=merge (id + secondary_ids) to fold duplicates into one card, op=resolve to close an open "
-            "issue, op=prune to archive noise. Wrong memory must never stay silently authoritative."
+            "issue, op=prune to archive noise. For op=update, provide claim_key and claim_value together to "
+            "replace a claim, or clear_claim=true to clear it explicitly. Changing content, summary, or "
+            "details without either option clears stale claim authority. Content changes also clear omitted "
+            "summary/details so readers use current content. Any changed text or claim invalidates prior "
+            "verification, retaining its evidence as history; unchanged replacements preserve it. Assigning "
+            "status does not re-verify an edited fact. Use op=confirm only after independent verification. "
+            "Wrong memory must never stay silently authoritative."
         ),
         "inputSchema": tool_schema(
             {
@@ -194,9 +200,19 @@ TOOLS: list[Json] = [
                     "description": "Duplicate memory ids folded into `id` for op=merge.",
                 },
                 "content": {"type": "string", "description": "Corrected content for op=update."},
+                "details": {"type": "string", "description": "Corrected details for op=update."},
                 "summary": {"type": "string"},
                 "category": {"type": "string"},
                 "status": {"type": "string"},
+                "claim_key": {
+                    "type": "string",
+                    "description": "Structured claim key to assign after op=update. Omit for old claim auto-reconcile behavior.",
+                },
+                "claim_value": {"type": "string", "description": "Structured claim value to assign after op=update."},
+                "clear_claim": {
+                    "type": "boolean",
+                    "description": "Clear any existing claim_key/claim_value on op=update.",
+                },
                 "note": {"type": "string", "description": "Why this lifecycle change is happening."},
             },
             ["op", "id"],
@@ -353,7 +369,13 @@ def call_review_memory(arguments: Json) -> Json:
 
 
 def _record_summary(record: Any) -> Json:
-    return {"id": record.id, "category": record.category, "status": (record.metadata or {}).get("status"), "metadata": record.metadata}
+    return {
+        "id": record.id,
+        "category": record.category,
+        "content": record.content,
+        "status": (record.metadata or {}).get("status"),
+        "metadata": record.metadata,
+    }
 
 
 def call_update_memory(arguments: Json) -> Json:
@@ -366,7 +388,18 @@ def call_update_memory(arguments: Json) -> Json:
     if op == "update":
         content = arguments.get("content")
         summary = arguments.get("summary")
-        if security.contains_secret(content, summary):
+        details = arguments.get("details")
+        claim_key = arguments.get("claim_key")
+        claim_value = arguments.get("claim_value")
+        clear_claim = bool(arguments.get("clear_claim"))
+        claim_fields_supplied = claim_key is not None or claim_value is not None
+        if claim_fields_supplied and (
+            not str(claim_key or "").strip() or not str(claim_value or "").strip()
+        ):
+            raise ValueError("update requires non-empty claim_key and claim_value together, or neither.")
+        if clear_claim and (claim_key is not None or claim_value is not None):
+            raise ValueError("clear_claim cannot be used with claim_key or claim_value.")
+        if security.contains_secret(content, summary, details):
             return {
                 "action": "update-memory",
                 "op": op,
@@ -380,7 +413,11 @@ def call_update_memory(arguments: Json) -> Json:
             category=arguments.get("category"),
             content=content,
             summary=summary,
+            details=details,
             status=arguments.get("status"),
+            claim_key=claim_key,
+            claim_value=claim_value,
+            clear_claim=clear_claim,
         )
     elif op == "confirm":
         record = memory_manager.confirm_record(record_id, root)

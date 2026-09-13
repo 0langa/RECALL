@@ -275,6 +275,8 @@ class RecallSkillAdapterTests(unittest.TestCase):
 
             # Pre-existing duplicates (e.g. legacy stores) still surface as
             # merge proposals through hygiene; seed one via the trusted path.
+            # Confirmation promoted the first card, so match its current status
+            # (part of the declared fingerprint) when seeding an exact duplicate.
             duplicate = run_manager(
                 tmp,
                 "add",
@@ -285,7 +287,7 @@ class RecallSkillAdapterTests(unittest.TestCase):
                 "--source",
                 "skill",
                 "--status",
-                "active",
+                "validated",
             )
 
             routed = run_skill(tmp, "route-memory", "Release notes must stay in docs/manual-release-notes.md.")
@@ -342,11 +344,17 @@ class RecallSkillAdapterTests(unittest.TestCase):
             )
 
             report = run_skill(tmp, "reconcile-current-truth", "--claim-key", "recall.kimi.standard_average")
+            applied = run_skill(tmp, "hygiene-apply", "--safe")
 
             self.assertEqual(report["action"], "reconcile-current-truth")
             self.assertEqual(report["proposals"][0]["id"], old["id"])
-            self.assertEqual(report["proposals"][0]["details"]["winner_id"], new["id"])
-            self.assertTrue(report["proposals"][0]["safe_to_apply"])
+            self.assertEqual(report["proposals"][0]["related_ids"], [new["id"]])
+            self.assertEqual(report["proposals"][0]["proposed_action"], "review_claim_conflict")
+            self.assertEqual(report["proposals"][0]["details"]["resolution"], "review_required")
+            self.assertNotIn("winner_id", report["proposals"][0]["details"])
+            self.assertFalse(report["proposals"][0]["safe_to_apply"])
+            self.assertEqual(applied["applied_count"], 0)
+            self.assertEqual(applied["unresolved_conflicts"], report["proposals"])
 
     def test_audit_memory_surfaces_noise_candidates_and_quality_metrics(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -384,6 +392,57 @@ class RecallSkillAdapterTests(unittest.TestCase):
             self.assertEqual(review["review"]["quality"]["active_noise_candidates"], 1)
             self.assertEqual(review["review"]["quality"]["top_noisy_commands"][0]["pattern"], "Get-Content")
             self.assertIn("post_tool_use", review["review"]["source_counts"])
+
+    def test_edit_memory_claim_modes_use_public_adapter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            saved = run_skill(
+                tmp,
+                "save-insight",
+                "requirements",
+                "Release notes live in docs/old.md.",
+                "--claim-key",
+                "release_notes.path",
+                "--claim-value",
+                "docs/old.md",
+            )
+            preserved = run_skill(tmp, "edit-memory", str(saved["id"]), "--tag", "release-notes")
+            replaced = run_skill(
+                tmp,
+                "edit-memory",
+                str(saved["id"]),
+                "--content",
+                "Release notes live in docs/new.md.",
+                "--claim-key",
+                "release_notes.path",
+                "--claim-value",
+                "docs/new.md",
+            )
+            rejected = run_skill_with_input(
+                tmp,
+                "",
+                "edit-memory",
+                str(saved["id"]),
+                "--content",
+                "Release notes live in docs/bad.md.",
+                "--claim-key",
+                "release_notes.path",
+                check=False,
+            )
+            unchanged = run_skill(
+                tmp,
+                "retrieve-memory",
+                "Release notes live in docs/new.md.",
+                "--verbose",
+            )
+            cleared = run_skill(tmp, "edit-memory", str(saved["id"]), "--clear-claim")
+
+            self.assertEqual(preserved["metadata"]["claim_value"], "docs/old.md")
+            self.assertEqual(replaced["metadata"]["claim_value"], "docs/new.md")
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertEqual(unchanged["results"][0]["content"], "Release notes live in docs/new.md.")
+            self.assertEqual(unchanged["results"][0]["metadata"]["claim_value"], "docs/new.md")
+            self.assertNotIn("claim_key", cleared["metadata"])
+            self.assertNotIn("claim_value", cleared["metadata"])
 
     def test_edit_and_delete_memory_use_public_adapter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -31,7 +31,6 @@ Safe apply may:
 - mark missing/changed source-backed records `stale`
 - archive low-value automatic command noise
 - merge exact duplicates into the oldest/current primary
-- supersede losing current-truth claims only when a validated/high-trust winner exists
 - mark weak preference records `needs_confirmation`
 - refresh source-backed metadata when the file still matches
 
@@ -40,12 +39,16 @@ Safe apply must not:
 - delete memory
 - edit record content to rewrite history
 - merge near-duplicates
-- choose between ambiguous current truths
+- choose between conflicting current truths without independent current evidence
 - promote a preference without evidence
 
 ## Evidence Strength
 
 Prefer current repository files and explicit current user instructions over old memory. Preserve old memory by changing lifecycle status, not by erasing history.
+
+Status, confidence, age, and record ID do not independently verify a claim. Report every
+conflicting claim slot as `review_claim_conflict` with `resolution=review_required`. After an
+agent or user checks current evidence, use explicit supersession with the reason recorded.
 
 Source-backed memory is current when the source path exists and the stored hash matches. Missing or changed source files are stale candidates.
 

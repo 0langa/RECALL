@@ -402,6 +402,8 @@ def health_flag(record: storage.MemoryRecord, aging_days: float = SNAPSHOT_AGING
         return FLAG_SUPERSEDED, "replaced by a newer memory; follow superseded_by instead"
     if status in {"deprecated", "archived"}:
         return FLAG_DEPRECATED, "retired memory; do not act on it"
+    if (record.metadata or {}).get("verification_invalidated_at"):
+        return FLAG_NEEDS_VERIFICATION, "fact edited since verification; confirm the current revision"
     if status == "hypothesis":
         return FLAG_NEEDS_VERIFICATION, "unconfirmed hypothesis; verify before trusting"
     age_days = max(0.0, (datetime.now(timezone.utc) - recency_timestamp(record)).total_seconds() / 86400)

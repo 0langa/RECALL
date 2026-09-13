@@ -56,6 +56,29 @@ python ./scripts/recall_skill.py delete-memory 12 --confirm DELETE-12
 
 Treat lower-level backend files as internal plumbing, not public workflow.
 
+An edit keeps the card ID. To replace a structured claim, pass `--claim-key` and
+`--claim-value` together; use `--clear-claim` to remove it. A changed content,
+summary, or details field clears an omitted old claim. Changing content also
+clears omitted summary/details, allowing readers to fall back to current content.
+Explicit replacements are preserved; editing only summary/details preserves the
+primary content. RECALL does not infer arbitrary claims or rewrite prose for you.
+
+Changed text or claim fields invalidate verification of the prior fact. Old
+confirmation sessions, counts, dates, and trust remain in `verification_history`
+but cannot validate the edited revision. Trust is conservatively capped at 0.5;
+an invalidated `validated` card becomes `active` and retrieval reports that it
+needs verification. Setting a status does not confirm the revision. After checking
+the current fact, use `confirm-memory` (MCP: `update_memory` with `op=confirm`).
+Session-aware confirmations start again for this revision and require two distinct
+sessions for automatic validation; explicit confirmation without a session uses
+the existing direct-confirm contract. Successful validation clears the invalidation
+marker. Tags-only edits and unchanged text/claim replacements preserve evidence.
+
+Edits refresh the saved fingerprint using the final category, content, source,
+tool/command, status, and tags. Saving identical current text converges on the same
+card when those identity inputs match. An old-text replay cannot confirm a new
+fact using the prior fingerprint. This is a sequential edit guarantee.
+
 ## Contract
 
 This skill receives an existing-memory maintenance request and returns the lifecycle, capture,

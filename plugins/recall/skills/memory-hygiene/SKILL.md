@@ -49,7 +49,7 @@ Read `references/hygiene-policy.md` when a routing or cleanup decision is ambigu
 | Field | Required | Meaning |
 |---|---:|---|
 | `candidate_fact` | for `route-memory` | free text of a candidate durable fact |
-| `claim_key` | for `reconcile-current-truth` | mutually exclusive claim slot to resolve |
+| `claim_key` | for `reconcile-current-truth` | mutually exclusive claim slot to inspect |
 | `scope` | for `hygiene-plan` | `project` (only value currently supported) |
 | `--safe` | for `hygiene-apply` | required flag; refuses destructive changes |
 | `--limit` | optional | cap the number of records inspected per pass |
@@ -70,18 +70,22 @@ Safe automatic changes are non-destructive:
 
 - `redact_secret`: secret-shaped content in an existing card is redacted in place (highest priority; policy says secrets must never be stored).
 - `stale`: current repo evidence invalidates a memory, or a point-in-time snapshot (`project_state`, `session_summaries`, `integrations`, `tooling_quirks`) aged past the staleness window.
-- `supersede`: validated current-truth claim clearly wins.
 - `merge`: exact duplicate joins an older primary record.
 - `prune`: low-value noise or a raw log/output dump is archived.
 - `refresh_source`: source-backed memory still matches its file.
 - `needs_confirmation`: weak preference or ambiguous memory is kept but demoted.
 
-Review-only findings (never auto-applied): `review_near_duplicate`, `review_vague`
+Review-only findings (never auto-applied): `review_claim_conflict`, `review_near_duplicate`, `review_vague`
 (memory too vague to act on), `review_metadata` (missing source/status provenance), and
 `review_doc_duplicate` (memory restates README/docs content — repo docs win; prune the
 memory or rewrite it to add non-doc insight). Doc-duplication detection is fully local
 deterministic token comparison against `README.md` and `docs/**/*.md`; it makes no
 model or network calls. Scan output includes a `next_action` telling you the correct follow-up.
+
+`review_claim_conflict` reports one deterministic cluster with every record ID and value.
+It never names a winner. Status, confidence, age, and record ID are presentation metadata,
+not evidence that authorizes a truth-changing mutation. After checking current project evidence,
+use `manage-memory` to supersede the wrong record with an explicit reason.
 
 Never hard-delete from this skill. If deletion is explicit, use `manage-memory` and `delete-memory --confirm DELETE-<id>`.
 
@@ -97,7 +101,7 @@ Never hard-delete from this skill. If deletion is explicit, use `manage-memory` 
 | Source file missing/changed | propose `stale` |
 | Exact duplicate | propose safe `merge` |
 | Near duplicate | report, require confirmation |
-| Conflicting claim key | pick validated/high-trust winner only when clear |
+| Conflicting claim key | report `review_claim_conflict`; require current evidence and explicit supersession |
 | Weak preference without evidence | mark `needs_confirmation` |
 | Secret-shaped stored content | propose safe `redact_secret`, apply immediately |
 | Raw log or output dump stored as memory | propose safe `prune` |
@@ -186,7 +190,7 @@ Plans return JSON-like summaries:
 - Near-duplicates with different provenance: report both, require confirmation before merge.
 - Source-backed record whose file moved but still exists at the new path: refresh source, do not stale.
 - Weak preference with no evidence: mark `needs_confirmation`, keep the record.
-- Validated claim conflicting with a hypothesis claim: supersede hypothesis only when evidence lineage is clean.
+- Validated claim conflicting with a hypothesis claim: keep both review-only until current evidence justifies explicit supersession.
 - Secret-shaped candidate text: reject at `route-memory`, do not persist.
 
 ## Safety

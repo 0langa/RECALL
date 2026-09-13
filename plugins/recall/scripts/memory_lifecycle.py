@@ -53,6 +53,26 @@ def update_metadata(record_id: int, updates: dict[str, Any], root: str | Path | 
     return storage.update_record_metadata(record.id, metadata, root)
 
 
+def invalidate_verification(
+    metadata: dict[str, Any], previous: dict[str, Any], invalidated_at: str,
+) -> dict[str, Any]:
+    """Retain prior evidence as history, never as proof of an edited fact."""
+    metadata = dict(metadata)
+    fields = ("last_confirmed", "confirmed_count", "confirmation_sessions", "validated_at", "trust")
+    evidence = {key: previous[key] for key in fields if key in previous}
+    if evidence or previous.get("status") == "validated":
+        history = list(previous.get("verification_history") or [])
+        history.append({**evidence, "status": previous.get("status"), "invalidated_at": invalidated_at})
+        metadata["verification_history"] = history
+    for key in fields:
+        metadata.pop(key, None)
+    # Older records do not distinguish assigned trust from confirmation-derived
+    # trust. Conservatively cap it until this revision is explicitly confirmed.
+    metadata["trust"] = min(0.5, float(metadata.get("confidence", 0.5)))
+    metadata["verification_invalidated_at"] = invalidated_at
+    return metadata
+
+
 def confirm(record_id: int, root: str | Path | None = None, source_session: str | None = None) -> storage.MemoryRecord:
     record = get_required(record_id, root)
     metadata = dict(record.metadata or {})
@@ -60,6 +80,8 @@ def confirm(record_id: int, root: str | Path | None = None, source_session: str 
     sessions = metadata.get("confirmation_sessions", [])
     if not isinstance(sessions, list):
         sessions = []
+    else:
+        sessions = list(sessions)
     if source_session:
         if source_session not in sessions:
             sessions.append(source_session)
@@ -74,6 +96,11 @@ def confirm(record_id: int, root: str | Path | None = None, source_session: str 
         metadata["status"] = "validated"
         metadata["validated_at"] = utc_now()
         metadata["trust"] = max(0.85, float(metadata.get("trust", metadata.get("confidence", 0.5))))
+        metadata.pop("verification_invalidated_at", None)
+    # Confirmation can change status, which participates in save identity.
+    from memory_hygiene import content_fingerprint
+
+    metadata["recall_fingerprint"] = content_fingerprint(record.category, record.content, metadata)
     metadata["updated_at"] = utc_now()
     return storage.update_record_metadata(record.id, metadata, root)
 

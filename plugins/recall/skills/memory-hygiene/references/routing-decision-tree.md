@@ -23,8 +23,8 @@ Step-by-step walkthrough for choosing the right target when `route-memory` runs 
 
 - Exact duplicate → return `merge` proposal, keep older primary.
 - Near-duplicate with different provenance → return `needs_confirmation`.
-- Conflicting claim key with validated winner → return `supersede` proposal.
-- Conflicting claim key with only hypothesis records → return `needs_confirmation`.
+- Conflicting claim key → return `review_claim_conflict` with every involved ID and `resolution=review_required`.
+- After current evidence identifies the wrong claim → use explicit, reasoned supersession through `manage-memory`.
 
 ## Step 5 — Does it require evidence?
 
@@ -48,3 +48,5 @@ Prefer records with:
 - Explicit source path over inferred origin.
 - User-confirmed provenance over automatic hook capture.
 - Recent trust promotion over cold historical write.
+
+These signals can order retrieval and review. They do not authorize automatic conflict resolution.

@@ -39,6 +39,79 @@ class MemoryHygieneTests(unittest.TestCase):
             self.assertEqual(len(result["results"]), 1)
             self.assertIn("last_confirmed", result["results"][0]["metadata"])
 
+    def test_existing_fingerprint_does_not_make_conflicting_claim_exact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            content = "Release notes location for the current project."
+            existing_metadata = memory_manager.build_card_metadata(
+                source="fixture",
+                status="validated",
+                base={"claim_key": "release.path", "claim_value": "docs/guess.md"},
+            )
+            existing_metadata["recall_fingerprint"] = memory_hygiene.content_fingerprint(
+                "requirements",
+                content,
+                existing_metadata,
+            )
+            existing = memory_manager.add_record("requirements", content, existing_metadata, tmp)
+            candidate_metadata = memory_manager.build_card_metadata(
+                source="fixture",
+                status="validated",
+                base={"claim_key": "release.path", "claim_value": "docs/verified.md"},
+            )
+
+            outcome = memory_manager.add_record_if_useful(
+                "requirements",
+                content,
+                candidate_metadata,
+                tmp,
+            )
+
+            self.assertEqual(outcome["action"], "saved_related")
+            self.assertNotEqual(outcome["record"].id, existing.id)
+            self.assertEqual(outcome["record"].metadata["related_memory_id"], existing.id)
+            self.assertEqual(
+                {
+                    memory_manager.get_record(existing.id, tmp).metadata["claim_value"],
+                    outcome["record"].metadata["claim_value"],
+                },
+                {"docs/guess.md", "docs/verified.md"},
+            )
+
+    def test_save_time_exact_claim_comparison_preserves_internal_whitespace(self) -> None:
+        cases = (
+            ("single versus double space", "docs/release notes.md", "docs/release  notes.md"),
+            ("space versus tab", "docs/release notes.md", "docs/release\tnotes.md"),
+        )
+        for label, first_value, second_value in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
+                content = "Release notes location for the current project."
+                first_metadata = memory_manager.build_card_metadata(
+                    source="fixture",
+                    status="validated",
+                    base={"claim_key": "release.path", "claim_value": first_value},
+                )
+                second_metadata = memory_manager.build_card_metadata(
+                    source="fixture",
+                    status="validated",
+                    base={"claim_key": "release.path", "claim_value": second_value},
+                )
+
+                self.assertEqual(
+                    memory_hygiene.content_fingerprint("requirements", content, first_metadata),
+                    memory_hygiene.content_fingerprint("requirements", content, second_metadata),
+                )
+
+                first = memory_manager.add_record_if_useful("requirements", content, first_metadata, tmp)
+                second = memory_manager.add_record_if_useful("requirements", content, second_metadata, tmp)
+                repeated = memory_manager.add_record_if_useful("requirements", content, second_metadata, tmp)
+
+                self.assertEqual(first["action"], "saved")
+                self.assertEqual(second["action"], "saved_related")
+                self.assertNotEqual(second["record"].id, first["record"].id)
+                self.assertEqual(second["record"].metadata["related_memory_id"], first["record"].id)
+                self.assertEqual(repeated["action"], "updated_existing")
+                self.assertEqual(repeated["duplicate_id"], second["record"].id)
+
     def test_near_duplicate_is_saved_with_related_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             metadata = memory_manager.build_card_metadata(
@@ -138,39 +211,89 @@ class MemoryHygieneTests(unittest.TestCase):
             self.assertNotIn("delete", json.dumps(applied))
             self.assertEqual(result["results"][0]["metadata"]["status"], "stale")
 
-    def test_reconcile_current_truth_supersedes_loser_when_winner_validated(self) -> None:
+    def test_reconcile_current_truth_keeps_unsupported_conflicts_review_only(self) -> None:
+        cases = (
+            (
+                "equal evidence",
+                (("docs/verified.md", "validated", 0.9), ("docs/guess.md", "validated", 0.9)),
+            ),
+            (
+                "swapped insertion order",
+                (("docs/guess.md", "validated", 0.9), ("docs/verified.md", "validated", 0.9)),
+            ),
+            (
+                "self-reported metadata advantage",
+                (("docs/verified.md", "active", 0.2), ("docs/guess.md", "validated", 0.99)),
+            ),
+        )
+        for label, records in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
+                created = [
+                    memory_manager.add_record(
+                        "requirements",
+                        f"Primary release path is {value}.",
+                        memory_manager.build_card_metadata(
+                            status=status,
+                            confidence=confidence,
+                            base={
+                                "claim_key": "release.path",
+                                "claim_value": value,
+                                "trust": confidence,
+                            },
+                        ),
+                        tmp,
+                    )
+                    for value, status, confidence in records
+                ]
+
+                report = memory_hygiene.reconcile_current_truth(tmp, claim_key="release.path")
+                applied = memory_hygiene.hygiene_apply(tmp, safe=True)
+                proposal = report["proposals"][0]
+
+                self.assertEqual(report["action"], "reconcile-current-truth")
+                self.assertEqual(proposal["proposed_action"], "review_claim_conflict")
+                self.assertFalse(proposal["safe_to_apply"])
+                self.assertEqual(proposal["details"]["resolution"], "review_required")
+                self.assertEqual(proposal["details"]["record_ids"], [record.id for record in created])
+                self.assertNotIn("winner_id", proposal["details"])
+                self.assertEqual(report["requires_confirmation"], [created[0].id])
+                self.assertEqual(applied["applied_count"], 0)
+                self.assertEqual(applied["unresolved_conflicts"], [proposal])
+                self.assertEqual(applied["skipped_confirmation_ids"].count(created[0].id), 1)
+                self.assertEqual(
+                    [memory_manager.get_record(record.id, tmp).metadata["status"] for record in created],
+                    [status for _value, status, _confidence in records],
+                )
+
+    def test_safe_hygiene_still_merges_duplicates_without_changing_single_claim(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            old = memory_manager.add_record(
-                "project_state",
-                "Latest Kimi score is 90.12.",
-                memory_manager.build_card_metadata(
-                    status="active",
-                    confidence=0.7,
-                    base={"claim_key": "recall.kimi.standard_average", "claim_value": "90.12"},
-                ),
-                tmp,
-            )
-            winner = memory_manager.add_record(
-                "project_state",
-                "Latest Kimi score is 95.91.",
+            claim = memory_manager.add_record(
+                "requirements",
+                "Primary release path is docs/verified.md.",
                 memory_manager.build_card_metadata(
                     status="validated",
-                    confidence=0.95,
-                    importance=0.95,
-                    base={"claim_key": "recall.kimi.standard_average", "claim_value": "95.91", "trust": 0.95},
+                    base={"claim_key": "release.path", "claim_value": "docs/verified.md"},
                 ),
                 tmp,
             )
+            primary = memory_manager.add_record("architecture", "Workers use an event queue.", root=tmp)
+            duplicate = memory_manager.add_record("architecture", "Workers use an event queue.", root=tmp)
 
-            report = memory_hygiene.reconcile_current_truth(tmp, claim_key="recall.kimi.standard_average")
+            plan = memory_hygiene.hygiene_plan(tmp)
             applied = memory_hygiene.hygiene_apply(tmp, safe=True)
-            old_after = memory_manager.query("Latest Kimi score is 90.12", statuses=["superseded"], root=tmp)
 
-            self.assertEqual(report["action"], "reconcile-current-truth")
-            self.assertEqual(report["proposals"][0]["details"]["winner_id"], winner.id)
-            self.assertEqual(report["proposals"][0]["id"], old.id)
-            self.assertEqual(old_after["results"][0]["metadata"]["superseded_by"], winner.id)
-            self.assertGreaterEqual(applied["applied_count"], 1)
+            self.assertFalse(any(item["proposed_action"] == "review_claim_conflict" for item in plan["proposals"]))
+            self.assertTrue(
+                any(
+                    item["id"] == duplicate.id
+                    and item["action"] == "merge"
+                    and item["applied"]
+                    for item in applied["applied"]
+                )
+            )
+            self.assertEqual(memory_manager.get_record(primary.id, tmp).metadata.get("status", "active"), "active")
+            self.assertEqual(memory_manager.get_record(duplicate.id, tmp).metadata["status"], "superseded")
+            self.assertEqual(memory_manager.get_record(claim.id, tmp).metadata["status"], "validated")
 
     def test_command_failure_and_weak_preference_get_safe_hygiene_statuses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

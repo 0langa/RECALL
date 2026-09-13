@@ -64,12 +64,28 @@ Expected result:
 ```json
 {
   "action": "reconcile-current-truth",
-  "winner": {"id": 60, "lifecycle": "validated", "value": 90.12},
-  "loser": {"id": 55, "lifecycle": "hypothesis", "value": 88.4},
-  "proposed_action": "supersede",
-  "safe_to_apply": true
+  "claim_key": "recall.kimi.standard_average",
+  "proposals": [
+    {
+      "id": 55,
+      "proposed_action": "review_claim_conflict",
+      "confidence": 1.0,
+      "safe_to_apply": false,
+      "related_ids": [60],
+      "details": {
+        "claim_key": "recall.kimi.standard_average",
+        "record_ids": [55, 60],
+        "values": ["88.4", "90.12"],
+        "resolution": "review_required"
+      }
+    }
+  ],
+  "requires_confirmation": [55]
 }
 ```
+
+Validated status only confirms self-reported lifecycle state. It does not select a winner.
+Check current project evidence, then use `manage-memory` for an explicit, reasoned supersession.
 
 ## Example 4 — Weak preference
 

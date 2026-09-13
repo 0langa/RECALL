@@ -515,6 +515,13 @@ def handle_prune_memory(args: argparse.Namespace, root: Path | None) -> None:
 
 
 def handle_edit_memory(args: argparse.Namespace, root: Path | None) -> None:
+    claim_fields_supplied = args.claim_key is not None or args.claim_value is not None
+    if claim_fields_supplied and (
+        not str(args.claim_key or "").strip() or not str(args.claim_value or "").strip()
+    ):
+        raise ValueError("--claim-key and --claim-value must be non-empty and provided together.")
+    if args.clear_claim and (args.claim_key is not None or args.claim_value is not None):
+        raise ValueError("Cannot combine --clear-claim with --claim-key/--claim-value.")
     record = memory_manager.edit_record(
         args.id,
         root,
@@ -527,6 +534,9 @@ def handle_edit_memory(args: argparse.Namespace, root: Path | None) -> None:
         status=args.status,
         importance=args.importance,
         confidence=args.confidence,
+        claim_key=args.claim_key,
+        claim_value=args.claim_value,
+        clear_claim=args.clear_claim,
     )
     print_json(
         {
@@ -783,6 +793,10 @@ def main() -> None:
     prune.set_defaults(handler=handle_prune_memory)
 
     edit = subparsers.add_parser("edit-memory")
+    edit.description = (
+        "Content changes clear omitted summary/details. Changed text or claims invalidate old verification; "
+        "tags-only and unchanged replacements preserve evidence. Use confirm-memory after re-verification."
+    )
     edit.add_argument("id", type=int)
     edit.add_argument("--category")
     edit.add_argument("--content")
@@ -793,6 +807,13 @@ def main() -> None:
     edit.add_argument("--status")
     edit.add_argument("--importance", type=float)
     edit.add_argument("--confidence", type=float)
+    edit.add_argument("--claim-key", help="Replacement claim key; requires --claim-value.")
+    edit.add_argument("--claim-value", help="Replacement claim value; requires --claim-key.")
+    edit.add_argument(
+        "--clear-claim",
+        action="store_true",
+        help="Explicitly clear claim authority; semantic edits also clear an omitted old claim and its evidence.",
+    )
     edit.set_defaults(handler=handle_edit_memory)
 
     delete = subparsers.add_parser("delete-memory")

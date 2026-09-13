@@ -166,7 +166,17 @@ def edit_record(
     status: str | None = None,
     importance: float | None = None,
     confidence: float | None = None,
+    claim_key: str | None = None,
+    claim_value: str | None = None,
+    clear_claim: bool = False,
 ) -> MemoryRecord:
+    claim_fields_supplied = claim_key is not None or claim_value is not None
+    normalized_claim_key = str(claim_key).strip() if claim_key is not None else ""
+    normalized_claim_value = str(claim_value).strip() if claim_value is not None else ""
+    if claim_fields_supplied and (not normalized_claim_key or not normalized_claim_value):
+        raise ValueError("--claim-key and --claim-value must be non-empty and provided together for replacement.")
+    if clear_claim and (claim_key is not None or claim_value is not None):
+        raise ValueError("clear_claim cannot be used with claim_key/claim_value replacement fields.")
     record = storage.get_record(record_id, root)
     if record is None:
         raise KeyError(f"RECALL memory #{record_id} was not found.")
@@ -185,6 +195,28 @@ def edit_record(
     safe_content = redact_secrets((content if content is not None else record.content).strip())
     if not safe_content:
         raise ValueError("Cannot store an empty RECALL memory.")
+    metadata_base = dict(record.metadata or {})
+    content_changed = content is not None and safe_content != record.content
+    summary_changed = summary is not None and redact_secrets(summary.strip()) != str(metadata_base.get("summary", ""))
+    details_changed = details is not None and redact_secrets(details.strip()) != str(metadata_base.get("details", ""))
+    semantic_content_changed = content_changed or summary_changed or details_changed
+    edited_at = utc_now()
+    # Omitted display text derives from the old content. Let readers fall back
+    # to current content; do not guess a semantic rewrite of either field.
+    if content_changed:
+        if summary is None:
+            metadata_base.pop("summary", None)
+        if details is None:
+            metadata_base.pop("details", None)
+    if clear_claim:
+        metadata_base.pop("claim_key", None)
+        metadata_base.pop("claim_value", None)
+    elif claim_fields_supplied:
+        metadata_base["claim_key"] = normalized_claim_key
+        metadata_base["claim_value"] = normalized_claim_value
+    elif semantic_content_changed:
+        metadata_base.pop("claim_key", None)
+        metadata_base.pop("claim_value", None)
     metadata = redact_metadata(build_card_metadata(
         summary=summary,
         details=details,
@@ -193,9 +225,19 @@ def edit_record(
         status=status,
         importance=importance,
         confidence=confidence,
-        base=dict(record.metadata or {}),
+        base=metadata_base,
     ))
-    metadata["edited_at"] = utc_now()
+    claim_changed = any(
+        metadata.get(key) != (record.metadata or {}).get(key)
+        for key in ("claim_key", "claim_value")
+    )
+    if semantic_content_changed or claim_changed:
+        metadata = redact_metadata(memory_lifecycle.invalidate_verification(metadata, record.metadata or {}, edited_at))
+    # Assigning a label cannot verify an invalidated factual revision.
+    if metadata.get("verification_invalidated_at") and metadata.get("status") == "validated":
+        metadata["status"] = "active"
+    metadata["edited_at"] = edited_at
+    metadata["recall_fingerprint"] = memory_hygiene.content_fingerprint(normalized_category, safe_content, metadata)
     edited = storage.update_record(
         record.id,
         category=normalized_category,

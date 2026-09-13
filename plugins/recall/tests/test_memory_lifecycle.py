@@ -10,10 +10,208 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import config as recall_config  # noqa: E402
+import index_store  # noqa: E402
 import memory_manager  # noqa: E402
+import memory_hygiene  # noqa: E402
+import memory_review  # noqa: E402
 
 
 class MemoryLifecycleTests(unittest.TestCase):
+    def test_edit_redacts_legacy_confirmation_history(self) -> None:
+        for backend in ("sqlite", "jsonl"):
+            with self.subTest(backend=backend), tempfile.TemporaryDirectory() as tmp:
+                cfg = recall_config.default_config()
+                cfg["backend"] = backend
+                recall_config.save_config(cfg, tmp)
+                record = memory_manager.add_record("requirements", "Release notes live in docs/old.md.", root=tmp)
+                # Simulate unredacted legacy evidence; the edit must still apply
+                # the write boundary when moving it into historical metadata.
+                secret = "sk-proj-ABCDEFGHIJKLMNOPQRSTUVWX"
+                memory_manager.update_record_metadata(record.id, {
+                    "status": "validated", "confirmation_sessions": [secret], "confirmed_count": 1,
+                }, tmp)
+                edited = memory_manager.edit_record(record.id, tmp, content="Release notes live in docs/new.md.")
+                self.assertNotIn(secret, str(edited.metadata))
+                self.assertIn("verification_history", edited.metadata)
+
+    def test_edit_record_clears_claim_for_content_change(self) -> None:
+        for backend in ("sqlite", "jsonl"):
+            with tempfile.TemporaryDirectory() as tmp:
+                if backend == "jsonl":
+                    recall_config.ensure_config(tmp)
+                    cfg = recall_config.load_config(tmp)
+                    cfg["backend"] = "jsonl"
+                    recall_config.save_config(cfg, tmp)
+
+                record = memory_manager.add_record(
+                    "requirements",
+                    "Release notes path is docs/old.md.",
+                    metadata=memory_manager.build_card_metadata(
+                        source="fixture",
+                        status="active",
+                        base={"claim_key": "release_notes.path", "claim_value": "docs/old.md"},
+                    ),
+                    root=tmp,
+                )
+                edited = memory_manager.edit_record(
+                    record.id,
+                    tmp,
+                    content="Release notes path is docs/new.md.",
+                    summary="Release notes moved to docs/new.md.",
+                    status="validated",
+                )
+                index_store.rebuild(tmp)
+                reopened = memory_manager.get_record(record.id, tmp)
+                old_results = memory_manager.query(
+                    "Release notes path is docs/old.md",
+                    categories=["requirements"],
+                    root=tmp,
+                )["results"]
+                new_results = memory_manager.query(
+                    "Release notes path is docs/new.md",
+                    categories=["requirements"],
+                    root=tmp,
+                )["results"]
+                review = memory_review.review_memory(tmp, categories=["requirements"])
+                report = memory_hygiene.reconcile_current_truth(tmp, claim_key="release_notes.path")
+
+                self.assertEqual(edited.id, record.id)
+                self.assertIsNotNone(reopened)
+                assert reopened is not None
+                self.assertEqual(reopened.content, "Release notes path is docs/new.md.")
+                self.assertEqual(edited.metadata.get("status"), "active")
+                self.assertNotIn("claim_key", edited.metadata)
+                self.assertNotIn("claim_value", edited.metadata)
+                self.assertTrue(all(item["content"] != "Release notes path is docs/old.md." for item in old_results))
+                self.assertEqual(new_results[0]["id"], record.id)
+                self.assertEqual(review["memories"][0]["summary"], "Release notes moved to docs/new.md.")
+                self.assertEqual(report["proposals"], [])
+
+    def test_edit_record_preserves_claim_on_tags_only_edit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            record = memory_manager.add_record(
+                "requirements",
+                "Release notes path is docs/new.md.",
+                metadata=memory_manager.build_card_metadata(
+                    source="fixture",
+                    status="validated",
+                    base={
+                        "claim_key": "release_notes.path",
+                        "claim_value": "docs/new.md",
+                        "confirmed_count": 2,
+                        "last_confirmed": "2026-09-10T12:00:00+00:00",
+                    },
+                ),
+                root=tmp,
+            )
+            edited = memory_manager.edit_record(record.id, tmp, tags=["release-notes"])
+
+            self.assertEqual(edited.id, record.id)
+            self.assertEqual(edited.metadata.get("claim_key"), "release_notes.path")
+            self.assertEqual(edited.metadata.get("claim_value"), "docs/new.md")
+            self.assertEqual(edited.metadata.get("confirmed_count"), 2)
+            self.assertEqual(edited.metadata.get("last_confirmed"), "2026-09-10T12:00:00+00:00")
+            self.assertEqual(edited.metadata.get("tags"), ["release-notes"])
+
+    def test_edit_record_invalidates_old_verification_for_semantic_change(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            record = memory_manager.add_record(
+                "requirements",
+                "Release notes path is docs/old.md.",
+                metadata=memory_manager.build_card_metadata(
+                    source="fixture",
+                    status="validated",
+                    base={
+                        "claim_key": "release_notes.path",
+                        "claim_value": "docs/old.md",
+                        "confirmed_count": 3,
+                        "last_confirmed": "2026-09-10T12:00:00+00:00",
+                    },
+                ),
+                root=tmp,
+            )
+
+            edited = memory_manager.edit_record(
+                record.id,
+                tmp,
+                summary="Release notes path needs independent re-verification.",
+            )
+
+            self.assertEqual(edited.metadata.get("status"), "active")
+            self.assertNotIn("claim_key", edited.metadata)
+            self.assertNotIn("claim_value", edited.metadata)
+            self.assertNotIn("confirmed_count", edited.metadata)
+            self.assertNotIn("last_confirmed", edited.metadata)
+            self.assertIn("verification_invalidated_at", edited.metadata)
+
+    def test_edit_record_replaces_claim_when_explicitly_supplied(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            record = memory_manager.add_record(
+                "requirements",
+                "Release notes path is docs/old.md.",
+                metadata=memory_manager.build_card_metadata(
+                    source="fixture",
+                    status="active",
+                    base={"claim_key": "release_notes.path", "claim_value": "docs/old.md"},
+                ),
+                root=tmp,
+            )
+            edited = memory_manager.edit_record(
+                record.id,
+                tmp,
+                content="Release notes path is docs/new.md.",
+                summary="Release notes moved to docs/new.md.",
+                claim_key="release_notes.path",
+                claim_value="docs/new.md",
+            )
+
+            self.assertEqual(edited.metadata.get("claim_key"), "release_notes.path")
+            self.assertEqual(edited.metadata.get("claim_value"), "docs/new.md")
+
+    def test_edit_record_clears_claim_with_explicit_clear(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            record = memory_manager.add_record(
+                "requirements",
+                "Release notes path is docs/old.md.",
+                metadata=memory_manager.build_card_metadata(
+                    source="fixture",
+                    status="active",
+                    base={"claim_key": "release_notes.path", "claim_value": "docs/old.md"},
+                ),
+                root=tmp,
+            )
+            edited = memory_manager.edit_record(record.id, tmp, clear_claim=True)
+
+            self.assertNotIn("claim_key", edited.metadata)
+            self.assertNotIn("claim_value", edited.metadata)
+
+    def test_edit_record_invalid_claim_inputs_do_not_modify_record(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            record = memory_manager.add_record(
+                "requirements",
+                "Release notes path is docs/old.md.",
+                metadata=memory_manager.build_card_metadata(
+                    source="fixture",
+                    status="active",
+                    base={"claim_key": "release_notes.path", "claim_value": "docs/old.md"},
+                ),
+                root=tmp,
+            )
+
+            with self.assertRaises(ValueError):
+                memory_manager.edit_record(record.id, tmp, claim_key="release_notes.path")
+
+            with self.assertRaises(ValueError):
+                memory_manager.edit_record(record.id, tmp, clear_claim=True, claim_key="release_notes.path", claim_value="docs/new.md")
+
+            with self.assertRaises(ValueError):
+                memory_manager.edit_record(record.id, tmp, claim_key=" ", claim_value="docs/new.md")
+
+            unchanged = memory_manager.get_record(record.id, tmp)
+            self.assertEqual(unchanged.content, record.content)
+            self.assertEqual(unchanged.metadata.get("claim_key"), "release_notes.path")
+            self.assertEqual(unchanged.metadata.get("claim_value"), "docs/old.md")
+
     def test_update_metadata_works_for_sqlite(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             record = memory_manager.add_record("requirements", "Keep storage local.", root=tmp)
@@ -112,13 +310,27 @@ class MemoryLifecycleTests(unittest.TestCase):
                 root=tmp,
             )
 
-            result = memory_manager.supersede_record(old.id, new.id, tmp, "Correction from latest design.")
+            reason = "Checked current project evidence: structured memory cards are required."
+            result = memory_manager.supersede_record(old.id, new.id, tmp, reason)
             query = memory_manager.query("memory policy transcripts", categories=["decisions"], root=tmp)
+            reopened_old = memory_manager.get_record(old.id, tmp)
+            reopened_new = memory_manager.get_record(new.id, tmp)
+            history = memory_manager.query(
+                "memory policy transcripts",
+                categories=["decisions"],
+                statuses=["superseded"],
+                root=tmp,
+            )
 
             self.assertEqual(result["old"].metadata["status"], "superseded")
             self.assertEqual(result["old"].metadata["superseded_by"], new.id)
             self.assertIn(old.id, result["new"].metadata["supersedes"])
             self.assertEqual(query["results"][0]["id"], new.id)
+            self.assertEqual(reopened_old.metadata["lifecycle_note"], reason)
+            self.assertEqual(reopened_old.metadata["superseded_by"], new.id)
+            self.assertIn(old.id, reopened_new.metadata["supersedes"])
+            self.assertEqual(history["results"][0]["id"], old.id)
+            self.assertEqual(history["results"][0]["metadata"]["lifecycle_note"], reason)
 
     def test_merge_marks_secondaries_superseded(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

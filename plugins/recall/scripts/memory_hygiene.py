@@ -23,7 +23,7 @@ import storage
 
 NEAR_DUPLICATE_THRESHOLD = 0.72
 CURRENT_STATUSES = {"active", "validated", "open", "hypothesis"}
-SAFE_ACTIONS = {"stale", "prune", "merge", "supersede", "needs_confirmation", "refresh_source", "redact_secret"}
+SAFE_ACTIONS = {"stale", "prune", "merge", "needs_confirmation", "refresh_source", "redact_secret"}
 SNAPSHOT_CATEGORIES = {"project_state", "session_summaries", "integrations", "tooling_quirks"}
 SNAPSHOT_STALE_DAYS = 45.0
 RAW_LOG_MIN_CHARS = 1200
@@ -92,6 +92,28 @@ def normalized_metadata_value(value: Any) -> Any:
     return value
 
 
+def _structured_claims_compatible(
+    left_metadata: dict[str, Any] | None,
+    right_metadata: dict[str, Any] | None,
+) -> bool:
+    left_metadata = left_metadata or {}
+    right_metadata = right_metadata or {}
+    claim_fields = ("claim_key", "claim_value")
+    left_has_claim = any(field in left_metadata for field in claim_fields)
+    right_has_claim = any(field in right_metadata for field in claim_fields)
+    if not left_has_claim and not right_has_claim:
+        return True
+    if not all(field in left_metadata and field in right_metadata for field in claim_fields):
+        return False
+    # Claim fields are opaque project data. Prose normalization would erase
+    # meaningful distinctions in paths, identifiers, and commands.
+    left_pair = (left_metadata["claim_key"], left_metadata["claim_value"])
+    right_pair = (right_metadata["claim_key"], right_metadata["claim_value"])
+    if not all(isinstance(value, str) and value.strip() for value in (*left_pair, *right_pair)):
+        return False
+    return left_pair == right_pair
+
+
 def content_fingerprint(category: str, content: str, metadata: dict[str, Any] | None = None) -> str:
     metadata = metadata or {}
     payload = {
@@ -145,7 +167,10 @@ def find_related_record(
     for record in storage.iter_records(root):
         if not same_memory_family(record, category, metadata):
             continue
-        if (record.metadata or {}).get("recall_fingerprint") == fingerprint:
+        if (
+            (record.metadata or {}).get("recall_fingerprint") == fingerprint
+            and _structured_claims_compatible(record.metadata, metadata)
+        ):
             return RelatedRecord("exact", record, 1.0)
         similarity = token_jaccard(content, record.content)
         if similarity >= NEAR_DUPLICATE_THRESHOLD and (best is None or similarity > best.similarity):
@@ -331,19 +356,26 @@ def _duplicate_proposals(records: list[storage.MemoryRecord]) -> list[HygienePro
         if len(group) < 2:
             continue
         ordered = sorted(group, key=lambda item: item.id)
-        primary = ordered[0]
-        for duplicate in ordered[1:]:
-            exact_duplicate_ids.add(duplicate.id)
-            proposals.append(
-                HygieneProposal(
-                    duplicate.id,
-                    "merge",
-                    0.97,
-                    f"exact duplicate of memory #{primary.id}",
-                    True,
-                    related_ids=(primary.id,),
+        for index, primary in enumerate(ordered):
+            if primary.id in exact_duplicate_ids:
+                continue
+            for duplicate in ordered[index + 1 :]:
+                if duplicate.id in exact_duplicate_ids or not _structured_claims_compatible(
+                    primary.metadata,
+                    duplicate.metadata,
+                ):
+                    continue
+                exact_duplicate_ids.add(duplicate.id)
+                proposals.append(
+                    HygieneProposal(
+                        duplicate.id,
+                        "merge",
+                        0.97,
+                        f"exact duplicate of memory #{primary.id}",
+                        True,
+                        related_ids=(primary.id,),
+                    )
                 )
-            )
     seen_pairs: set[tuple[int, int]] = set()
     current = [record for record in records if _is_current(record)]
     for index, left in enumerate(current):
@@ -394,30 +426,27 @@ def _claim_conflict_proposals(records: list[storage.MemoryRecord], claim_key: st
         values = {str((record.metadata or {}).get("claim_value") or "").casefold() for record in group}
         if len(values) < 2:
             continue
-        winners = sorted(
-            group,
-            key=lambda record: (
-                str((record.metadata or {}).get("status", "")).lower() == "validated",
-                _confidence(record),
-                record.id,
-            ),
-            reverse=True,
-        )
-        winner = winners[0]
-        winner_validated = str((winner.metadata or {}).get("status", "")).lower() == "validated"
-        for loser in winners[1:]:
-            safe = winner_validated and _confidence(winner) >= 0.75
-            proposals.append(
-                HygieneProposal(
-                    loser.id,
-                    "supersede",
-                    0.92 if safe else 0.66,
-                    f"current-truth claim `{key}` conflicts with memory #{winner.id}",
-                    safe,
-                    related_ids=(winner.id,),
-                    details={"claim_key": key, "winner_id": winner.id},
-                )
+        ordered = sorted(group, key=lambda record: record.id)
+        record_ids = tuple(record.id for record in ordered)
+        proposals.append(
+            HygieneProposal(
+                ordered[0].id,
+                "review_claim_conflict",
+                1.0,
+                (
+                    f"current-truth claim `{key}` has conflicting values; review current evidence before "
+                    "choosing a winner because status, confidence, age, and record order are not authority"
+                ),
+                False,
+                related_ids=record_ids[1:],
+                details={
+                    "claim_key": key,
+                    "record_ids": list(record_ids),
+                    "values": sorted(values),
+                    "resolution": "review_required",
+                },
             )
+        )
     return proposals
 
 
@@ -632,11 +661,11 @@ def _dedupe_proposals(proposals: list[HygieneProposal]) -> list[HygieneProposal]
     priority = {
         "redact_secret": 0,
         "merge": 1,
-        "supersede": 2,
-        "stale": 3,
-        "prune": 4,
-        "needs_confirmation": 5,
-        "refresh_source": 6,
+        "stale": 2,
+        "prune": 3,
+        "needs_confirmation": 4,
+        "refresh_source": 5,
+        "review_claim_conflict": 6,
         "review_near_duplicate": 7,
         "review_vague": 8,
         "review_metadata": 9,
@@ -669,11 +698,13 @@ def hygiene_plan(
     )
     if limit is not None:
         proposals = proposals[:limit]
-    requires_confirmation = [
-        proposal.id
-        for proposal in proposals
-        if proposal.id is not None and not proposal.safe_to_apply
-    ]
+    requires_confirmation = list(
+        dict.fromkeys(
+            proposal.id
+            for proposal in proposals
+            if proposal.id is not None and not proposal.safe_to_apply
+        )
+    )
     return {
         "action": "hygiene-plan",
         "scope": scope,
@@ -773,12 +804,6 @@ def _apply_proposal(proposal: dict[str, Any], root: str | Path | None) -> dict[s
             "primary_id": result["primary"].id,
             "status": result["merged"][0].metadata.get("status") if result["merged"] else None,
         }
-    elif action == "supersede":
-        winner_id = int((proposal.get("details") or {}).get("winner_id") or (related_ids[0] if related_ids else 0))
-        if not winner_id:
-            return {"id": record_id, "action": action, "applied": False, "reason": "missing winner id"}
-        result = memory_lifecycle.supersede(int(record_id), winner_id, root, reason)
-        return {"id": record_id, "action": action, "applied": True, "status": result["old"].metadata.get("status"), "winner_id": winner_id}
     elif action == "refresh_source":
         metadata = dict(memory_lifecycle.get_required(int(record_id), root).metadata or {})
         source_path = metadata.get("source_path")
@@ -807,12 +832,18 @@ def hygiene_apply(
         for proposal in plan["proposals"]
         if proposal.get("safe_to_apply") is True
     ]
+    unresolved_conflicts = [
+        proposal
+        for proposal in plan["proposals"]
+        if proposal.get("proposed_action") == "review_claim_conflict"
+    ]
     return {
         "action": "hygiene-apply",
         "mode": "safe",
         "inspected": plan["inspected"],
         "applied": applied,
         "applied_count": sum(1 for item in applied if item.get("applied")),
+        "unresolved_conflicts": unresolved_conflicts,
         "skipped_confirmation_ids": plan["requires_confirmation"],
     }
 

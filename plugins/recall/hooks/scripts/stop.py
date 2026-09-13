@@ -54,6 +54,16 @@ def quiet_card_from_event(event: dict, *, session_id: str, turn_id: str) -> dict
     if not summary or finalizer_meta_text(f"{summary}\n{details}"):
         return None
 
+    if signal.startswith("explicit_"):
+        # Recheck buffered/legacy candidates. A correction keyword or confidence
+        # flag is not sufficient evidence for a validated project statement.
+        admitted = capture_policy.classify_prompt_event(details)
+        if admitted is None:
+            return None
+        event = {**event, **admitted, "explicit_user_evidence": bool(event.get("explicit_user_evidence"))}
+        summary = str(admitted["summary"])
+        details = str(admitted["details"])
+
     explicit = bool(event.get("explicit_user_evidence"))
     category = str(event.get("category_hint") or ("debug_history" if signal in FAILURE_SIGNALS else "project_state"))
     if signal in FAILURE_SIGNALS:
