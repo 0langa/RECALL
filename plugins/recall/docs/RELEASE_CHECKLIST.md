@@ -1,65 +1,112 @@
-# RECALL Release Checklist
+# RECALL v1.6.0 release evidence
 
-Use this checklist before tagging a public RECALL release.
+This table starts fresh for v1.6.0.
+It does not reuse checks from an older release.
+`Pending at candidate freeze` is not a pass.
 
-Run local plugin commands from `<repo-root>/plugins/recall` unless a step explicitly says to use `<repo-root>`.
+The final public asset and evidence will be at the [v1.6.0 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.0) after publication.
 
-## Local Gates
+## Candidate evidence table
 
-- [x] `python .\scripts\run_tests.py` (complete parallel unittest suite)
-- [x] `python .\scripts\run_tests.py --pattern test_hooks.py --profile-methods --profile-target test_hooks.py` (hook method timing)
-- [x] `python -m unittest discover -s tests` (sequential debugging path)
-- [x] Persistent activation, greenfield initialization, deactivation, buffered hooks, atomic finalization, idempotency, and relevance calibration are covered.
-- [x] Quick seed benchmark is under 20 seconds and full seed benchmark is under 90 seconds.
-- [x] Corpus migration creates a backup and leaves zero active automatic file-edit/build/test noise records.
-- [x] `python <plugin-creator-path>\scripts\validate_plugin.py <repo-root>/plugins/recall`
-- [x] `python .\scripts\smoke_recall.py --json`
-- [x] `python .\scripts\recall_skill.py retrieve-memory "current project context" --summary`
-- [x] `python build_plugin.py` from `<repo-root>` or `python scripts/build_plugin.py` from `<repo-root>/plugins/recall`; build output must show per-step timing.
-- [x] `python .\scripts\inspect_package.py .\dist\recall.zip`
-- [x] `python .\scripts\smoke_zip_marketplace.py --json`
+| Gate | Status at candidate freeze | Evidence needed before release |
+| --- | --- | --- |
+| Wave 1 joined source | Accepted | Source commit `ee4419f69fbcf7e7302553fdcd8b67847d8ed842`; 30 unit modules, 14 smoke checks, Ruff, Mypy, and public contracts passed. |
+| SQLite and JSONL concurrency lane | Approved in bounded scope | Review B, retained lane receipts, and the pre-doc joined rerun passed. The final clean-candidate rerun is still required. |
+| Matched-evaluation mechanism | Approved in bounded scope | Review B covers mechanism controls only. An actual matched-benefit result is still required. |
+| Hygiene lane | Accepted with P2 follow-up | Review B failure is retained. Use canonical project-relative source paths. The pre-doc joined rerun passed. The final clean-candidate rerun is still required. |
+| Truth and retrieval lane | Approved in bounded scope | Fix commit `00691a83d8ad5f44565fe9aad0f7ab0f3d2d39da`; 32 unit modules and 14 smoke checks passed. The pre-doc joined rerun passed. The final clean-candidate rerun is still required. |
+| Runtime and no-memory lane | Accepted | Review A found two P1 and two P2 defects. The one allowed fix pass addressed them. Review B passed with no open P0 or P1. |
+| Final joined source gate | Pending at candidate freeze | The Task 10 pre-doc gate passed. One clean release-candidate commit must pass unit, smoke, Ruff, Mypy, strict benchmark, quality, and required contract checks. |
+| Version and docs contract | Pending at candidate freeze | Three manifests, MCP server, package test, install pins, and docs checks must use v1.6.0. |
+| Exact ZIP build | Pending at candidate freeze | Build from the clean release candidate commit. Record ZIP SHA-256. |
+| ZIP inspection | Pending at candidate freeze | Prove no runtime store, Git data, Python cache, personal path, or secret-shaped text. |
+| ZIP marketplace smoke | Pending at candidate freeze | Run against the exact frozen ZIP. |
+| Codex installed package | Pending at candidate freeze | Fresh isolated-home proof with Codex CLI `0.154.0` and the exact ZIP. |
+| Claude Code installed package | Pending at candidate freeze | Fresh isolated-home proof with Claude Code `2.1.268` and the exact ZIP. |
+| Kimi Code installed package | Pending at candidate freeze | Fresh isolated-home proof with Kimi Code `0.42.0` and the exact ZIP. |
+| Matched user benefit | Pending at candidate freeze | Run the frozen candidate and all required controls. Keep unknown values unknown. |
+| CI | Pending at candidate freeze | All required `recall-quality.yml` jobs must pass on the reviewed commit. |
+| Local and CI package identity | Pending at candidate freeze | Compare contents and hashes for the reviewed commit. |
+| Tag and GitHub release | Pending at candidate freeze | Tag must resolve to the approved commit. The release asset hash must match the frozen ZIP. |
 
-## Install Lifecycle
+## Accepted follow-up
 
-- [x] Install from a local checkout with `codex plugin marketplace add .` from the repository root, or from a built zip through a temporary marketplace.
-- [x] Confirm `RECALL` appears in the plugin picker and can be enabled.
-- [ ] Confirm bundled skills are discoverable in a new thread.
-- [ ] Review and trust bundled hooks in Codex Settings > Coding > Hooks.
-- [x] In a temp project, submit a prompt without `@recall` and verify hooks stay idle with no durable memory write.
-- [x] In a temp project, simulate `@recall remember this:` and verify `UserPromptSubmit` stores a preference.
-- [x] Simulate a successful command after explicit `@recall` activation and verify `PostToolUse` buffers compact evidence without writing durable command memory.
-- [x] Trigger `Stop` after buffered evidence and verify it emits one compact inline finalizer request.
-- [ ] Start a new thread in the same project and verify `SessionStart` stays quiet; explicit `@recall` prompt retrieval injects relevant local context.
-- [x] Run installed-bundle skill adapter retrieval rather than source-only backend commands.
-- [x] Run `python .\scripts\recall_skill.py archive-noise` as a dry run before any live cleanup.
-- [x] Run `python .\scripts\recall_skill.py archive-noise --apply --limit <n>` only after reviewing dry-run matches.
-- [x] Run `python .\scripts\memory_manager.py doctor` only as a developer/support diagnostic.
-- [x] Corrupt or delete `vector_index.bin`, run `python .\scripts\memory_manager.py repair`, and verify final health as a maintenance diagnostic.
-- [x] Uninstall and reinstall the plugin, then repeat a minimal save/query check through the installed bundle.
-- [x] Install from built zip extraction through a temporary marketplace and run installed-cache smoke.
+The v1.6.0 hygiene plan validator uses canonical project-relative source paths.
+`README.md` passes.
+Equivalent `./README.md` and `.\README.md` forms fail closed.
+No unsafe apply was seen.
 
-## Public Surface
+Use this workaround:
 
-- [x] README has current install, smoke, build, known limitations, and troubleshooting guidance.
-- [x] `docs/PRIVACY.md` exists and matches the local-only storage behavior.
-- [x] Manifest public URLs are stable, if included.
-- [x] Package inspection reports no runtime data, cache files, personal paths, or secret-like strings.
-- [x] Bundled skills reference `recall_skill.py` and do not advertise the backend maintenance CLI.
-- [x] `CHANGELOG.md` has the release date and user-visible changes.
+1. Keep source metadata in canonical project-relative form.
+2. Create a new plan.
+3. Review the complete plan.
+4. Apply that exact plan.
+5. Never change the hashed reviewed plan.
 
-## Tag And Artifact
+CLI flow:
 
-- [x] Tag the release only after local gates, install lifecycle, and real-project field testing pass.
-- [x] Create the GitHub release from the tag.
-- [x] Attach `dist/recall.zip` as a release artifact.
-- [x] Do not commit `dist/recall.zip`.
+```powershell
+python .\scripts\recall_skill.py --root <project-root> hygiene-plan --scope project --save-plan recall-hygiene-plan.json
+python .\scripts\recall_skill.py --root <project-root> hygiene-apply --safe --plan-file recall-hygiene-plan.json
+```
 
-## Certification
+MCP flow:
 
-- [x] PluginEval quick scores at least 80 for all five primary skills.
-- [ ] PluginEval standard scores at least 80 for all five primary skills.
-- [ ] PluginEval deep certification meets the release threshold.
-- [ ] Human source-blind evaluation meets the final threshold.
-- [ ] Cross-agent agreement meets the final threshold.
+1. Call `memory_hygiene` with `mode=plan`.
+2. Keep the complete plan object.
+3. Pass that exact object in `plan` to `mode=apply_safe`.
+4. When `claim_key` is present, use `response.plan`.
 
-See `docs/RELEASE_EVIDENCE_2026-06-12.md` for current automated evidence and blockers.
+## Known limits
+
+- JSONL is supported for normal process concurrency.
+- One store-local operating-system lock serializes JSONL operations.
+- Each JSONL file replacement uses flush, `fsync`, and atomic replace.
+- JSONL has no multi-file rollback.
+- Multi-file power-loss safety is not certified.
+- The vector index is derived state and may need a rebuild after a fault.
+- The 21-case hygiene fixture is bounded lexical evidence.
+- Broad semantic truth is not certified.
+- The 5,000-card comparison is a synthetic SQLite test.
+- Its candidate-to-v1.5.5 median ratio was `0.9974007` under high host load.
+- Candidate peak working set was `149549056` bytes.
+- Baseline peak working set was `148074496` bytes.
+- These numbers make no speed claim.
+- Host readiness does not prove the exact ZIP.
+- No real project memory store was used.
+
+## Commands for the final source candidate
+
+Run from the repository root:
+
+```powershell
+python -m ruff check .
+python -m mypy --config-file pyproject.toml
+python bench\run_bench.py run --mode light --baseline bench\baselines\<baseline>.json --strict
+python RECALL_quality_suite\scripts\run_recall_quality_suite.py --repo-root . --quick
+```
+
+Run from `plugins\recall`:
+
+```powershell
+python scripts\run_tests.py --exclude-smoke --json
+python scripts\smoke_recall.py --json
+```
+
+Run the metadata and docs contract tests that own the changed public text.
+Record each command, source commit, exit code, and retained result path.
+
+## Commands for the exact ZIP
+
+Run from the repository root:
+
+```powershell
+python build_plugin.py
+python plugins\recall\scripts\inspect_package.py dist\recall.zip
+python plugins\recall\scripts\smoke_zip_marketplace.py dist\recall.zip --json
+Get-FileHash -Algorithm SHA256 -LiteralPath dist\recall.zip
+```
+
+Do not commit `dist/recall.zip`.
+Do not call the release ready while a P0 or P1 is open.

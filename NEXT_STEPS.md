@@ -1,110 +1,83 @@
-# RECALL — Status & Roadmap
-_Maintenance audit: 2026-08-19_
+# RECALL — v1.6.0 release status
 
-## What this is
-
-Local-first persistent project memory for AI coding agents. RECALL stores decisions,
-requirements, risks, commands, and debugging history in a per-project `.recall/` store (legacy
-`.codex_memory/` still readable) and serves it back to Codex, Claude Code, and Kimi Code through
-one shared plugin: seven public skills, provider hooks, and an MCP server over a single engine.
-No hosted service, no network calls, secret-shaped content rejected at write time.
-
-Stack: Python 3.11, SQLite (schema v2, FTS5) with a JSONL alternative, deterministic local 256-D
-hash embeddings, three provider manifests (`.codex-plugin/`, `.claude-plugin/`,
-`kimi.plugin.json`) over one codebase in `plugins/recall/scripts/`, pytest, GitHub Actions.
+Updated: 2026-09-13.
 
 ## Current state
 
-- **Released: v1.5.5** — tag `v1.5.5` is the current shipped release and its GitHub release
-  contains `recall.zip`; stable Codex installation is pinned to `--ref v1.5.5`. One shared source
-  tree continues to ship the Codex, Claude Code, and Kimi manifests.
-- **Batch-5 production hardening shipped as v1.5.1**, rather than remaining an unreleased v1.6.0
-  candidate: idempotency-key writes are transactional, `doctor`/`repair` handle store corruption,
-  install pins have regression coverage, and CI tools are pinned. v1.5.2 added Codex artwork
-  metadata; v1.5.3 removed workstation-specific public metadata and added a regression guard.
-- **Current validation (2026-08-19)**: the CI-style non-smoke runner passes all 29 test modules;
-  Ruff and Mypy pass (locally at 0.15.12 / 1.19.1 against the CI pins 0.15.20 / 2.1.0); the 17
-  bench-harness tests and the strict light benchmark pass with zero secret leaks and an
-  unchanged emission hash; the quick quality suite passes; the full package build passes every
-  stage including the Codex plugin validator. v1.5.5 is the current shipped baseline.
-- **Quality gates**: `.github/workflows/recall-quality.yml` runs lint, strict `bench-light`, a
-  six-way unit matrix, coverage, three-OS smoke, quality suite, and package jobs. The release
-  build validates the manifest when the local validator is available, runs source smoke, and
-  inspects the generated ZIP.
-- **Follow-up risks to verify before changing them**:
-  - The hook layer needs broader fixture coverage, especially malformed and provider-specific
-    payloads.
-  - Near-duplicate hygiene is a full-table fuzzy scan; benchmark it at a substantially larger
-    store before changing its algorithm.
-  - The local hash embedder has finite paraphrase headroom; keep that metric separate from the
-    blocking lexical and safety gates.
-  - The optional judged benchmark has no recorded judge baseline, and live provider hook-payload
-    drift still needs versioned fixtures.
+`v1.6.0` is a release candidate.
+It is not yet the public release.
 
-## Release discipline
+Wave 1 was accepted at source commit `ee4419f69fbcf7e7302553fdcd8b67847d8ed842`.
+The storage lane and matched-evaluation mechanism review are approved in their bounded scopes.
 
-v1.5.5 is the current shipped baseline. Do not cut v1.6.0 merely to re-release Batch-5 work that
-already shipped in v1.5.1. A future release should have a deliberate user-facing scope and:
+The hygiene lane is accepted with one follow-up.
+Canonical project-relative source paths such as `README.md` pass saved-plan validation.
+Equivalent `./README.md` and `.\README.md` paths fail closed.
+Do not change the hashed reviewed plan.
+Create a new plan with canonical paths.
 
-- version alignment in the three manifests, `kimi_mcp_server.py`, and
-  `test_package_metadata.py`;
-- a rebuilt, inspected `recall.zip` and a published GitHub release;
-- the full lint, strict benchmark, unit, smoke, quality, and package gates;
-- explicit marketplace work only in its owning repository.
+The truth and retrieval lane Review B approved fix commit `00691a83d8ad5f44565fe9aad0f7ab0f3d2d39da` in its bounded scope.
+Its 32-unit-module and 14-smoke-check receipts do not replace final joined gates.
 
-The next maintenance milestone remains:
+The runtime lane Review A found two P1 defects and two P2 defects.
+The one allowed fix pass addressed those defects.
+Review B passed on the joined source with no open P0 or P1.
 
-- `hooks/scripts/` coverage at ≥75% with fixture tests for every hook event.
-- Save-time dedup and hygiene scans measured on a ~5,000-record store, with
-  `find_related_record` either candidate-filtered or explicitly bounded.
-- One judged benchmark run recorded as a quality baseline next to `bench/baselines/`.
-- A contract test pinning current live hook payload shapes for all three providers.
+The Task 10 source gates passed before the version and documentation update.
+A final clean-candidate rerun is still required after this release-candidate commit.
 
-## Roadmap
+## Candidate scope
 
-### Phase 1 — Now (next 1–2 weeks)
+The candidate adds these user-visible controls:
 
-1. **No release is currently queued.** Select and implement a scoped user-facing change before
-   planning another version bump; do not use this roadmap as evidence that v1.6.0 already exists.
-2. **Hook-layer test pass.** Fixture-driven tests for `plugins/recall/hooks/scripts/` covering
-   SessionStart, UserPromptSubmit (prompt_inspector), PostToolUse, PreCompact, and Stop — happy
-   path plus malformed payloads, missing fields, and non-activated projects. Target: lift
-   `hook_io.py` and `session_start.py` out of the 40s; consider turning the coverage job into a
-   ratchet once the number is respectable.
-3. **Run the judged bench once** following `bench/README.md`'s manual instructions (from a
-   cheap-model session; never auto-run, per the project's own rule) and commit the aggregated
-   judge scores so future retrieval changes have a quality anchor, not just token/latency
-   numbers.
+- Safe concurrent save behavior for SQLite and normal JSONL process concurrency.
+- A fail-closed memory-free turn guard across public surfaces and hooks.
+- Observed-evidence checks for `validated` status.
+- Exact opaque structured-claim handling.
+- Stable hygiene plans with separate scan, output, and action limits.
+- Exact reviewed-plan apply through CLI and MCP.
+- Conservative project-root resolution.
+- Retrieval health warnings that survive card selection and budget cuts.
+- A 256-D local hash embedder description that matches the source.
+- One MCP declaration in each provider manifest, including Codex.
 
-### Phase 2 — Next (2–6 weeks)
+These are candidate behaviors until final source and package gates bind them to the release commit.
 
-4. **Scale tier.** Add a ~5k-record tier to the bench store fabricator; measure hygiene scan and
-   save-time dedup latency at that size. Then fix the O(n): pre-filter `find_related_record`
-   candidates via fingerprint prefix, shared-token bucketing, or an FTS5 candidate query before
-   the fuzzy Jaccard pass.
-5. **Hook payload drift guard.** Capture real hook payloads from current Codex / Claude Code /
-   Kimi CLI versions as versioned fixtures; add contract tests plus a `doctor` check that
-   reports unrecognized payload shapes instead of degrading silently.
-6. **Paraphrase ceiling decision.** Either document 0.6 as the accepted local-first ceiling in
-   README, or add an opt-in, config-gated embedding backend (user-supplied local model path;
-   still zero-network, never ship weights). The remaining misses are zero-shared-vocabulary
-   queries no lexical method can reach.
+## Required next work
 
-### Phase 3 — Later (optional/stretch)
+1. Commit the v1.6.0 versions and final docs.
+2. Run the final clean-candidate source, metadata, and docs gates.
+3. Build and inspect the exact `recall.zip` from the clean release candidate.
+4. Record its SHA-256.
+5. Run source-blind and matched-benefit evaluation against the frozen candidate.
+6. Run fresh installed-package tests on Codex CLI `0.154.0`, Claude Code `2.1.268`, and Kimi Code `0.42.0`.
+7. Run full CI on the reviewed commit.
+8. Confirm that local and CI package contents agree.
+9. Publish only after there is no open P0 or P1.
 
-7. Embedding-based doc-duplication detection — the current check is lexical token containment
-   against README/docs paragraphs and misses paraphrased duplicates (PROJECT_STATE deferred
-   item).
-8. Legacy-store bench tier using a real user-supplied `.codex_memory` store, plus
-   `migrate-store` validation at scale.
-9. Scheduled CI job that reruns the smoke matrix against the latest provider CLI releases — the
-   2026-06-25 cross-provider retest was manual; automating it would catch provider breakage
-   between releases.
-10. Consolidate the root-level planning docs (WORK_STATUS.md at 26 KB, the 45 KB architecture
-    blueprint, `token_usage_surfaces.md`) into `docs/` with a short index; they're valuable
-    history but currently crowd the repo root a new contributor sees first.
+## Evidence that is pending at candidate freeze
 
-## Effort to "finished"
+| Proof | Status | Required evidence |
+| --- | --- | --- |
+| Final joined source gates | Pending | One clean candidate commit and retained Task 10 receipts |
+| Exact ZIP | Pending | ZIP SHA-256, package inspection, and ZIP marketplace smoke |
+| Installed Codex package | Pending | Fresh isolated-host proof from the exact ZIP |
+| Installed Claude Code package | Pending | Fresh isolated-host proof from the exact ZIP |
+| Installed Kimi Code package | Pending | Fresh isolated-host proof from the exact ZIP |
+| Matched user benefit | Pending | Frozen matched evaluation with completed controls |
+| CI | Pending | Required `recall-quality.yml` jobs on the reviewed commit |
+| Tag and GitHub release | Pending | Tag identity, release asset identity, and published hash |
 
-**M.** The hook-coverage, scale, and payload-drift work are roughly 2–3 part-time weeks combined.
-Any future release estimate depends on its deliberately chosen scope.
+The public asset and evidence will be available at the [v1.6.0 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.0) after publication.
+
+## Known limits
+
+- JSONL has one cross-process lock and atomic replacement per file.
+- JSONL does not have one transaction across several files.
+- Multi-file power-loss safety is not certified.
+- The 21-case hygiene set is a bounded lexical positive check.
+- Broad semantic truth is not certified.
+- The 5,000-card test is synthetic SQLite evidence under host load.
+- Its median ratio of `0.9974007` is no speed claim.
+- Host readiness does not prove the exact package.
+- No real project memory store was used.

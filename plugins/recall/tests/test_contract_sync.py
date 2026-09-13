@@ -260,11 +260,11 @@ class ContractConsistencyTests(unittest.TestCase):
 
 
 class ProviderCapabilityParityTests(unittest.TestCase):
-    """Every MCP tool must stay reachable on Codex through the adapter CLI.
+    """Every MCP tool must stay reachable through the shared adapter CLI.
 
-    Codex's plugin manifest declares no MCP server (opt-in via config.toml,
-    docs/CODEX.md), so the adapter is its guaranteed path. This map failing
-    means a capability became MCP-only — a silent cross-provider gap.
+    The provider manifests declare the MCP server. The adapter remains the
+    direct CLI surface for every provider. This map failing means a capability
+    became MCP-only and introduced a silent cross-provider gap.
     """
 
     MCP_TO_ADAPTER = {
@@ -306,7 +306,11 @@ class ProviderCapabilityParityTests(unittest.TestCase):
         codex_doc = (ROOT / "docs" / "CODEX.md").read_text(encoding="utf-8")
         for tool in self.MCP_TO_ADAPTER:
             self.assertIn(f"`{tool}`", codex_doc, f"docs/CODEX.md missing MCP tool {tool}")
-        self.assertIn("mcp_servers.recall", codex_doc)
+        codex_manifest = load_json(ROOT / ".codex-plugin" / "plugin.json")
+        server = codex_manifest["mcpServers"]["recall"]
+        self.assertEqual(server["env"]["RECALL_DEFAULT_PROVIDER"], "codex")
+        self.assertIn("already declares the MCP server", codex_doc)
+        self.assertIn("[mcp_servers.recall]", codex_doc)
         self.assertIn('RECALL_DEFAULT_PROVIDER = "codex"', codex_doc)
 
 
