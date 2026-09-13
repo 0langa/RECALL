@@ -92,11 +92,40 @@ class RuntimeInterlockTests(unittest.TestCase):
             self.assertEqual(contextless["session_id"], newer.session_id)
             self.assertTrue(turn_policy.policy_status(tmp, old.session_id, old.turn_id)["disabled"])
 
+            turn_policy.finish_turn(tmp, newer.session_id, newer.turn_id)
+            after_normal_stop = turn_policy.policy_status(tmp)
+            self.assertFalse(after_normal_stop["disabled"])
+            self.assertEqual((after_normal_stop["session_id"], after_normal_stop["turn_id"]),
+                             (newer.session_id, newer.turn_id))
+            self.assertTrue(after_normal_stop["closed"])
+
             normalize_hook_event(
                 {"prompt": "No memory for this task.", "session_id": "active-disabled", "turn_id": "three"},
                 fallback_event="UserPromptSubmit", fallback_root=tmp,
             )
             self.assertTrue(turn_policy.policy_status(tmp)["disabled"])
+
+    def test_same_session_late_private_event_stays_blocked_after_normal_prompt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.activate_project(tmp)
+            recall_config.set_capture_mode("standard", tmp)
+            base = {"cwd": tmp, "session_id": "same"}
+            run_hook("prompt_inspector.py", {**base, "turn_id": "private", "prompt": "No memory for this turn."})
+            run_hook("stop.py", {**base, "turn_id": "private"})
+            run_hook("prompt_inspector.py", {**base, "turn_id": "normal", "prompt": "Continue normal work."})
+            self.assertTrue(turn_policy.policy_status(tmp, "same", "private")["disabled"])
+            late = run_hook(
+                "post_tool_use.py",
+                {
+                    **base, "turn_id": "private", "tool_name": "Bash",
+                    "tool_input": {"command": "python -m pytest"},
+                    "tool_response": {"exit_code": 1, "stdout": "FAILED PRIVATE_LATE_OUTPUT"},
+                },
+            )
+            self.assertEqual(late["action"], "disabled")
+            for path in recall_config.memory_dir(tmp).rglob("*"):
+                if path.is_file():
+                    self.assertNotIn("PRIVATE_LATE_OUTPUT", path.read_text(encoding="utf-8", errors="ignore"))
 
     def test_no_memory_finalizer_rejects_before_store_initialization(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -175,6 +204,45 @@ class RuntimeInterlockTests(unittest.TestCase):
             with self.subTest(command=command, response=response):
                 decision = capture_policy.classify_tool_capture(root=None, payload={"tool_response": response}, tool_name="Bash", command=command, content=str(response.get("stdout", "")), mode="standard")
                 self.assertEqual(decision is not None, expected)
+
+    def test_material_success_redacts_before_signed_buffer_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.activate_project(tmp)
+            recall_config.set_capture_mode("standard", tmp)
+            base = {"cwd": tmp, "session_id": "redaction", "turn_id": "output"}
+            run_hook("prompt_inspector.py", {**base, "prompt": "Run the test."})
+            response = {"exit_code": 0, "stdout": "1 passed\ntoken=dummy-secret-value"}
+            run_hook(
+                "post_tool_use.py",
+                {**base, "tool_name": "Bash", "tool_input": {"command": "python -m pytest"}, "tool_response": response},
+            )
+            events = turn_buffer.load_events(tmp, "redaction", "output")
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0]["details"], observed_evidence.observed_content("python -m pytest", response))
+            self.assertIn("[REDACTED]", events[0]["details"])
+            self.assertNotIn("dummy-secret-value", events[0]["details"])
+            for path in recall_config.memory_dir(tmp).rglob("*"):
+                if path.is_file():
+                    self.assertNotIn("token=dummy-secret-value", path.read_text(encoding="utf-8", errors="ignore"))
+
+    def test_debug_finalizer_packet_write_failure_retries_with_one_valid_request(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.activate_project(tmp)
+            recall_config.set_capture_mode("standard", tmp)
+            cfg_path = recall_config.config_path(tmp)
+            config = json.loads(cfg_path.read_text(encoding="utf-8"))
+            config["observability_mode"] = "debug"
+            cfg_path.write_text(json.dumps(config), encoding="utf-8")
+            base = {"cwd": tmp, "session_id": "packet", "turn_id": "failure"}
+            run_hook("prompt_inspector.py", {**base, "prompt": "The project must preserve finalizer evidence."})
+            with patch("turn_buffer.json.dump", side_effect=OSError("simulated write failure")):
+                first = run_hook("stop.py", base)
+            self.assertIn("Evidence was retained for retry", first["systemMessage"])
+            self.assertEqual(turn_buffer.finalizer_status(tmp, "packet", "failure"), "none")
+            second = run_hook("stop.py", base)
+            self.assertEqual(second["decision"], "block")
+            self.assertEqual(turn_buffer.finalizer_status(tmp, "packet", "failure"), "requested")
+            self.assertEqual(run_hook("stop.py", base), {"continue": True})
 
     def test_real_observed_result_finalizes_once_and_asserted_claims_do_not_validate(self):
         with tempfile.TemporaryDirectory() as tmp:

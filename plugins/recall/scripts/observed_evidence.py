@@ -17,6 +17,7 @@ import tempfile
 from typing import Any
 
 import config as recall_config
+import security
 from store_lock import exclusive_lock
 import turn_policy
 
@@ -73,7 +74,9 @@ def _signature(receipt: dict[str, Any], key: bytes) -> str:
 
 def observed_content(command: str, response: dict[str, Any]) -> str:
     output = "\n".join(str(response.get(key) or "").strip() for key in ("stdout", "stderr", "output", "message") if response.get(key))
-    return f"Command: {command}\n{output}\nexit_code: {response.get('exit_code')}"[:1200]
+    return security.redact_text(
+        f"Command: {command}\n{output}\nexit_code: {response.get('exit_code')}"
+    )[:1200]
 
 
 def observe_tool_result(root: str | Path | None, event: dict[str, Any]) -> dict[str, Any] | None:

@@ -17,6 +17,7 @@ import uuid
 import config as recall_config
 
 MAX_AGE = 7 * 86400
+CURRENT_SCOPE_FILE = "current-scope.json"
 
 
 def _folder(root: str | Path) -> Path:
@@ -25,6 +26,26 @@ def _folder(root: str | Path) -> Path:
 
 def _key(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _turn_path(root: str | Path, provider: str, session_id: str, turn_id: str) -> Path:
+    identity = f"turn:{provider}:{session_id}:{turn_id}"
+    return _folder(root) / f"turn-{_key(identity)}.json"
+
+
+def _session_pointer_path(root: str | Path, provider: str, session_token: str) -> Path:
+    return _folder(root) / f"session-{_key(f'{provider}:{session_token}')}.json"
+
+
+def _current_scope_path(root: str | Path) -> Path:
+    return _folder(root) / CURRENT_SCOPE_FILE
+
+
+def _turn_states(root: str | Path) -> list[dict[str, Any]]:
+    folder = _folder(root)
+    if not folder.exists():
+        return []
+    return [state for path in folder.glob("turn-*.json") if (state := _read(path))]
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -52,25 +73,24 @@ def normalize_identity(event):
     """
     if not event.root:
         return replace(event, session_id=event.session_id or uuid.uuid4().hex, turn_id=event.turn_id or uuid.uuid4().hex)
-    folder = _folder(event.root)
-    bucket = _key(event.provider + ":" + (event.session_id or event.transcript_path or "anonymous"))
-    path = folder / (bucket + ".json")
-    current = _read(path)
-    session_id = event.session_id or str(current.get("session_id") or ("session-" + uuid.uuid4().hex))
+    session_token = event.session_id or event.transcript_path or "anonymous"
+    session_pointer = _read(_session_pointer_path(event.root, event.provider, session_token))
+    session_id = event.session_id or str(session_pointer.get("session_id") or ("session-" + uuid.uuid4().hex))
     is_prompt = event.event_name == "UserPromptSubmit"
     delivery = str(event.raw_payload.get("hook_event_id") or event.raw_payload.get("delivery_id") or "")
     delivery_key = _key(delivery) if delivery else ""
-    replay = bool(is_prompt and delivery_key and current.get("delivery_key") == delivery_key)
     if event.event_name == "SessionStart":
-        current = {}
         if not event.session_id:
             session_id = "session-" + uuid.uuid4().hex
     if event.turn_id:
         turn_id = event.turn_id
-    elif (not is_prompt or replay) and current.get("turn_id"):
-        turn_id = str(current["turn_id"])
+    elif (not is_prompt) and session_pointer.get("turn_id"):
+        turn_id = str(session_pointer["turn_id"])
     else:
         turn_id = "turn-" + uuid.uuid4().hex
+    path = _turn_path(event.root, event.provider, session_id, turn_id)
+    current = _read(path)
+    replay = bool(is_prompt and delivery_key and current.get("delivery_key") == delivery_key)
     if is_prompt:
         import capture_policy
         # Evaluate before activation, tracing, capture, or any memory-data read.
@@ -80,31 +100,39 @@ def normalize_identity(event):
         if replay:
             state["closed"] = bool(current.get("closed"))
         _write(path, state)
-    elif not current:
-        _write(path, {"scope_known": False, "disabled": False, "session_id": session_id,
-                      "turn_id": turn_id, "provider": event.provider, "updated_at": time.time(), "closed": False})
+        _write(_session_pointer_path(event.root, event.provider, session_token), state)
+        _write(_current_scope_path(event.root), state)
     return replace(event, session_id=session_id, turn_id=turn_id)
 
 
 def policy_status(root: str | Path | None, session_id: str | None = None, turn_id: str | None = None) -> dict[str, Any]:
     if root is None:
         return {"scope_known": False, "disabled": False, "reason": "scope_unknown"}
-    folder = _folder(root)
-    states = [_read(path) for path in folder.glob("*.json")] if folder.exists() else []
-    states = [state for state in states if state]
-    matching = [state for state in states if state.get("session_id") == session_id] if session_id else []
-    if matching and turn_id:
-        exact_turn = [state for state in matching if state.get("turn_id") == turn_id]
-        if exact_turn:
-            matching = exact_turn
-    # A fabricated/stale session label cannot bypass a currently disabled scope.
-    if not matching:
-        active = [state for state in states if not state.get("closed")]
-        # A completed no-memory turn remains conservative until a later prompt
-        # establishes a new scope. It must not override that newer normal turn.
-        matching = active or states
-    disabled = [state for state in matching if state.get("disabled")]
-    selected = max(disabled or matching, key=lambda state: float(state.get("updated_at", 0)), default={})
+    states = _turn_states(root)
+    active_disabled = [state for state in states if state.get("disabled") and not state.get("closed")]
+    selected: dict[str, Any] = {}
+    if session_id and turn_id:
+        exact = [
+            state for state in states
+            if state.get("session_id") == session_id and state.get("turn_id") == turn_id
+        ]
+        if exact:
+            # A current private scope blocks every automatic action. Otherwise,
+            # preserve the exact historical turn policy for late deliveries.
+            selected = max(active_disabled or exact, key=lambda state: float(state.get("updated_at", 0)))
+        elif active_disabled:
+            selected = max(active_disabled, key=lambda state: float(state.get("updated_at", 0)))
+        else:
+            return {"scope_known": False, "disabled": False, "reason": "scope_unknown"}
+    elif session_id:
+        matching = [state for state in states if state.get("session_id") == session_id]
+        selected = max(active_disabled or matching, key=lambda state: float(state.get("updated_at", 0)), default={})
+    else:
+        # Contextless callers use the latest prompt scope after all active
+        # scopes close. An active no-memory turn always remains conservative.
+        selected = max(active_disabled, key=lambda state: float(state.get("updated_at", 0)), default={})
+        if not selected:
+            selected = _read(_current_scope_path(root))
     known = bool(selected.get("scope_known"))
     off = bool(selected.get("disabled"))
     return {"scope_known": known, "disabled": off, "reason": "task_no_memory" if off else ("enabled" if known else "scope_unknown"),
@@ -122,12 +150,19 @@ def disabled_result(*, hook: bool = False) -> dict[str, Any]:
 def finish_turn(root: str | Path | None, session_id: str, turn_id: str) -> None:
     if root is None:
         return
-    for path in _folder(root).glob("*.json"):
+    for path in _folder(root).glob("turn-*.json"):
         state = _read(path)
         if state.get("session_id") == session_id and state.get("turn_id") == turn_id:
             state["closed"] = True
             # Keep the no-memory interlock until the next UserPromptSubmit.
             _write(path, state)
+            current = _read(_current_scope_path(root))
+            if current.get("session_id") == session_id and current.get("turn_id") == turn_id:
+                _write(_current_scope_path(root), state)
+            for pointer_path in _folder(root).glob("session-*.json"):
+                pointer = _read(pointer_path)
+                if pointer.get("session_id") == session_id and pointer.get("turn_id") == turn_id:
+                    _write(pointer_path, state)
 
 
 def cleanup_expired(root: str | Path | None) -> None:

@@ -5,11 +5,14 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import config as recall_config
+from store_lock import exclusive_lock
 import turn_policy
 
 
@@ -229,6 +232,28 @@ def finalizer_status(root: str | Path | None, session_id: str | None, turn_id: s
     return status if status in {"requested", "finalized", "corrupt"} else "requested"
 
 
+def _request_lock_path(path: Path) -> Path:
+    return path.with_name(path.name + ".lock")
+
+
+def _publish_new_request(path: Path, payload: dict[str, Any]) -> None:
+    temporary_name = ""
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix=f".{path.name}.", suffix=".tmp", delete=False) as handle:
+            temporary_name = handle.name
+            json.dump(payload, handle, sort_keys=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_name, path)
+    finally:
+        if temporary_name:
+            try:
+                Path(temporary_name).unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
 def create_finalizer_request(
     root: str | Path | None,
     *,
@@ -269,9 +294,14 @@ def create_finalizer_request(
         },
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    # Exclusive creation makes concurrent Stop deliveries request one pass.
-    with path.open("x", encoding="utf-8") as handle:
-        json.dump(payload, handle, sort_keys=True)
+    with exclusive_lock(_request_lock_path(path)):
+        status = finalizer_status(root, session_id, turn_id)
+        if status in {"requested", "finalized"}:
+            raise FileExistsError(path)
+        if path.exists():
+            corrupt = path.with_name(path.stem + ".corrupt-" + uuid.uuid4().hex + path.suffix)
+            os.replace(path, corrupt)
+        _publish_new_request(path, payload)
     return path
 
 

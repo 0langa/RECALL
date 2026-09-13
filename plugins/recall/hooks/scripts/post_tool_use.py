@@ -118,7 +118,7 @@ def main() -> None:
         turn_buffer.mark_active(root, session_id, turn_id, "")
 
     tool_name = event.tool_name
-    command = args.command or event.command
+    command = security.redact_text(args.command or event.command)
     output = event.output_text()
     if not output and not args.command:
         print(json.dumps({"continue": True}))
