@@ -307,7 +307,7 @@ def call_save_insight(arguments: Json) -> Json:
                 "(for example where the credential is configured, never its value)."
             ),
         }
-    metadata = memory_manager.provider_metadata(
+    metadata: dict[str, Any] = memory_manager.provider_metadata(
         origin_provider=provider,
         origin_agent=arguments.get("origin_agent"),
         source_session=arguments.get("source_session"),
