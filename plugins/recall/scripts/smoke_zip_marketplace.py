@@ -22,6 +22,15 @@ class ZipMarketplaceSmokeFailure(RuntimeError):
     pass
 
 
+def codex_executable() -> str:
+    candidates = ("codex.cmd", "codex") if sys.platform == "win32" else ("codex",)
+    for candidate in candidates:
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+    raise ZipMarketplaceSmokeFailure("Codex CLI was not found on PATH.")
+
+
 def run(args: list[str], *, cwd: Path = ROOT, check: bool = True) -> subprocess.CompletedProcess[str]:
     completed = subprocess.run(args, cwd=cwd, text=True, capture_output=True, check=False)
     if check and completed.returncode != 0:
@@ -63,6 +72,7 @@ def run_smoke(zip_path: Path) -> dict[str, Any]:
     marketplace_dir = temp_root / ".agents" / "plugins"
     plugin_root.mkdir(parents=True, exist_ok=True)
     marketplace_dir.mkdir(parents=True, exist_ok=True)
+    codex = ""
 
     try:
         with zipfile.ZipFile(zip_path) as archive:
@@ -73,8 +83,9 @@ def run_smoke(zip_path: Path) -> dict[str, Any]:
         )
 
         version = plugin_version(plugin_root)
-        run(["codex", "plugin", "marketplace", "add", str(temp_root)])
-        run(["codex", "plugin", "add", f"recall@{marketplace_name}"])
+        codex = codex_executable()
+        run([codex, "plugin", "marketplace", "add", str(temp_root)])
+        run([codex, "plugin", "add", f"recall@{marketplace_name}"])
         installed_root = Path.home() / ".codex" / "plugins" / "cache" / marketplace_name / "recall" / version
         smoke = run(
             [
@@ -96,8 +107,9 @@ def run_smoke(zip_path: Path) -> dict[str, Any]:
             "smoke": smoke_report,
         }
     finally:
-        run(["codex", "plugin", "remove", f"recall@{marketplace_name}"], check=False)
-        run(["codex", "plugin", "marketplace", "remove", marketplace_name], check=False)
+        if codex:
+            run([codex, "plugin", "remove", f"recall@{marketplace_name}"], check=False)
+            run([codex, "plugin", "marketplace", "remove", marketplace_name], check=False)
         shutil.rmtree(temp_root, ignore_errors=True)
 
 

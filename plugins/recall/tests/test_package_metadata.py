@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 from pathlib import Path
 
@@ -145,6 +146,21 @@ class PackageMetadataTests(unittest.TestCase):
     def test_cross_platform_python_builder_is_present(self) -> None:
         self.assertTrue((REPO_ROOT / "build_plugin.py").is_file())
         self.assertTrue((ROOT / "scripts" / "build_plugin.py").is_file())
+
+    def test_zip_smoke_resolves_windows_command_shim(self) -> None:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import smoke_zip_marketplace
+
+        expected = str(Path("C:/tools/codex.cmd"))
+        with (
+            mock.patch.object(smoke_zip_marketplace.sys, "platform", "win32"),
+            mock.patch.object(
+                smoke_zip_marketplace.shutil,
+                "which",
+                side_effect=lambda name: expected if name == "codex.cmd" else None,
+            ),
+        ):
+            self.assertEqual(smoke_zip_marketplace.codex_executable(), expected)
 
     def test_skills_describe_local_only_storage_and_secret_safety(self) -> None:
         for path in sorted((ROOT / "skills").glob("*/SKILL.md")):
