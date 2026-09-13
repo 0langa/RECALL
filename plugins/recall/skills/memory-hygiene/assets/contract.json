@@ -17,12 +17,22 @@
     "hard deletion": "manage-memory delete-memory with explicit confirmation"
   },
   "safe_actions": [
+    "redact_secret",
     "stale",
     "merge",
     "prune",
     "refresh_source",
     "needs_confirmation"
   ],
+  "plan_version": 1,
+  "review_only_actions": ["review_noise", "review_failure_history", "review_claim_conflict", "review_near_duplicate"],
+  "plan_contract": {
+    "identity": ["store_identity", "snapshot_identity", "plan_id"],
+    "operation_identity": ["operation_id", "preconditions", "source_preconditions"],
+    "limits": ["scan_limit", "output_limit", "action_limit"],
+    "apply": "Exact saved operations only; changed records or sources skip without replanning.",
+    "omissions": "Report unscanned records, scanned records without proposals, output and action limits, and transition conflicts."
+  },
   "forbidden_without_user_confirmation": [
     "delete",
     "hard delete",

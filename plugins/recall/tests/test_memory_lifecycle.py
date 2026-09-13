@@ -14,9 +14,42 @@ import index_store  # noqa: E402
 import memory_manager  # noqa: E402
 import memory_hygiene  # noqa: E402
 import memory_review  # noqa: E402
+import memory_lifecycle  # noqa: E402
+import storage  # noqa: E402
 
 
 class MemoryLifecycleTests(unittest.TestCase):
+    def test_confirmation_sessions_and_claimed_evidence_do_not_validate(self) -> None:
+        for backend in ("sqlite", "jsonl"):
+            with self.subTest(backend=backend), tempfile.TemporaryDirectory() as tmp:
+                cfg = recall_config.default_config()
+                cfg["backend"] = backend
+                recall_config.save_config(cfg, tmp)
+                record = memory_manager.add_record("decisions", "The release uses the reported benchmark.",
+                    {"status": "active", "source": "fixture", "evidence": ["tests passed"]}, tmp)
+                for session in ("one", "two", None):
+                    confirmed = memory_lifecycle.confirm(record.id, tmp, session, idempotency_key="confirm-key")
+                self.assertEqual(confirmed.metadata["status"], "active")
+                self.assertNotIn("validated_at", confirmed.metadata)
+                self.assertEqual(storage.find_by_idempotency_key("confirm-key", tmp).id, record.id)
+
+    def test_unproven_confirmation_does_not_revive_stale_or_hypothesis(self) -> None:
+        for backend in ("sqlite", "jsonl"):
+            for status in ("stale", "hypothesis"):
+                with self.subTest(backend=backend, status=status), tempfile.TemporaryDirectory() as tmp:
+                    cfg = recall_config.default_config()
+                    cfg["backend"] = backend
+                    recall_config.save_config(cfg, tmp)
+                    record = memory_manager.add_record(
+                        "requirements",
+                        "The source-backed release path needs fresh evidence.",
+                        {"status": status, "source": "fixture"},
+                        tmp,
+                    )
+                    confirmed = memory_lifecycle.confirm(record.id, tmp, source_session="asserted-session")
+                    self.assertEqual(confirmed.metadata["status"], status)
+                    self.assertNotIn("validated_at", confirmed.metadata)
+
     def test_edit_redacts_legacy_confirmation_history(self) -> None:
         for backend in ("sqlite", "jsonl"):
             with self.subTest(backend=backend), tempfile.TemporaryDirectory() as tmp:

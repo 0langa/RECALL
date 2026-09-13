@@ -317,6 +317,8 @@ def _command_stale_proposal(record: storage.MemoryRecord) -> HygieneProposal | N
         or ""
     ).lower()
     text = _record_text(record).lower()
+    if _failure_history(record) and not validation:
+        return None
     if validation in {"failed", "broken", "invalid"} or "validation failed" in text or "command failed" in text:
         return HygieneProposal(record.id, "stale", 0.9, "command memory validation failed", True)
     return None
@@ -416,14 +418,14 @@ def _claim_conflict_proposals(records: list[storage.MemoryRecord], claim_key: st
     groups: dict[tuple[str, str], list[storage.MemoryRecord]] = {}
     for record in records:
         metadata = record.metadata or {}
-        key = str(metadata.get("claim_key") or "").strip()
-        if not key or not _is_current(record):
+        key = str(metadata.get("claim_key") or "")
+        if not key.strip() or not _is_current(record):
             continue
-        if claim_key and key.casefold() != claim_key.casefold():
+        if claim_key and key != claim_key:
             continue
-        groups.setdefault((record.category, key.casefold()), []).append(record)
+        groups.setdefault((record.category, key), []).append(record)
     for (_category, key), group in groups.items():
-        values = {str((record.metadata or {}).get("claim_value") or "").casefold() for record in group}
+        values = {str((record.metadata or {}).get("claim_value") or "") for record in group}
         if len(values) < 2:
             continue
         ordered = sorted(group, key=lambda record: record.id)
@@ -499,6 +501,9 @@ def _raw_log_proposal(record: storage.MemoryRecord) -> HygieneProposal | None:
     line_count = content.count("\n") + 1
     marker_hit = any(marker in lowered for marker in RAW_LOG_MARKERS)
     if marker_hit or line_count >= 25:
+        if _failure_history(record):
+            return HygieneProposal(record.id, "review_failure_history", 0.86,
+                                   "raw failure history may contain a useful cause or repair; review before archival", False)
         return HygieneProposal(
             record.id,
             "prune",
@@ -507,6 +512,43 @@ def _raw_log_proposal(record: storage.MemoryRecord) -> HygieneProposal | None:
             True,
         )
     return None
+
+
+def _failure_history(record: storage.MemoryRecord) -> bool:
+    return bool(re.search(r"(?i)\b(fail(?:ed|ure|ing)?|error|exception|traceback)\b", _record_text(record)))
+
+
+def _review_noise_proposal(record: storage.MemoryRecord) -> HygieneProposal | None:
+    """Bounded lexical review cues, never a semantic truth or deletion decision."""
+    if not _is_current(record):
+        return None
+    metadata = record.metadata or {}
+    text = " ".join(record.content.split()).lower()
+    source = str(metadata.get("source") or "").lower()
+    reason = None
+    if record.category in {"commands", "debug_history"}:
+        # Raw exploration failures are review candidates. An interpreted cause,
+        # repair or lesson remains useful history and must not be auto-archived.
+        if ("tool:" in text and "command:" in text and _failure_history(record)
+                and re.search(r"\b(ls|dir|which|where|rg|get-command|get-childitem)\b", text)
+                and not re.search(r"\b(root cause|fixed by|resolved by|workaround|because|lesson)\b", text)):
+            reason = "raw exploration failure lacks an interpreted cause or repair; review its value"
+    elif source in {"finalizer", "user_prompt", "prompt_inspector", "user_prompt_submit", "session_summary"}:
+        if re.fullmatch(r"(?:hi|hello|hey|thanks|thank you|ok|okay|continue|go on|yes|no)[.!?]*", text):
+            reason = "conversation reply or session control is not a durable project fact"
+        elif ("?" in text or re.search(
+                r"\b(no idea|not sure|dont know|don't know|my suspicion|i have a feeling|"
+                r"would like to know|what this actually means)\b", text)):
+            reason = "question or uncertainty needs review before it can represent an accepted fact"
+        elif re.search(
+                r"\b(your task|your job|my request|give me (?:some|a few)|"
+                r"write the release notes|please find out|pause when|restart (?:the )?pc|"
+                r"actually commit|you are a delegated|read-only analyze job|files mentioned by the user)\b", text):
+            reason = "task request, delegation, attachment wrapper or one-time permission needs review"
+    if reason is None:
+        return None
+    return HygieneProposal(record.id, "review_noise", 0.85, reason, False,
+                           details={"detection_scope": "bounded_lexical_cues", "semantic_truth": "unknown"})
 
 
 def _vague_proposal(record: storage.MemoryRecord) -> HygieneProposal | None:
@@ -650,6 +692,7 @@ def _single_record_proposals(records: list[storage.MemoryRecord], root: str | Pa
             _vague_proposal(record),
             _snapshot_age_proposal(record, stale_days),
             _metadata_gap_proposal(record),
+            _review_noise_proposal(record),
         ):
             if proposal is not None:
                 proposals.append(proposal)
@@ -676,18 +719,86 @@ def _dedupe_proposals(proposals: list[HygieneProposal]) -> list[HygieneProposal]
         key = (proposal.id, proposal.proposed_action, proposal.related_ids)
         if key not in best or proposal.confidence > best[key].confidence:
             best[key] = proposal
-    return sorted(best.values(), key=lambda item: (item.id is None, item.id or 0, priority.get(item.proposed_action, 99)))
+    return sorted(best.values(), key=lambda item: (
+        priority.get(item.proposed_action, 99), item.id is None, item.id or 0, item.related_ids, item.reason,
+    ))
 
 
+PLAN_VERSION = 1
+
+
+def _digest(value: Any) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
+                                     ensure_ascii=True).encode("utf-8")).hexdigest()
+
+
+def _operation_digest(operation: dict[str, Any]) -> str:
+    return _digest({key: value for key, value in operation.items()
+                    if key not in {"operation_id", "reason", "confidence"}})
+
+
+def _record_state(record: storage.MemoryRecord) -> str:
+    # Exact opaque claim values, content and all metadata participate. The
+    # rebuildable embedding/index and query score do not describe factual state.
+    return _digest([record.id, record.category, record.timestamp, record.content, record.metadata])
+
+
+def _store_identity(root: str | Path | None) -> str:
+    return _digest([str(recall_config.memory_dir(root).resolve()), storage.backend(root)])
+
+
+def _limit_value(value: int | None, name: str) -> int | None:
+    if value is not None and (type(value) is not int or value < 0):
+        raise ValueError(f"{name} must be a non-negative integer.")
+    return value
+
+
+def _source_state(root: str | Path | None, source_path: str) -> dict[str, Any]:
+    try:
+        path = _project_file(root, source_path)
+        if not path.is_file():
+            return {"source_path": source_path, "state": "missing"}
+        return {"source_path": source_path, "state": "file", "sha256": provenance_service.hash_file(path)}
+    except (OSError, ValueError):
+        return {"source_path": source_path, "state": "unreadable"}
+
+
+def _operation(proposal: HygieneProposal, records: dict[int, storage.MemoryRecord],
+               root: str | Path | None) -> dict[str, Any]:
+    payload = proposal.to_dict()
+    ids = sorted({int(proposal.id), *proposal.related_ids}) if proposal.id is not None else []
+    payload["preconditions"] = {str(record_id): _record_state(records[record_id]) for record_id in ids}
+    paths = sorted({str(records[i].metadata["source_path"]) for i in ids
+                    if records[i].metadata.get("source_kind") == "file" and records[i].metadata.get("source_path")})
+    payload["source_preconditions"] = [_source_state(root, path) for path in paths]
+    if proposal.proposed_action == "refresh_source":
+        assert proposal.id is not None
+        payload["source_descriptor"] = provenance_service.describe_file(
+            root or Path.cwd(), str(records[int(proposal.id)].metadata["source_path"]),
+        )
+        payload["source_descriptor"].pop("source_checked_at", None)
+    payload["operation_id"] = _operation_digest(payload)
+    return payload
+
+
+@storage.atomic_write
 def hygiene_plan(
     root: str | Path | None = None,
     *,
     limit: int | None = None,
+    scan_limit: int | None = None,
+    output_limit: int | None = None,
+    action_limit: int | None = None,
     scope: str = "project",
     claim_key: str | None = None,
 ) -> dict[str, Any]:
-    records = list(storage.iter_records(root))
-    inspected_records = records[:limit] if limit is not None else records
+    if limit is not None and scan_limit is not None and limit != scan_limit:
+        raise ValueError("limit and scan_limit disagree.")
+    scan_limit = _limit_value(scan_limit if scan_limit is not None else limit, "scan_limit")
+    output_limit = _limit_value(output_limit, "output_limit")
+    action_limit = _limit_value(action_limit, "action_limit")
+    records = sorted(storage.iter_records(root), key=lambda record: record.id)
+    inspected_records = records[:scan_limit] if scan_limit is not None else records
     proposals = _dedupe_proposals(
         [
             *_single_record_proposals(inspected_records, root),
@@ -696,45 +807,93 @@ def hygiene_plan(
             *_doc_duplicate_proposals(inspected_records, root),
         ]
     )
-    if limit is not None:
-        proposals = proposals[:limit]
+    record_map = {record.id: record for record in records}
+    candidates = [_operation(proposal, record_map, root) for proposal in proposals]
+    # A merge also updates its primary. Reserve every touched card so later
+    # stale/archive/refresh operations cannot overwrite that relation or status.
+    touched: set[str] = set()
+    coherent: list[dict[str, Any]] = []
+    collisions: list[str] = []
+    for candidate in candidates:
+        if candidate["safe_to_apply"]:
+            affected = set(candidate["preconditions"])
+            if affected & touched:
+                collisions.append(candidate["operation_id"])
+                continue
+            touched.update(affected)
+        coherent.append(candidate)
+    visible = coherent[:output_limit] if output_limit is not None else coherent
+    safe_operations = [proposal for proposal in visible if proposal["safe_to_apply"]]
+    operations = safe_operations[:action_limit] if action_limit is not None else safe_operations
     requires_confirmation = list(
         dict.fromkeys(
-            proposal.id
-            for proposal in proposals
-            if proposal.id is not None and not proposal.safe_to_apply
+            proposal["id"]
+            for proposal in visible
+            if proposal["id"] is not None and not proposal["safe_to_apply"]
         )
     )
-    return {
-        "action": "hygiene-plan",
-        "scope": scope,
-        "inspected": len(inspected_records),
-        "proposals": [proposal.to_dict() for proposal in proposals],
-        "requires_confirmation": requires_confirmation,
-        "safe_to_apply_count": sum(1 for proposal in proposals if proposal.safe_to_apply),
+    proposed_ids = {proposal.id for proposal in proposals}
+    omissions = {
+        "unscanned_record_ids": [record.id for record in records[len(inspected_records):]],
+        "scanned_without_proposal_ids": [record.id for record in inspected_records if record.id not in proposed_ids],
+        "output_operation_ids": [proposal["operation_id"] for proposal in coherent[len(visible):]],
+        "action_operation_ids": [proposal["operation_id"] for proposal in safe_operations[len(operations):]],
+        "conflicting_operations": collisions,
     }
+    payload = {
+        "action": "hygiene-plan",
+        "plan_version": PLAN_VERSION,
+        "store_identity": _store_identity(root),
+        "snapshot_identity": _digest({str(record.id): _record_state(record) for record in records}),
+        "scope": scope,
+        "claim_key": claim_key,
+        "limits": {"scan_limit": scan_limit, "output_limit": output_limit, "action_limit": action_limit},
+        "store_record_count": len(records),
+        "inspected": len(inspected_records),
+        "proposals": visible,
+        "operations": operations,
+        "omissions": omissions,
+        "truncated": any(omissions[key] for key in omissions if key != "scanned_without_proposal_ids"),
+        "candidate_count": len(candidates),
+        "unscanned_secret_status": "unknown" if len(records) > len(inspected_records) else "scanned",
+        "requires_confirmation": requires_confirmation,
+        "safe_to_apply_count": len(operations),
+        "detection_scope": "bounded lexical rules; broad semantic truth is not determined",
+    }
+    payload["plan_id"] = _digest(payload)
+    return payload
 
 
 SCAN_MAX_LISTED_PROPOSALS = 20
 
 
-def hygiene_scan(root: str | Path | None = None, *, limit: int | None = None) -> dict[str, Any]:
-    plan = hygiene_plan(root, limit=limit)
+def hygiene_scan(root: str | Path | None = None, *, limit: int | None = None,
+                 scan_limit: int | None = None, output_limit: int | None = None,
+                 action_limit: int | None = None) -> dict[str, Any]:
+    output_limit = _limit_value(output_limit, "output_limit")
+    plan = hygiene_plan(
+        root,
+        limit=limit,
+        scan_limit=scan_limit,
+        output_limit=output_limit,
+        action_limit=action_limit,
+    )
     counts: dict[str, int] = {}
     for proposal in plan["proposals"]:
         counts[proposal["proposed_action"]] = counts.get(proposal["proposed_action"], 0) + 1
     next_action = None
     if counts.get("redact_secret"):
-        next_action = "secret-shaped content found; run hygiene-apply --safe NOW to redact it"
+        next_action = "secret-shaped content found; save a hygiene-plan and apply it with hygiene-apply --safe --plan-file"
     elif plan["safe_to_apply_count"]:
-        next_action = f"{plan['safe_to_apply_count']} safe repair(s) available; run hygiene-apply --safe"
+        next_action = (f"{plan['safe_to_apply_count']} safe repair(s) available; save a hygiene-plan, "
+                       "then run hygiene-apply --safe --plan-file")
     elif plan["requires_confirmation"]:
         next_action = "only review-required proposals remain; inspect the listed ids and fix them via manage-memory"
-    # Token diet: scan is the agent-facing audit entry, so cap the listed
-    # proposals; counts and candidate_ids stay complete, and hygiene-plan
-    # remains the uncapped detail view.
-    listed = plan["proposals"][:SCAN_MAX_LISTED_PROPOSALS]
-    omitted = len(plan["proposals"]) - len(listed)
+    # Token diet: the default scan display is capped while its counts and ids
+    # stay complete. An explicit output limit becomes part of the saved plan,
+    # so the omitted operations remain visible in that plan's omissions.
+    listed = plan["proposals"] if output_limit is not None else plan["proposals"][:SCAN_MAX_LISTED_PROPOSALS]
+    omitted = len(plan["omissions"]["output_operation_ids"]) + len(plan["proposals"]) - len(listed)
     response = {
         "action": "hygiene-scan",
         "inspected": plan["inspected"],
@@ -743,6 +902,11 @@ def hygiene_scan(root: str | Path | None = None, *, limit: int | None = None) ->
         "proposals": listed,
         "omitted_proposals": omitted,
         "requires_confirmation": plan["requires_confirmation"],
+        "omissions": plan["omissions"],
+        "truncated": plan["truncated"] or bool(omitted),
+        "store_record_count": plan["store_record_count"],
+        "unscanned_secret_status": plan["unscanned_secret_status"],
+        "detection_scope": plan["detection_scope"],
     }
     if omitted:
         response["proposals_note"] = f"{omitted} proposal(s) omitted for brevity; run hygiene-plan for the full list"
@@ -768,6 +932,12 @@ def _apply_proposal(proposal: dict[str, Any], root: str | Path | None) -> dict[s
             value = metadata.get(key)
             if isinstance(value, str):
                 metadata[key] = security.redact_text(value)
+        metadata = memory_lifecycle.invalidate_verification(metadata, metadata, utc_now())
+        metadata.pop("claim_key", None)
+        metadata.pop("claim_value", None)
+        if metadata.get("status") == "validated":
+            metadata["status"] = "active"
+        metadata["recall_fingerprint"] = content_fingerprint(record.category, safe_content, metadata)
         metadata["redacted_at"] = utc_now()
         metadata["lifecycle_note"] = reason
         updated = storage.update_record(
@@ -778,7 +948,10 @@ def _apply_proposal(proposal: dict[str, Any], root: str | Path | None) -> dict[s
             embedding=embed(safe_content),
             root=root,
         )
-        index_store.rebuild(root)
+        def rebuild_index() -> None:
+            index_store.rebuild(root)
+
+        storage.after_commit(rebuild_index, root)
     elif action == "stale":
         updated = memory_lifecycle.mark_stale(int(record_id), root, reason)
     elif action == "prune":
@@ -809,7 +982,7 @@ def _apply_proposal(proposal: dict[str, Any], root: str | Path | None) -> dict[s
         source_path = metadata.get("source_path")
         if not source_path:
             return {"id": record_id, "action": action, "applied": False, "reason": "missing source_path"}
-        descriptor = provenance_service.describe_file(root or Path.cwd(), str(source_path))
+        descriptor = dict(proposal["source_descriptor"])
         descriptor["source_checked_at"] = utc_now()
         descriptor["last_confirmed"] = utc_now()
         updated = memory_lifecycle.update_metadata(int(record_id), descriptor, root)
@@ -818,20 +991,87 @@ def _apply_proposal(proposal: dict[str, Any], root: str | Path | None) -> dict[s
     return {"id": updated.id, "action": action, "applied": True, "status": updated.metadata.get("status")}
 
 
+def _validate_plan(plan: dict[str, Any], root: str | Path | None) -> None:
+    if not isinstance(plan, dict):
+        raise ValueError("Hygiene plan must be a JSON object.")
+    if type(plan.get("plan_version")) is not int or plan.get("plan_version") != PLAN_VERSION or plan.get("action") != "hygiene-plan":
+        raise ValueError("Unsupported hygiene plan version or action.")
+    if plan.get("store_identity") != _store_identity(root):
+        raise ValueError("Hygiene plan belongs to a different store.")
+    if plan.get("plan_id") != _digest({key: value for key, value in plan.items() if key != "plan_id"}):
+        raise ValueError("Hygiene plan integrity check failed; review a new plan.")
+    operations = plan.get("operations")
+    proposals = plan.get("proposals")
+    if not isinstance(operations, list) or not isinstance(proposals, list):
+        raise ValueError("Hygiene plan is missing operations or proposals.")
+    touched: set[str] = set()
+    for operation in operations:
+        if (not isinstance(operation, dict) or operation not in proposals
+                or operation.get("safe_to_apply") is not True
+                or operation.get("proposed_action") not in SAFE_ACTIONS
+                or type(operation.get("id")) is not int):
+            raise ValueError("Hygiene plan contains an invalid safe operation.")
+        if operation.get("operation_id") != _operation_digest(operation):
+            raise ValueError("Hygiene operation integrity check failed.")
+        preconditions = operation.get("preconditions")
+        required = {str(operation["id"]), *(str(i) for i in operation.get("related_ids", []))}
+        if not isinstance(preconditions, dict) or set(preconditions) != required or required & touched:
+            raise ValueError("Hygiene operation has missing or conflicting record preconditions.")
+        sources = operation.get("source_preconditions")
+        if not isinstance(sources, list) or any(
+            not isinstance(source, dict) or not isinstance(source.get("source_path"), str)
+            or source.get("state") not in {"file", "missing", "unreadable"} for source in sources
+        ):
+            raise ValueError("Hygiene operation has invalid source preconditions.")
+        if operation["proposed_action"] == "refresh_source" and not isinstance(operation.get("source_descriptor"), dict):
+            raise ValueError("Hygiene refresh operation has no saved source descriptor.")
+        touched.update(required)
+
+
 def hygiene_apply(
     root: str | Path | None = None,
     *,
     safe: bool = False,
     limit: int | None = None,
+    plan: dict[str, Any] | None = None,
+    action_limit: int | None = None,
 ) -> dict[str, Any]:
     if not safe:
         raise ValueError("hygiene-apply requires --safe.")
-    plan = hygiene_plan(root, limit=limit)
-    applied = [
-        _apply_proposal(proposal, root)
-        for proposal in plan["proposals"]
-        if proposal.get("safe_to_apply") is True
-    ]
+    if limit is not None and action_limit is not None and limit != action_limit:
+        raise ValueError("limit and action_limit disagree.")
+    action_limit = _limit_value(action_limit if action_limit is not None else limit, "action_limit")
+    # Legacy one-call safe maintenance generates exactly once. A supplied plan
+    # never invokes a planner, even when its store snapshot no longer matches.
+    if plan is None:
+        plan = hygiene_plan(root, action_limit=action_limit)
+    plan = json.loads(json.dumps(plan))
+    _validate_plan(plan, root)
+    selected = plan["operations"][:action_limit] if action_limit is not None else plan["operations"]
+    applied = []
+    with storage.write_transaction(root):
+        for operation in selected:
+            reason = None
+            for record_id, expected in operation["preconditions"].items():
+                record = storage.get_record(int(record_id), root)
+                if record is None:
+                    reason = "record_missing"
+                    break
+                if _record_state(record) != expected:
+                    reason = "record_state_changed"
+                    break
+            if reason is None:
+                for expected_source in operation["source_preconditions"]:
+                    if _source_state(root, expected_source["source_path"]) != expected_source:
+                        reason = "source_state_changed"
+                        break
+            if reason:
+                outcome = {"id": operation["id"], "action": operation["proposed_action"],
+                           "applied": False, "reason": reason}
+            else:
+                outcome = _apply_proposal(operation, root)
+            outcome["operation_id"] = operation["operation_id"]
+            applied.append(outcome)
     unresolved_conflicts = [
         proposal
         for proposal in plan["proposals"]
@@ -840,11 +1080,15 @@ def hygiene_apply(
     return {
         "action": "hygiene-apply",
         "mode": "safe",
+        "plan_id": plan["plan_id"],
+        "snapshot_identity": plan["snapshot_identity"],
         "inspected": plan["inspected"],
         "applied": applied,
         "applied_count": sum(1 for item in applied if item.get("applied")),
         "unresolved_conflicts": unresolved_conflicts,
         "skipped_confirmation_ids": plan["requires_confirmation"],
+        "skipped_action_limit_ids": [op["operation_id"] for op in plan["operations"][len(selected):]],
+        "omissions": plan["omissions"],
     }
 
 
@@ -852,12 +1096,27 @@ def reconcile_current_truth(
     root: str | Path | None = None,
     *,
     claim_key: str,
+    limit: int | None = None,
+    scan_limit: int | None = None,
+    output_limit: int | None = None,
+    action_limit: int | None = None,
 ) -> dict[str, Any]:
-    plan = hygiene_plan(root, scope="claim", claim_key=claim_key)
+    # Keep the established read-only projection for callers that request a
+    # claim review, but attach the unmodified, integrity-checked plan so a
+    # caller that needs an applyable artifact never has to replan.
+    plan = hygiene_plan(
+        root,
+        limit=limit,
+        scan_limit=scan_limit,
+        output_limit=output_limit,
+        action_limit=action_limit,
+        scope="claim",
+        claim_key=claim_key,
+    )
     proposals = [
         proposal
         for proposal in plan["proposals"]
-        if proposal.get("details", {}).get("claim_key") == claim_key.casefold()
+        if proposal.get("details", {}).get("claim_key") == claim_key
     ]
     return {
         "action": "reconcile-current-truth",
@@ -865,6 +1124,7 @@ def reconcile_current_truth(
         "inspected": plan["inspected"],
         "proposals": proposals,
         "requires_confirmation": [proposal["id"] for proposal in proposals if not proposal["safe_to_apply"]],
+        "plan": plan,
     }
 
 
@@ -872,10 +1132,12 @@ def refresh_source_backed(root: str | Path | None = None, *, limit: int | None =
     plan = hygiene_plan(root, limit=limit)
     refreshes = [
         proposal
-        for proposal in plan["proposals"]
+        for proposal in plan["operations"]
         if proposal.get("proposed_action") == "refresh_source" and proposal.get("safe_to_apply")
     ]
-    applied = [_apply_proposal(proposal, root) for proposal in refreshes]
+    plan["operations"] = refreshes
+    plan["plan_id"] = _digest({key: value for key, value in plan.items() if key != "plan_id"})
+    applied = hygiene_apply(root, safe=True, plan=plan)["applied"]
     return {
         "action": "refresh-source-backed",
         "checked": plan["inspected"],

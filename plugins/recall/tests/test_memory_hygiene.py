@@ -3,6 +3,9 @@ from __future__ import annotations
 import tempfile
 import unittest
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import patch
 
 from pathlib import Path
 import sys
@@ -13,10 +16,190 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import memory_hygiene  # noqa: E402
 import memory_manager  # noqa: E402
+import config as recall_config  # noqa: E402
+import storage  # noqa: E402
 from services import provenance_service  # noqa: E402
 
 
 class MemoryHygieneTests(unittest.TestCase):
+    def test_refresh_plan_does_not_depend_on_scan_clock(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "truth.md").write_text("Current release truth.", encoding="utf-8")
+            memory_manager.add_record("requirements", "The release follows the source document.",
+                {"status": "active", **provenance_service.describe_file(tmp, "truth.md")}, tmp)
+            with patch.object(provenance_service, "utc_now", side_effect=["2026-01-01", "2026-01-02"]):
+                first = memory_hygiene.hygiene_plan(tmp)
+                second = memory_hygiene.hygiene_plan(tmp)
+            self.assertEqual(first, second)
+            with patch.object(provenance_service, "describe_file", side_effect=AssertionError("new descriptor")):
+                result = memory_hygiene.hygiene_apply(tmp, safe=True, plan=first)
+            self.assertEqual(result["applied_count"], 1)
+
+    def test_case_distinct_opaque_claim_values_remain_a_review_conflict(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for value in ("docs/Release.md", "docs/release.md"):
+                memory_manager.add_record("requirements", "Release notes live at the configured path.",
+                    {"status": "active", "source": "fixture", "claim_key": "Release.Path", "claim_value": value}, tmp)
+            result = memory_hygiene.reconcile_current_truth(tmp, claim_key="Release.Path")
+            self.assertEqual(result["proposals"][0]["details"]["values"], ["docs/Release.md", "docs/release.md"])
+            self.assertFalse(result["proposals"][0]["safe_to_apply"])
+
+    def test_claim_reconciliation_keeps_legacy_projection_and_saved_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for value in ("docs/Release.md", "docs/release.md"):
+                memory_manager.add_record(
+                    "requirements",
+                    "Release notes live at the configured path.",
+                    {"status": "active", "source": "fixture", "claim_key": "Release.Path", "claim_value": value},
+                    tmp,
+                )
+            result = memory_hygiene.reconcile_current_truth(
+                tmp,
+                claim_key="Release.Path",
+                scan_limit=2,
+                output_limit=1,
+                action_limit=0,
+            )
+            plan = result["plan"]
+            self.assertEqual(result["action"], "reconcile-current-truth")
+            self.assertEqual(plan["action"], "hygiene-plan")
+            self.assertEqual(plan["claim_key"], "Release.Path")
+            self.assertEqual(plan["limits"], {"scan_limit": 2, "output_limit": 1, "action_limit": 0})
+            with patch.object(memory_hygiene, "hygiene_plan", side_effect=AssertionError("replanned")):
+                applied = memory_hygiene.hygiene_apply(tmp, safe=True, plan=json.loads(json.dumps(plan)))
+            self.assertEqual(applied["plan_id"], plan["plan_id"])
+            self.assertEqual(applied["applied_count"], 0)
+
+    def test_precondition_and_mutation_exclude_a_competing_writer(self) -> None:
+        for backend in ("sqlite", "jsonl"):
+            with self.subTest(backend=backend), tempfile.TemporaryDirectory() as tmp:
+                cfg = recall_config.default_config()
+                cfg["backend"] = backend
+                recall_config.save_config(cfg, tmp)
+                record = memory_manager.add_record("preferences", "Project layout preference requires evidence.",
+                                                   {"status": "active", "source": "fixture"}, tmp)
+                plan = memory_hygiene.hygiene_plan(tmp)
+                reached = threading.Event()
+                attempted = threading.Event()
+                completed = threading.Event()
+                original = memory_hygiene._apply_proposal
+
+                def competing_writer(*, reached=reached, attempted=attempted, record=record, completed=completed):
+                    self.assertTrue(reached.wait(10))
+                    attempted.set()
+                    storage.update_record_metadata(record.id, {"status": "resolved"}, tmp)
+                    completed.set()
+
+                def applying(operation, root, *, reached=reached, attempted=attempted,
+                             completed=completed, original=original):
+                    reached.set()
+                    self.assertTrue(attempted.wait(10))
+                    self.assertFalse(completed.wait(0.15), "writer entered between precondition and mutation")
+                    return original(operation, root)
+
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    future = pool.submit(competing_writer)
+                    with patch.object(memory_hygiene, "_apply_proposal", side_effect=applying):
+                        result = memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
+                    future.result(timeout=10)
+                self.assertEqual(result["applied_count"], 1)
+                self.assertEqual(storage.get_record(record.id, tmp).metadata["status"], "resolved")
+
+    def test_source_change_after_review_skips_exact_saved_action(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            record = memory_manager.add_record("requirements", "Release truth uses the source document.",
+                {"source": "fixture", "status": "active", "source_kind": "file", "source_path": "truth.md"}, tmp)
+            plan = memory_hygiene.hygiene_plan(tmp)
+            (Path(tmp) / "truth.md").write_text("The missing source is restored.", encoding="utf-8")
+            result = memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
+            self.assertEqual(result["applied_count"], 0)
+            self.assertEqual(result["applied"][0]["reason"], "source_state_changed")
+            self.assertEqual(storage.get_record(record.id, tmp).metadata["status"], "active")
+
+    def test_saved_plan_is_stable_and_skips_changed_records_without_replanning(self) -> None:
+        for backend in ("sqlite", "jsonl"):
+            with self.subTest(backend=backend), tempfile.TemporaryDirectory() as tmp:
+                cfg = recall_config.default_config()
+                cfg["backend"] = backend
+                recall_config.save_config(cfg, tmp)
+                records = [memory_manager.add_record(
+                    "preferences", f"Preference candidate number {i} for project layout.",
+                    {"source": "fixture", "status": "active"}, tmp,
+                ) for i in range(3)]
+                plan = memory_hygiene.hygiene_plan(tmp, scan_limit=2, output_limit=2, action_limit=1)
+                repeated = memory_hygiene.hygiene_plan(tmp, scan_limit=2, output_limit=2, action_limit=1)
+                self.assertEqual(plan, repeated)
+                self.assertEqual(plan["plan_version"], 1)
+                self.assertEqual(len(plan["operations"]), 1)
+                self.assertEqual(plan["omissions"]["unscanned_record_ids"], [records[2].id])
+                self.assertTrue(plan["truncated"])
+                operation = plan["operations"][0]
+                self.assertTrue(operation["operation_id"])
+                self.assertTrue(operation["preconditions"])
+                memory_manager.update_record_metadata(operation["id"], {"status": "resolved"}, tmp)
+                with patch.object(memory_hygiene, "hygiene_plan", side_effect=AssertionError("replanned")):
+                    result = memory_hygiene.hygiene_apply(tmp, safe=True, plan=json.loads(json.dumps(plan)))
+                self.assertEqual(result["applied_count"], 0)
+                self.assertEqual(result["applied"][0]["reason"], "record_state_changed")
+                self.assertEqual(storage.get_record(records[1].id, tmp).metadata["status"], "active")
+
+    def test_saved_plan_never_includes_new_records_or_reselects_after_action_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for i in range(3):
+                memory_manager.add_record("preferences", f"Layout preference candidate {i}.",
+                                          {"status": "active", "source": "fixture"}, tmp)
+            plan = memory_hygiene.hygiene_plan(tmp, action_limit=2)
+            new = memory_manager.add_record("preferences", "New layout preference candidate.",
+                                            {"status": "active", "source": "fixture"}, tmp)
+            with patch.object(memory_hygiene, "hygiene_plan", side_effect=AssertionError("replanned")):
+                result = memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan, action_limit=1)
+            self.assertEqual(result["applied_count"], 1)
+            self.assertEqual(result["applied"][0]["operation_id"], plan["operations"][0]["operation_id"])
+            self.assertEqual(storage.get_record(new.id, tmp).metadata["status"], "active")
+
+    def test_scan_output_limit_is_reflected_in_saved_plan_omissions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for i in range(3):
+                memory_manager.add_record(
+                    "preferences",
+                    f"Layout preference candidate {i} needs review.",
+                    {"status": "active", "source": "fixture"},
+                    tmp,
+                )
+            scan = memory_hygiene.hygiene_scan(tmp, scan_limit=3, output_limit=1, action_limit=0)
+            self.assertEqual(len(scan["proposals"]), 1)
+            self.assertTrue(scan["omissions"]["output_operation_ids"])
+            self.assertTrue(scan["truncated"])
+            self.assertGreater(scan["omitted_proposals"], 0)
+
+    def test_merge_and_stale_cannot_change_the_same_card_in_one_plan(self) -> None:
+        for backend in ("sqlite", "jsonl"):
+            with self.subTest(backend=backend), tempfile.TemporaryDirectory() as tmp:
+                cfg = recall_config.default_config()
+                cfg["backend"] = backend
+                recall_config.save_config(cfg, tmp)
+                metadata = {"status": "active", "source": "fixture", "source_kind": "file",
+                            "source_path": "missing.md", "source_hash": "missing"}
+                primary = memory_manager.add_record("requirements", "Release checks use the local source file.", metadata, tmp)
+                secondary = memory_manager.add_record("requirements", primary.content, metadata, tmp)
+                plan = memory_hygiene.hygiene_plan(tmp)
+                touched = [key for op in plan["operations"] for key in op["preconditions"]]
+                self.assertEqual(len(touched), len(set(touched)))
+                self.assertTrue(plan["omissions"]["conflicting_operations"])
+                result = memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
+                self.assertTrue(result["applied_count"])
+                self.assertEqual(storage.get_record(secondary.id, tmp).metadata["status"], "superseded")
+
+    def test_plan_rejects_wrong_store_and_modified_operations(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as other:
+            memory_manager.add_record("preferences", "Project layout preference candidate.", root=tmp)
+            plan = memory_hygiene.hygiene_plan(tmp)
+            with self.assertRaisesRegex(ValueError, "store"):
+                memory_hygiene.hygiene_apply(other, safe=True, plan=plan)
+            plan["operations"][0]["id"] = 999
+            with self.assertRaisesRegex(ValueError, "integrity"):
+                memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
+
     def test_exact_automatic_duplicate_updates_existing_record(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             metadata = memory_manager.build_card_metadata(

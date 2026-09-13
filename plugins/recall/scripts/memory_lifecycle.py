@@ -45,6 +45,7 @@ def get_required(record_id: int, root: str | Path | None = None) -> storage.Memo
     return record
 
 
+@storage.atomic_write
 def update_metadata(record_id: int, updates: dict[str, Any], root: str | Path | None = None) -> storage.MemoryRecord:
     record = get_required(record_id, root)
     metadata = dict(record.metadata or {})
@@ -58,7 +59,7 @@ def invalidate_verification(
 ) -> dict[str, Any]:
     """Retain prior evidence as history, never as proof of an edited fact."""
     metadata = dict(metadata)
-    fields = ("last_confirmed", "confirmed_count", "confirmation_sessions", "validated_at", "trust")
+    fields = ("last_confirmed", "confirmed_count", "confirmation_sessions", "validated_at", "trust", "observed_evidence")
     evidence = {key: previous[key] for key in fields if key in previous}
     if evidence or previous.get("status") == "validated":
         history = list(previous.get("verification_history") or [])
@@ -73,6 +74,7 @@ def invalidate_verification(
     return metadata
 
 
+@storage.atomic_write
 def confirm(
     record_id: int, root: str | Path | None = None, source_session: str | None = None,
     idempotency_key: str | None = None,
@@ -93,9 +95,22 @@ def confirm(
         metadata["confirmed_count"] = len(sessions)
     else:
         metadata["confirmed_count"] = max(1, int(metadata.get("confirmed_count", 0) or 0) + 1)
-    if metadata.get("status") in (None, "", "stale", "hypothesis"):
+    # A bare confirmation can initialize an unclassified card, but cannot
+    # revive a stale source or promote an unverified hypothesis.
+    if metadata.get("status") in (None, ""):
         metadata["status"] = "active"
-    if (source_session is None or len(sessions) >= 2) and metadata.get("status") == "active":
+    # Session names, confirmation counts and claimed results are assertions.
+    # Only a locally authenticated observation for this exact factual revision
+    # can promote the card. Missing receipt support fails closed.
+    try:
+        import observed_evidence
+    except ModuleNotFoundError as exc:
+        if exc.name != "observed_evidence":
+            raise
+        verified = False
+    else:
+        verified = observed_evidence.has_observed_evidence(root, record.category, record.content, metadata)
+    if verified and metadata.get("status") in {"active", "stale", "hypothesis"}:
         metadata["status"] = "validated"
         metadata["validated_at"] = utc_now()
         metadata["trust"] = max(0.85, float(metadata.get("trust", metadata.get("confidence", 0.5))))
@@ -145,6 +160,7 @@ def prune(record_id: int, root: str | Path | None = None, note: str | None = Non
     )
 
 
+@storage.atomic_write
 def supersede(
     old_record_id: int,
     new_record_id: int,
@@ -173,6 +189,7 @@ def supersede(
     }
 
 
+@storage.atomic_write
 def merge(
     primary_id: int,
     secondary_ids: Iterable[int | str],
