@@ -27,6 +27,7 @@ def compact_packet(packet: dict[str, Any]) -> dict[str, Any]:
         "schema": packet.get("schema"),
         "session_id": packet.get("session_id"),
         "turn_id": packet.get("turn_id"),
+        "origin_provider": packet.get("origin_provider"),
         "packet_path": packet_path,
         "candidate_count": packet.get("candidate_count"),
         "signal_counts": signal_counts,

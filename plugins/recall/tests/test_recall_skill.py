@@ -275,8 +275,8 @@ class RecallSkillAdapterTests(unittest.TestCase):
 
             # Pre-existing duplicates (e.g. legacy stores) still surface as
             # merge proposals through hygiene; seed one via the trusted path.
-            # Confirmation promoted the first card, so match its current status
-            # (part of the declared fingerprint) when seeding an exact duplicate.
+            # Match the first card's current status, which is part of the
+            # declared fingerprint, when seeding an exact duplicate.
             duplicate = run_manager(
                 tmp,
                 "add",
@@ -287,13 +287,14 @@ class RecallSkillAdapterTests(unittest.TestCase):
                 "--source",
                 "skill",
                 "--status",
-                "validated",
+                "active",
             )
 
             routed = run_skill(tmp, "route-memory", "Release notes must stay in docs/manual-release-notes.md.")
             scan = run_skill(tmp, "hygiene-scan", "--limit", "20")
-            plan = run_skill(tmp, "hygiene-plan", "--scope", "project")
-            applied = run_skill(tmp, "hygiene-apply", "--safe")
+            plan_path = Path(tmp) / "reviewed-plan.json"
+            plan = run_skill(tmp, "hygiene-plan", "--scope", "project", "--save-plan", str(plan_path))
+            applied = run_skill(tmp, "hygiene-apply", "--safe", "--plan-file", str(plan_path))
 
             self.assertEqual(routed["route"], "repo_docs")
             self.assertEqual(scan["action"], "hygiene-scan")
@@ -344,7 +345,9 @@ class RecallSkillAdapterTests(unittest.TestCase):
             )
 
             report = run_skill(tmp, "reconcile-current-truth", "--claim-key", "recall.kimi.standard_average")
-            applied = run_skill(tmp, "hygiene-apply", "--safe")
+            plan_path = Path(tmp) / "reviewed-plan.json"
+            plan_path.write_text(json.dumps(report["plan"]), encoding="utf-8")
+            applied = run_skill(tmp, "hygiene-apply", "--safe", "--plan-file", str(plan_path))
 
             self.assertEqual(report["action"], "reconcile-current-truth")
             self.assertEqual(report["proposals"][0]["id"], old["id"])

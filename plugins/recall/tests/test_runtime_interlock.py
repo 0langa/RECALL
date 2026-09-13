@@ -26,6 +26,59 @@ from tests.test_hooks import run_hook
 
 
 class RuntimeInterlockTests(unittest.TestCase):
+    def test_equal_host_ids_stay_isolated_by_provider(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.activate_project(tmp)
+            recall_config.set_capture_mode("standard", tmp)
+            shared = {"cwd": tmp, "session_id": "same-session", "turn_id": "same-turn"}
+            private = normalize_hook_event(
+                {**shared, "provider": "codex", "prompt": "Do not use memory for this task."},
+                fallback_event="UserPromptSubmit",
+                fallback_root=tmp,
+            )
+            normal = normalize_hook_event(
+                {**shared, "provider": "claude", "prompt": "Continue normal project work."},
+                fallback_event="UserPromptSubmit",
+                fallback_root=tmp,
+            )
+            self.assertTrue(
+                turn_policy.policy_status(
+                    tmp, private.session_id, private.turn_id, provider="codex"
+                )["disabled"]
+            )
+            self.assertFalse(
+                turn_policy.policy_status(
+                    tmp, normal.session_id, normal.turn_id, provider="claude"
+                )["disabled"]
+            )
+
+            tool = {
+                **shared,
+                "tool_name": "Bash",
+                "tool_input": {"command": "python -m pytest"},
+                "tool_response": {"exit_code": 1, "stdout": "FAILED provider-isolation"},
+            }
+            self.assertEqual(
+                run_hook("post_tool_use.py", {**tool, "provider": "codex"})["memory_action"],
+                "disabled",
+            )
+            self.assertEqual(
+                run_hook("post_tool_use.py", {**tool, "provider": "claude"}),
+                {"continue": True},
+            )
+            self.assertFalse(
+                turn_buffer.turn_events_path(tmp, "same-session", "same-turn", "codex").exists()
+            )
+            self.assertTrue(
+                turn_buffer.turn_events_path(tmp, "same-session", "same-turn", "claude").exists()
+            )
+            turn_policy.finish_turn(tmp, "same-session", "same-turn", provider="claude")
+            self.assertTrue(
+                turn_policy.policy_status(
+                    tmp, "same-session", "same-turn", provider="codex"
+                )["disabled"]
+            )
+
     def test_unknown_explicit_events_cannot_write_after_a_prompt_scope(self):
         for provider in ("codex", "claude", "kimi"):
             with self.subTest(provider=provider), tempfile.TemporaryDirectory() as tmp:

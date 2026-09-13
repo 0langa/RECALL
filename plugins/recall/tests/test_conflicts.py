@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 
@@ -15,7 +16,7 @@ from services import lifecycle_service  # noqa: E402
 
 
 class ConflictGovernanceTests(unittest.TestCase):
-    def test_confirmations_promote_active_memory_to_validated(self) -> None:
+    def test_asserted_confirmation_sessions_do_not_validate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             record = memory_manager.add_record(
                 "decisions",
@@ -25,8 +26,9 @@ class ConflictGovernanceTests(unittest.TestCase):
             )
             memory_manager.confirm_record(record.id, tmp, "session-a")
             confirmed = memory_manager.confirm_record(record.id, tmp, "session-b")
-            self.assertEqual(confirmed.metadata["status"], "validated")
-            self.assertGreaterEqual(confirmed.metadata["trust"], 0.85)
+            self.assertEqual(confirmed.metadata["status"], "active")
+            self.assertNotIn("validated_at", confirmed.metadata)
+            self.assertEqual(confirmed.metadata["confirmation_sessions"], ["session-a", "session-b"])
 
     def test_conflicting_claim_slots_form_review_cluster(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -73,9 +75,12 @@ class ConflictGovernanceTests(unittest.TestCase):
                 ),
                 tmp,
             )
-            lifecycle_service.promote(first.id, tmp)
-            with self.assertRaisesRegex(ValueError, "contradicts validated memory"):
-                lifecycle_service.promote(second.id, tmp)
+            # Isolate conflict governance after the evidence gate. Actual
+            # receipt creation/rejection is covered by public runtime tests.
+            with patch("services.lifecycle_service.observed_evidence.has_observed_evidence", return_value=True):
+                lifecycle_service.promote(first.id, tmp)
+                with self.assertRaisesRegex(ValueError, "contradicts validated memory"):
+                    lifecycle_service.promote(second.id, tmp)
 
     def test_conflict_resolution_supersedes_losers_and_audit_reports_clusters(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -101,7 +106,8 @@ class ConflictGovernanceTests(unittest.TestCase):
             result = lifecycle_service.resolve_conflict(current.id, [old.id], tmp, "SQLite is current.")
             after = memory_review.audit_memory(tmp)
             self.assertEqual(len(before["conflict_clusters"]), 1)
-            self.assertEqual(result["winner"].metadata["status"], "validated")
+            self.assertEqual(result["winner"].metadata["status"], "active")
+            self.assertNotIn("validated_at", result["winner"].metadata)
             self.assertEqual(result["losers"][0].metadata["status"], "superseded")
             self.assertEqual(after["conflict_clusters"], [])
 

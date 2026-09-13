@@ -3,10 +3,61 @@ from __future__ import annotations
 import unittest
 import json
 
-from _harness import active_memory_dir, assert_memory_inside_project, memory_cmd, run_json, run_text, skill_cmd, temp_project
+from _harness import active_memory_dir, assert_memory_inside_project, memory_cmd, run_json, run_text, skill_cmd, temp_project, seed_historical_verification, hook_cmd
 
 
 class SkillCliContractTests(unittest.TestCase):
+    def test_top_one_keeps_conflict_warning_and_omitted_count(self) -> None:
+        with temp_project() as project:
+            for value in ("30", "90"):
+                run_json(skill_cmd(project, "save-insight", "requirements", f"Request timeout is {value} seconds.",
+                                   "--claim-key", "request.timeout", "--claim-value", value))
+            result = run_json(skill_cmd(project, "retrieve-memory", "request timeout", "--limit", "1"))
+            self.assertEqual(len(result["results"]), 1)
+            self.assertIn("conflicting", result["results"][0]["flags"])
+            self.assertEqual(result["health"]["known_flag_counts"]["conflicting"], 2)
+            self.assertEqual(result["health"]["omitted_flag_counts"]["conflicting"], 1)
+            self.assertEqual(result["omitted_count"], 1)
+            self.assertTrue(result["truncated"])
+
+    def test_source_refresh_does_not_validate_old_content(self) -> None:
+        with temp_project() as project:
+            source = project / "service.json"
+            source.write_text('{"timeout":30}\n', encoding="utf-8")
+            saved = run_json(skill_cmd(project, "save-insight", "requirements", "Request timeout is 30 seconds.",
+                                       "--source-path", "service.json"))
+            source.write_text('{"timeout":90}\n', encoding="utf-8")
+            first = run_json(skill_cmd(project, "refresh-source", str(saved["id"])))
+            self.assertEqual(first["metadata"]["status"], "stale")
+            second = run_json(skill_cmd(project, "refresh-source", str(saved["id"])))
+            self.assertEqual(second["metadata"]["status"], "stale")
+            self.assertEqual(second["metadata"].get("last_confirmed"), first["metadata"].get("last_confirmed"))
+
+    def test_task_memory_interlock_blocks_public_read_and_write(self) -> None:
+        with temp_project() as project:
+            run_json(skill_cmd(project, "initialize-project"))
+            run_json(skill_cmd(project, "save-insight", "requirements", "Project labels use British English."))
+            event = {"cwd": str(project), "session_id": "scope", "turn_id": "off",
+                     "prompt": "Do not read or write project memory for this task. Fix a spelling error."}
+            run_json(hook_cmd("prompt_inspector.py"), input_payload=event)
+            for args in (("retrieve-memory", "labels"), ("save-insight", "requirements", "This must not persist.")):
+                result = run_json(skill_cmd(project, *args))
+                self.assertEqual(result["memory_action"], "disabled")
+                self.assertEqual(result["root_decision"]["status"], "resolved")
+            event.update(turn_id="normal", prompt="Use project history to find the label rule.")
+            run_json(hook_cmd("prompt_inspector.py"), input_payload=event)
+            result = run_json(skill_cmd(project, "retrieve-memory", "labels British English"))
+            self.assertTrue(result["results"])
+
+    def test_public_status_and_session_labels_do_not_prove_validation(self) -> None:
+        with temp_project() as project:
+            saved = run_json(skill_cmd(project, "save-insight", "requirements", "Release notes live in docs/accepted.md.",
+                                       "--status", "validated", "--confidence", "1"))
+            rid = str(saved["id"])
+            for session in ("asserted-A", "asserted-B"):
+                confirmed = run_json(skill_cmd(project, "confirm-memory", rid, "--source-session", session))
+                self.assertEqual(confirmed["metadata"]["status"], "active")
+
     def test_cli_keyed_confirmations_keep_all_retry_keys(self) -> None:
         for backend in ("sqlite", "jsonl"):
             with self.subTest(backend=backend), temp_project() as project:
@@ -67,6 +118,7 @@ class SkillCliContractTests(unittest.TestCase):
                 rid = str(saved["id"])
                 run_json(skill_cmd(project, "confirm-memory", rid, "--source-session", "old-A"))
                 run_json(skill_cmd(project, "confirm-memory", rid, "--source-session", "old-B"))
+                seed_historical_verification(project, rid)
                 tagged = run_json(skill_cmd(project, "edit-memory", rid, "--tag", "release"))
                 self.assertEqual(tagged["metadata"]["status"], "validated")
                 self.assertEqual(tagged["metadata"]["confirmation_sessions"], ["old-A", "old-B"])
@@ -98,9 +150,9 @@ class SkillCliContractTests(unittest.TestCase):
                 self.assertEqual(first["metadata"]["status"], "active")
                 run_json(skill_cmd(project, "confirm-memory", rid, "--source-session", "fresh-D"))
                 confirmed = run_json(skill_cmd(project, "edit-memory", rid))
-                self.assertEqual(confirmed["metadata"]["status"], "validated")
+                self.assertEqual(confirmed["metadata"]["status"], "active")
                 self.assertEqual(confirmed["metadata"]["confirmation_sessions"], ["fresh-C", "fresh-D"])
-                self.assertNotIn("verification_invalidated_at", confirmed["metadata"])
+                self.assertIn("verification_invalidated_at", confirmed["metadata"])
                 replaced = run_json(skill_cmd(project, "edit-memory", rid, "--claim-key", "release_notes.path",
                                               "--claim-value", "docs/new.md"))
                 self.assertEqual(replaced["metadata"]["claim_value"], "docs/new.md")
@@ -296,7 +348,9 @@ class SkillCliContractTests(unittest.TestCase):
             ))
 
             plan = run_json(skill_cmd(project, "reconcile-current-truth", "--claim-key", "release.path"))
-            applied = run_json(skill_cmd(project, "hygiene-apply", "--safe"))
+            plan_path = project / "reviewed-plan.json"
+            plan_path.write_text(json.dumps(plan["plan"]), encoding="utf-8")
+            applied = run_json(skill_cmd(project, "hygiene-apply", "--safe", "--plan-file", str(plan_path)))
             retrieved = run_json(skill_cmd(project, "retrieve-memory", content, "--verbose"))
             proposal = plan["proposals"][0]
 
@@ -371,7 +425,9 @@ class SkillCliContractTests(unittest.TestCase):
                         self.assertEqual(replay["id"], saved_by_value[value]["id"])
 
                     plan = run_json(skill_cmd(project, "reconcile-current-truth", "--claim-key", "release.path"))
-                    applied = run_json(skill_cmd(project, "hygiene-apply", "--safe"))
+                    plan_path = project / "reviewed-plan.json"
+                    plan_path.write_text(json.dumps(plan["plan"]), encoding="utf-8")
+                    applied = run_json(skill_cmd(project, "hygiene-apply", "--safe", "--plan-file", str(plan_path)))
                     retrieved = run_json(skill_cmd(project, "retrieve-memory", content, "--verbose"))
                     conflicts = [
                         proposal

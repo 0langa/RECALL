@@ -48,18 +48,33 @@ def runtime_dir(root: str | Path | None) -> Path:
     return memory_dir(root) / "runtime"
 
 
-def turn_events_path(root: str | Path | None, session_id: str | None, turn_id: str | None) -> Path:
-    return runtime_dir(root) / "turns" / safe_name(session_id, "session") / f"{safe_name(turn_id, 'turn')}.jsonl"
+def turn_events_path(
+    root: str | Path | None,
+    session_id: str | None,
+    turn_id: str | None,
+    provider: str = "codex",
+) -> Path:
+    return runtime_dir(root) / "turns" / safe_name(provider, "codex") / safe_name(session_id, "session") / f"{safe_name(turn_id, 'turn')}.jsonl"
 
 
-def finalizer_request_path(root: str | Path | None, session_id: str | None, turn_id: str | None) -> Path:
+def finalizer_request_path(
+    root: str | Path | None,
+    session_id: str | None,
+    turn_id: str | None,
+    provider: str = "codex",
+) -> Path:
     request_name = f"{safe_name(session_id, 'session')}-{safe_name(turn_id, 'turn')}.json"
-    return runtime_dir(root) / "finalizer_requests" / request_name
+    return runtime_dir(root) / "finalizer_requests" / safe_name(provider, "codex") / request_name
 
 
-def activation_path(root: str | Path | None, session_id: str | None, turn_id: str | None) -> Path:
+def activation_path(
+    root: str | Path | None,
+    session_id: str | None,
+    turn_id: str | None,
+    provider: str = "codex",
+) -> Path:
     activation_name = f"{safe_name(session_id, 'session')}-{safe_name(turn_id, 'turn')}.json"
-    return runtime_dir(root) / "activations" / activation_name
+    return runtime_dir(root) / "activations" / safe_name(provider, "codex") / activation_name
 
 
 def truncate(text: str, limit: int) -> str:
@@ -104,15 +119,23 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
-def append_event(root: str | Path | None, session_id: str | None, turn_id: str | None, event: dict[str, Any]) -> Path:
-    path = turn_events_path(root, session_id, turn_id)
-    if turn_policy.policy_status(root, session_id, turn_id)["disabled"]:
+def append_event(
+    root: str | Path | None,
+    session_id: str | None,
+    turn_id: str | None,
+    event: dict[str, Any],
+    *,
+    provider: str = "codex",
+) -> Path:
+    provider = str(event.get("origin_provider") or provider or "codex").strip().lower()
+    path = turn_events_path(root, session_id, turn_id, provider)
+    if turn_policy.policy_status(root, session_id, turn_id, provider=provider)["disabled"]:
         return path
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = dict(event)
     idempotency_key = str(payload.get("idempotency_key") or "").strip()
     if path.exists():
-        for existing in load_events(root, session_id, turn_id):
+        for existing in load_events(root, session_id, turn_id, provider=provider):
             same_delivery = idempotency_key and str(existing.get("idempotency_key") or "") == idempotency_key
             same_evidence = all(
                 existing.get(key) == payload.get(key)
@@ -123,6 +146,7 @@ def append_event(root: str | Path | None, session_id: str | None, turn_id: str |
     payload.setdefault("schema", SCHEMA_EVENT)
     payload.setdefault("session_id", session_id)
     payload.setdefault("turn_id", turn_id)
+    payload.setdefault("origin_provider", provider)
     payload.setdefault("timestamp", utc_now())
     payload.setdefault("event_id", idempotency_key or f"{safe_name(session_id, 'session')}:{safe_name(turn_id, 'turn')}:{path.stat().st_size if path.exists() else 0}")
     if isinstance(payload.get("details"), str):
@@ -132,10 +156,16 @@ def append_event(root: str | Path | None, session_id: str | None, turn_id: str |
     return path
 
 
-def load_events(root: str | Path | None, session_id: str | None, turn_id: str | None) -> list[dict[str, Any]]:
-    if turn_policy.policy_status(root, session_id, turn_id)["disabled"]:
+def load_events(
+    root: str | Path | None,
+    session_id: str | None,
+    turn_id: str | None,
+    *,
+    provider: str = "codex",
+) -> list[dict[str, Any]]:
+    if turn_policy.policy_status(root, session_id, turn_id, provider=provider)["disabled"]:
         return []
-    path = turn_events_path(root, session_id, turn_id)
+    path = turn_events_path(root, session_id, turn_id, provider)
     if not path.exists():
         return []
     events: list[dict[str, Any]] = []
@@ -155,9 +185,16 @@ def load_events(root: str | Path | None, session_id: str | None, turn_id: str | 
     return events
 
 
-def mark_active(root: str | Path | None, session_id: str | None, turn_id: str | None, prompt: str) -> Path:
-    path = activation_path(root, session_id, turn_id)
-    if turn_policy.policy_status(root, session_id, turn_id)["disabled"]:
+def mark_active(
+    root: str | Path | None,
+    session_id: str | None,
+    turn_id: str | None,
+    prompt: str,
+    *,
+    provider: str = "codex",
+) -> Path:
+    path = activation_path(root, session_id, turn_id, provider)
+    if turn_policy.policy_status(root, session_id, turn_id, provider=provider)["disabled"]:
         return path
     payload = {
         "schema": SCHEMA_ACTIVATION,
@@ -165,16 +202,23 @@ def mark_active(root: str | Path | None, session_id: str | None, turn_id: str | 
         "created_at": utc_now(),
         "session_id": session_id,
         "turn_id": turn_id,
+        "origin_provider": provider,
         "reason": "persistently-activated-project",
     }
     atomic_write_json(path, payload)
     return path
 
 
-def is_active(root: str | Path | None, session_id: str | None, turn_id: str | None) -> bool:
-    if turn_policy.policy_status(root, session_id, turn_id)["disabled"]:
+def is_active(
+    root: str | Path | None,
+    session_id: str | None,
+    turn_id: str | None,
+    *,
+    provider: str = "codex",
+) -> bool:
+    if turn_policy.policy_status(root, session_id, turn_id, provider=provider)["disabled"]:
         return False
-    path = activation_path(root, session_id, turn_id)
+    path = activation_path(root, session_id, turn_id, provider)
     if not path.exists():
         return False
     try:
@@ -220,8 +264,14 @@ def summarize_events(events: list[dict[str, Any]], limit: int = 8) -> list[dict[
     return summary
 
 
-def finalizer_status(root: str | Path | None, session_id: str | None, turn_id: str | None) -> str:
-    path = finalizer_request_path(root, session_id, turn_id)
+def finalizer_status(
+    root: str | Path | None,
+    session_id: str | None,
+    turn_id: str | None,
+    *,
+    provider: str = "codex",
+) -> str:
+    path = finalizer_request_path(root, session_id, turn_id, provider)
     if not path.exists():
         return "none"
     try:
@@ -265,14 +315,16 @@ def create_finalizer_request(
     transcript_path: str | None,
     last_assistant_message: str,
     events: list[dict[str, Any]],
+    provider: str = "codex",
 ) -> Path:
-    path = finalizer_request_path(root, session_id, turn_id)
+    path = finalizer_request_path(root, session_id, turn_id, provider)
     payload = {
         "schema": SCHEMA_FINALIZER,
         "status": "requested",
         "created_at": utc_now(),
         "session_id": session_id,
         "turn_id": turn_id,
+        "origin_provider": provider,
         "cwd": cwd,
         "plugin_root": plugin_root,
         "adapter": adapter,
@@ -295,7 +347,7 @@ def create_finalizer_request(
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     with exclusive_lock(_request_lock_path(path)):
-        status = finalizer_status(root, session_id, turn_id)
+        status = finalizer_status(root, session_id, turn_id, provider=provider)
         if status in {"requested", "finalized"}:
             raise FileExistsError(path)
         if path.exists():
@@ -305,8 +357,14 @@ def create_finalizer_request(
     return path
 
 
-def mark_finalized(root: str | Path | None, session_id: str | None, turn_id: str | None) -> None:
-    path = finalizer_request_path(root, session_id, turn_id)
+def mark_finalized(
+    root: str | Path | None,
+    session_id: str | None,
+    turn_id: str | None,
+    *,
+    provider: str = "codex",
+) -> None:
+    path = finalizer_request_path(root, session_id, turn_id, provider)
     if not path.exists():
         return
     try:
@@ -320,15 +378,25 @@ def mark_finalized(root: str | Path | None, session_id: str | None, turn_id: str
     atomic_write_json(path, payload)
 
 
-def cleanup_success(root: str | Path | None, session_id: str | None, turn_id: str | None, *, keep_request: bool = False) -> None:
+def cleanup_success(
+    root: str | Path | None,
+    session_id: str | None,
+    turn_id: str | None,
+    *,
+    provider: str = "codex",
+    keep_request: bool = False,
+) -> None:
     """Remove transient evidence after a successful quiet-mode finalization."""
 
-    for path in (turn_events_path(root, session_id, turn_id), activation_path(root, session_id, turn_id)):
+    for path in (
+        turn_events_path(root, session_id, turn_id, provider),
+        activation_path(root, session_id, turn_id, provider),
+    ):
         path.unlink(missing_ok=True)
         parent = path.parent
         if parent.exists() and not any(parent.iterdir()):
             parent.rmdir()
-    request = finalizer_request_path(root, session_id, turn_id)
+    request = finalizer_request_path(root, session_id, turn_id, provider)
     if not keep_request:
         request.unlink(missing_ok=True)
 

@@ -101,7 +101,7 @@ def quiet_card_from_event(event: dict, *, session_id: str, turn_id: str) -> dict
     return card
 
 
-def quiet_finalizer_batch(events: list[dict], *, session_id: str, turn_id: str) -> dict:
+def quiet_finalizer_batch(events: list[dict], *, session_id: str, turn_id: str, provider: str = "codex") -> dict:
     safe_session_id = session_id.strip()
     safe_turn_id = turn_id.strip()
     if not safe_session_id or not safe_turn_id:
@@ -123,6 +123,7 @@ def quiet_finalizer_batch(events: list[dict], *, session_id: str, turn_id: str) 
         "schema": "recall.finalizer_batch.v1",
         "session_id": safe_session_id,
         "turn_id": safe_turn_id,
+        "origin_provider": provider,
         "operations": operations,
     }
 
@@ -159,15 +160,15 @@ def main() -> None:
         root = event.root
         session_id = event.session_id
         turn_id = event.turn_id
-        policy = turn_policy.policy_status(root, session_id, turn_id)
+        policy = turn_policy.policy_status(root, session_id, turn_id, provider=event.provider)
         if policy["disabled"]:
-            turn_policy.finish_turn(root, session_id, turn_id)
+            turn_policy.finish_turn(root, session_id, turn_id, provider=event.provider)
             output(turn_policy.disabled_result(hook=True))
             return
         if policy.get("closed"):
             output({"continue": True})
             return
-        if not turn_buffer.is_active(root, session_id, turn_id):
+        if not turn_buffer.is_active(root, session_id, turn_id, provider=event.provider):
             output({"continue": True})
             return
 
@@ -175,7 +176,7 @@ def main() -> None:
             output({"continue": True})
             return
 
-        if turn_buffer.finalizer_status(root, session_id, turn_id) in {"requested", "finalized"}:
+        if turn_buffer.finalizer_status(root, session_id, turn_id, provider=event.provider) in {"requested", "finalized"}:
             output({"continue": True})
             return
 
@@ -190,22 +191,25 @@ def main() -> None:
                 "tags": ["stop", "assistant-summary"],
                 "record_kind": "turn_summary_evidence",
                 **event.provider_metadata(capture_channel="hook"),
-            })
+            }, provider=event.provider)
 
-        events = turn_buffer.load_events(root, session_id, turn_id)
+        events = turn_buffer.load_events(root, session_id, turn_id, provider=event.provider)
 
         if not turn_buffer.is_dirty(events):
-            turn_policy.finish_turn(root, session_id, turn_id)
+            turn_policy.finish_turn(root, session_id, turn_id, provider=event.provider)
             output({"continue": True})
             return
 
-        if turn_buffer.finalizer_status(root, session_id, turn_id) in {"requested", "finalized"}:
+        if turn_buffer.finalizer_status(root, session_id, turn_id, provider=event.provider) in {"requested", "finalized"}:
             output({"continue": True})
             return
 
         cfg = recall_config.load_config_if_present(root)
         if cfg.get("observability_mode") != "debug":
-            result = apply_finalizer_batch(quiet_finalizer_batch(events, session_id=session_id, turn_id=turn_id), root)
+            result = apply_finalizer_batch(
+                quiet_finalizer_batch(events, session_id=session_id, turn_id=turn_id, provider=event.provider),
+                root,
+            )
             message = quiet_result_message(result)
             response = {"continue": True}
             if message:
@@ -224,6 +228,7 @@ def main() -> None:
             transcript_path=event.transcript_path,
             last_assistant_message=notes,
             events=events,
+            provider=event.provider,
         )
         packet_payload = json.loads(packet.read_text(encoding="utf-8"))
         observability.trace(root, "finalizer_requested", {"session_id": session_id, "turn_id": turn_id, "candidate_count": packet_payload.get("candidate_count")})

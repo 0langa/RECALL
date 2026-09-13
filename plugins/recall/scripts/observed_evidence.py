@@ -81,7 +81,13 @@ def observed_content(command: str, response: dict[str, Any]) -> str:
 
 def observe_tool_result(root: str | Path | None, event: dict[str, Any]) -> dict[str, Any] | None:
     """Hook-only adapter. A command string or claimed success flag is insufficient."""
-    if root is None or turn_policy.policy_status(root, event.get("session_id"), event.get("turn_id"))["disabled"]:
+    provider = str(event.get("origin_provider") or event.get("provider") or "codex").strip().lower()
+    if root is None or turn_policy.policy_status(
+        root,
+        event.get("session_id"),
+        event.get("turn_id"),
+        provider=provider,
+    )["disabled"]:
         return None
     import capture_policy
     response = event.get("tool_response")
@@ -101,7 +107,7 @@ def observe_tool_result(root: str | Path | None, event: dict[str, Any]) -> dict[
         "observed_at": datetime.now(timezone.utc).isoformat(),
         "factual_revision": factual_revision(category, content, {}),
         "event_id": event_id, "session_id": str(event.get("session_id") or ""),
-        "turn_id": str(event.get("turn_id") or ""),
+        "turn_id": str(event.get("turn_id") or ""), "origin_provider": provider,
         "result_sha256": hashlib.sha256(json.dumps(response, sort_keys=True).encode("utf-8")).hexdigest(),
     }
     receipt["signature"] = _signature(receipt, _key(root, create=True))
@@ -124,7 +130,7 @@ def has_observed_evidence(root: str | Path | None, category: str, content: str, 
 
 
 def evidence_for_card(root: str | Path | None, category: str, content: str, metadata: dict[str, Any], evidence_ids: Any,
-                      session_id: str, turn_id: str) -> dict[str, Any] | None:
+                      session_id: str, turn_id: str, provider: str = "codex") -> dict[str, Any] | None:
     if not isinstance(evidence_ids, list):
         return None
     for event_id in evidence_ids:
@@ -133,7 +139,11 @@ def evidence_for_card(root: str | Path | None, category: str, content: str, meta
             receipt = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if not isinstance(receipt, dict) or (receipt.get("session_id"), receipt.get("turn_id")) != (session_id, turn_id):
+        if not isinstance(receipt, dict) or (
+            receipt.get("session_id"),
+            receipt.get("turn_id"),
+            receipt.get("origin_provider", "codex"),
+        ) != (session_id, turn_id, provider):
             continue
         if has_observed_evidence(root, category, content, {**metadata, "observed_evidence": receipt}):
             return receipt

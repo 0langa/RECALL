@@ -17,6 +17,7 @@ import config as recall_config
 import contract as recall_contract
 from hook_io import additional_context, normalize_hook_event, read_hook_input
 import storage
+import turn_policy
 
 
 MAX_INJECTED_CHARS = 2000
@@ -51,12 +52,18 @@ def main() -> None:
         provider=args.provider,
         fallback_root=args.root,
     )
-    root = event.root or event.cwd
+    root = event.root
+    policy = turn_policy.policy_status(root, event.session_id, event.turn_id, provider=event.provider)
+    if policy["disabled"]:
+        print(json.dumps(turn_policy.disabled_result(hook=True)))
+        return
     if not root or not recall_config.project_is_active(root):
         print(json.dumps({"continue": True}))
         return
     parts = [recall_contract.compact_contract_text()]
-    overview = store_overview(root)
+    # SessionStart precedes the task prompt. Policy/config contain no memory
+    # cards, but even inventory reads must wait until task scope is known.
+    overview = store_overview(root) if policy["scope_known"] else ""
     if overview:
         parts.append(overview)
     if recall_config.memory_dir(root).name == recall_config.LEGACY_MEMORY_DIR_NAME:

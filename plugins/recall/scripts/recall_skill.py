@@ -21,6 +21,8 @@ import memory_noise
 import memory_review
 import memory_manager
 import security
+import runtime_guard
+import turn_policy
 from models import ContextPacketRequest, ReviewRequest
 from services.health_service import review_memory
 from services import provenance_service
@@ -30,7 +32,17 @@ from services import recovery_service
 from services.finalizer_service import apply_finalizer_batch
 
 
+_ROOT_DECISION: dict[str, Any] | None = None
+
+
 def print_json(payload: dict[str, Any]) -> None:
+    if _ROOT_DECISION is not None:
+        if payload.get("action") == "hygiene-plan" and "plan_id" in payload:
+            # stdout remains an exact artifact suitable for redirecting to a
+            # reviewed plan file; root-resolution context is transport metadata.
+            print(json.dumps({"root_decision": _ROOT_DECISION}), file=sys.stderr)
+        else:
+            payload = {**payload, "root_decision": _ROOT_DECISION}
     print(json.dumps(payload, indent=2, sort_keys=True))
 
 
@@ -171,6 +183,8 @@ def handle_save_insight(args: argparse.Namespace, root: Path | None) -> None:
         })
         return
     metadata_base = {}
+    if getattr(args, "evidence_id", None):
+        metadata_base["evidence_ids"] = args.evidence_id
     if args.source_path:
         metadata_base.update(provenance_service.describe_file(root or Path.cwd(), args.source_path))
     if args.memory_type:
@@ -454,11 +468,23 @@ def handle_hygiene_scan(args: argparse.Namespace, root: Path | None) -> None:
 
 
 def handle_hygiene_plan(args: argparse.Namespace, root: Path | None) -> None:
-    print_json(memory_hygiene.hygiene_plan(root, limit=args.limit, scope=args.scope))
+    plan = memory_hygiene.hygiene_plan(root, limit=args.limit, scope=args.scope,
+                                      scan_limit=args.scan_limit, output_limit=args.output_limit,
+                                      action_limit=args.action_limit)
+    if args.save_plan:
+        # Refuse overwrite: the file is the exact review artifact for apply.
+        with Path(args.save_plan).open("x", encoding="utf-8") as handle:
+            json.dump(plan, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+    print_json(plan)
 
 
 def handle_hygiene_apply(args: argparse.Namespace, root: Path | None) -> None:
-    print_json(memory_hygiene.hygiene_apply(root, safe=args.safe, limit=args.limit))
+    plan = json.loads(Path(args.plan_file).read_text(encoding="utf-8")) if args.plan_file else None
+    if plan is not None and not isinstance(plan, dict):
+        raise ValueError("Saved plan must be an object.")
+    print_json(memory_hygiene.hygiene_apply(root, safe=args.safe, limit=args.limit,
+                                          plan=plan, action_limit=args.action_limit))
 
 
 def handle_route_memory(args: argparse.Namespace, root: Path | None) -> None:
@@ -606,8 +632,9 @@ def handle_context_packet(args: argparse.Namespace, root: Path | None) -> None:
 
 
 def main() -> None:
+    global _ROOT_DECISION
     parser = argparse.ArgumentParser(description="Run RECALL skill actions against project-local memory.")
-    parser.add_argument("--root", help="Project root. Defaults to the current working directory.")
+    parser.add_argument("--root", help="Explicit project root. Otherwise resolve a clear project boundary; ambiguous roots fail closed.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     save = subparsers.add_parser("save-insight")
@@ -621,6 +648,7 @@ def main() -> None:
     save.add_argument("--origin-agent")
     save.add_argument("--source-session")
     save.add_argument("--source-turn")
+    save.add_argument("--evidence-id", action="append", default=[], help="Actual observed hook result ID for this exact fact and turn.")
     save.add_argument("--idempotency-key", help="Stable retry key for one logical save.")
     save.add_argument("--cwd")
     save.add_argument("--branch")
@@ -744,11 +772,17 @@ def main() -> None:
     hygiene_plan = subparsers.add_parser("hygiene-plan")
     hygiene_plan.add_argument("--scope", default="project", choices=["project"])
     hygiene_plan.add_argument("--limit", type=int)
+    hygiene_plan.add_argument("--scan-limit", type=int)
+    hygiene_plan.add_argument("--output-limit", type=int)
+    hygiene_plan.add_argument("--action-limit", type=int)
+    hygiene_plan.add_argument("--save-plan", help="Write the exact plan to a new JSON file for review.")
     hygiene_plan.set_defaults(handler=handle_hygiene_plan)
 
     hygiene_apply = subparsers.add_parser("hygiene-apply")
     hygiene_apply.add_argument("--safe", action="store_true", required=True)
     hygiene_apply.add_argument("--limit", type=int)
+    hygiene_apply.add_argument("--action-limit", type=int)
+    hygiene_apply.add_argument("--plan-file", help="Apply only this exact reviewed JSON plan; never replan it.")
     hygiene_apply.set_defaults(handler=handle_hygiene_apply)
 
     route_memory = subparsers.add_parser("route-memory")
@@ -859,8 +893,20 @@ def main() -> None:
     context_packet.set_defaults(handler=handle_context_packet)
 
     args = parser.parse_args()
-    root = Path(args.root).resolve() if args.root else None
-    args.handler(args, root)
+    _ROOT_DECISION = recall_config.root_decision(args.root)
+    try:
+        root = recall_config.project_root(args.root)
+        if args.command == "contract" and turn_policy.policy_status(root)["disabled"]:
+            import contract
+            print_json({"contract": contract.contract_dict(), **turn_policy.disabled_result()})
+            return
+        runtime_guard.require_memory(root)
+        args.handler(args, root)
+    except runtime_guard.MemoryDisabledError as exc:
+        print_json(exc.to_dict())
+    except recall_config.RootResolutionError as exc:
+        print_json({"action": "error", "reason": str(exc), "root_decision": exc.decision})
+        raise SystemExit(2) from exc
 
 
 if __name__ == "__main__":

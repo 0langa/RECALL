@@ -110,6 +110,11 @@ def normalize_identity(event):
             # The first delivery owns the policy. A retry keeps that turn's
             # closed/open state and must not replace a newer current scope.
             return replace(event, session_id=session_id, turn_id=turn_id)
+        previous_turn_id = str(session_pointer.get("turn_id") or "")
+        if previous_turn_id and previous_turn_id != turn_id:
+            # A new prompt in the same host session is a new turn boundary.
+            # Close the prior scope before publishing the new current scope.
+            finish_turn(event.root, session_id, previous_turn_id, provider=event.provider)
         import capture_policy
         # Evaluate before activation, tracing, capture, or any memory-data read.
         state = {"scope_known": True, "disabled": capture_policy.no_memory_requested(event.prompt),
@@ -121,15 +126,22 @@ def normalize_identity(event):
     return replace(event, session_id=session_id, turn_id=turn_id)
 
 
-def policy_status(root: str | Path | None, session_id: str | None = None, turn_id: str | None = None) -> dict[str, Any]:
+def policy_status(
+    root: str | Path | None,
+    session_id: str | None = None,
+    turn_id: str | None = None,
+    *,
+    provider: str | None = None,
+) -> dict[str, Any]:
     if root is None:
         return {"scope_known": False, "disabled": False, "reason": "scope_unknown"}
     states = _turn_states(root)
-    active_disabled = [state for state in states if state.get("disabled") and not state.get("closed")]
+    provider_states = [state for state in states if state.get("provider") == provider] if provider else states
+    active_disabled = [state for state in provider_states if state.get("disabled") and not state.get("closed")]
     selected: dict[str, Any] = {}
     if session_id and turn_id:
         exact = [
-            state for state in states
+            state for state in provider_states
             if state.get("session_id") == session_id and state.get("turn_id") == turn_id
         ]
         if exact:
@@ -148,7 +160,7 @@ def policy_status(root: str | Path | None, session_id: str | None = None, turn_i
         else:
             return {"scope_known": False, "disabled": False, "reason": "scope_unknown"}
     elif session_id:
-        matching = [state for state in states if state.get("session_id") == session_id]
+        matching = [state for state in provider_states if state.get("session_id") == session_id]
         selected = max(active_disabled or matching, key=lambda state: float(state.get("updated_at", 0)), default={})
     else:
         # Contextless callers use the latest prompt scope after all active
@@ -170,12 +182,22 @@ def disabled_result(*, hook: bool = False) -> dict[str, Any]:
     return result
 
 
-def finish_turn(root: str | Path | None, session_id: str, turn_id: str) -> None:
+def finish_turn(
+    root: str | Path | None,
+    session_id: str,
+    turn_id: str,
+    *,
+    provider: str | None = None,
+) -> None:
     if root is None:
         return
     for path in _folder(root).glob("turn-*.json"):
         state = _read(path)
-        if state.get("session_id") == session_id and state.get("turn_id") == turn_id:
+        if (
+            state.get("session_id") == session_id
+            and state.get("turn_id") == turn_id
+            and (provider is None or state.get("provider") == provider)
+        ):
             state["closed"] = True
             # Keep the no-memory interlock until the next UserPromptSubmit.
             _write(path, state)
@@ -184,7 +206,11 @@ def finish_turn(root: str | Path | None, session_id: str, turn_id: str) -> None:
                 _write(_current_scope_path(root), state)
             for pointer_path in _folder(root).glob("session-*.json"):
                 pointer = _read(pointer_path)
-                if pointer.get("session_id") == session_id and pointer.get("turn_id") == turn_id:
+                if (
+                    pointer.get("session_id") == session_id
+                    and pointer.get("turn_id") == turn_id
+                    and (provider is None or pointer.get("provider") == provider)
+                ):
                     _write(pointer_path, state)
 
 

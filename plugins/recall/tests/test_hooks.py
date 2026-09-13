@@ -126,10 +126,11 @@ def run_recall_skill(root: str, *args: str) -> dict:
 
 def runtime_events(root: str, session_id: str, turn_id: str) -> list[dict]:
     import turn_policy
+    import turn_buffer
     policy = turn_policy.policy_status(root, session_id or None, turn_id or None)
     safe_session = session_id or str(policy.get("session_id") or "session")
     safe_turn = turn_id or str(policy.get("turn_id") or "turn")
-    path = recall_config.memory_dir(root) / "runtime" / "turns" / safe_session / f"{safe_turn}.jsonl"
+    path = turn_buffer.turn_events_path(root, safe_session, safe_turn)
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]

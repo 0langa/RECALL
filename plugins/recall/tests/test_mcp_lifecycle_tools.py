@@ -6,6 +6,7 @@ import json
 import sys
 import tempfile
 import unittest
+import hashlib
 from pathlib import Path
 
 
@@ -17,6 +18,21 @@ import kimi_mcp_server as server  # noqa: E402
 import config  # noqa: E402
 import memory_manager  # noqa: E402
 import memory_hygiene  # noqa: E402
+import storage  # noqa: E402
+
+
+def seed_historical_verification(record_id: int, root: str) -> None:
+    """Imported pre-existing state for edit preservation; never a public proof mint."""
+    record = storage.get_record(record_id, root)
+    source = Path(root) / "historical-policy.txt"
+    source.write_text(record.content, encoding="utf-8")
+    observed = source.read_bytes()
+    assert observed.decode("utf-8") == record.content
+    metadata = {**record.metadata, "status": "validated", "confirmed_count": 2,
+                "confirmation_sessions": ["historical-A", "historical-B"], "last_confirmed": record.timestamp,
+                "validated_at": record.timestamp, "trust": 0.9,
+                "historical_fixture_source_sha256": hashlib.sha256(observed).hexdigest()}
+    storage.update_record_metadata(record_id, metadata, root)
 
 
 def call_tool(name: str, arguments: dict) -> dict:
@@ -336,6 +352,7 @@ class McpLifecycleTests(unittest.TestCase):
                     rid = call_tool("save_insight", {**seed, "source_session": "old-A"})["id"]
                     call_tool("save_insight", {**seed, "source_session": "old-A"})
                     call_tool("save_insight", {**seed, "source_session": "old-B"})
+                    seed_historical_verification(rid, tmp)
                     before = memory_manager.get_record(rid, tmp)
                     self.assertEqual(before.metadata["status"], "validated")
                     result = call_tool("update_memory", {"root": tmp, "op": "update", "id": rid, **changes})
@@ -385,8 +402,8 @@ class McpLifecycleTests(unittest.TestCase):
                     repeated = memory_manager.confirm_record(rid, tmp, source_session="fresh-C")
                     self.assertEqual(repeated.metadata["confirmed_count"], 1)
                     confirmed = call_tool("update_memory", {"root": tmp, "op": "confirm", "id": rid})
-                    self.assertEqual(confirmed["record"]["status"], "validated")
-                    self.assertNotIn("verification_invalidated_at", confirmed["record"]["metadata"])
+                    self.assertEqual(confirmed["record"]["status"], "active")
+                    self.assertIn("verification_invalidated_at", confirmed["record"]["metadata"])
                     self.assertEqual(confirmed["record"]["metadata"]["verification_history"],
                                      after.metadata["verification_history"])
 
@@ -644,7 +661,8 @@ class McpHygieneTests(unittest.TestCase):
             call_tool("save_insight", {"root": tmp, "category": "decisions", "content": "Keep memory local-first."})
             scan = call_tool("memory_hygiene", {"root": tmp, "mode": "scan"})
             self.assertEqual(scan["action"], "hygiene-scan")
-            applied = call_tool("memory_hygiene", {"root": tmp, "mode": "apply_safe"})
+            plan = call_tool("memory_hygiene", {"root": tmp, "mode": "plan"})
+            applied = call_tool("memory_hygiene", {"root": tmp, "mode": "apply_safe", "plan": plan.get("plan", plan)})
             self.assertEqual(applied["action"], "hygiene-apply")
 
     def test_safe_hygiene_keeps_same_text_conflicts_on_both_backends_and_orders(self) -> None:
@@ -684,7 +702,7 @@ class McpHygieneTests(unittest.TestCase):
                     record_ids = {record.id for record in created}
 
                     plan = call_tool("memory_hygiene", {"root": tmp, "mode": "plan"})
-                    applied = call_tool("memory_hygiene", {"root": tmp, "mode": "apply_safe"})
+                    applied = call_tool("memory_hygiene", {"root": tmp, "mode": "apply_safe", "plan": plan.get("plan", plan)})
                     after = [memory_manager.get_record(record.id, tmp) for record in created]
                     fresh_plan = call_tool("memory_hygiene", {"root": tmp, "mode": "plan"})
                     retrieved = call_tool(
@@ -780,7 +798,7 @@ class McpHygieneTests(unittest.TestCase):
                     self.assertEqual(set(conflicts[0]["details"]["record_ids"]), set(by_id))
                     self.assertEqual(conflicts[0]["details"]["values"], [double_space, single_space])
 
-                    applied = call_tool("memory_hygiene", {"root": tmp, "mode": "apply_safe"})
+                    applied = call_tool("memory_hygiene", {"root": tmp, "mode": "apply_safe", "plan": plan.get("plan", plan)})
                     reopened = [memory_manager.get_record(record.id, tmp) for record in created]
                     current = [
                         record
@@ -870,7 +888,7 @@ class McpHygieneTests(unittest.TestCase):
             )
 
             plan = call_tool("memory_hygiene", {"root": tmp, "mode": "plan", "claim_key": "release.path"})
-            applied = call_tool("memory_hygiene", {"root": tmp, "mode": "apply_safe"})
+            applied = call_tool("memory_hygiene", {"root": tmp, "mode": "apply_safe", "plan": plan.get("plan", plan)})
             current = call_tool(
                 "retrieve_memory",
                 {"root": tmp, "query_text": "Primary release path", "verbose": True},

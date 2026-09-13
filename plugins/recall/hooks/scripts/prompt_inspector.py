@@ -51,7 +51,7 @@ def main() -> None:
     cwd = event.cwd or event.root
     resolved_root = event.root
     prompt = event.prompt.strip()
-    if turn_policy.policy_status(resolved_root, event.session_id, event.turn_id)["disabled"]:
+    if turn_policy.policy_status(resolved_root, event.session_id, event.turn_id, provider=event.provider)["disabled"]:
         print(json.dumps(turn_policy.disabled_result(hook=True)))
         return
     if not prompt:
@@ -96,7 +96,7 @@ def main() -> None:
 
     session_id = event.session_id
     turn_id = event.turn_id
-    turn_buffer.mark_active(root, session_id, turn_id, prompt)
+    turn_buffer.mark_active(root, session_id, turn_id, prompt, provider=event.provider)
     observability.trace(
         root,
         "prompt_activation",
@@ -192,7 +192,7 @@ def main() -> None:
         prompt_event = capture_policy.classify_prompt_event(prompt)
         if prompt_event is not None:
             prompt_event = {**prompt_event, **event.provider_metadata(capture_channel="hook")}
-            turn_buffer.append_event(root, session_id, turn_id, prompt_event)
+            turn_buffer.append_event(root, session_id, turn_id, prompt_event, provider=event.provider)
 
     retrieval_text = memory_text or cue_text or prompt
     exclusions = capture_policy.retrieval_exclusions(retrieval_text)

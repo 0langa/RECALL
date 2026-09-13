@@ -86,13 +86,15 @@ def _confirm_metadata(metadata: dict[str, Any], session_id: str, *, explicit: bo
 
 
 def _confirm_record(connection, record_id: int, session_id: str, turn_id: str, root: str | Path | None,
-                    evidence_ids: Any = None) -> None:
+                    evidence_ids: Any = None, provider: str = "codex") -> None:
     row = connection.execute("SELECT category, content, timestamp, metadata FROM memories WHERE id = ?", (record_id,)).fetchone()
     if row is None:
         raise KeyError(f"RECALL memory #{record_id} was not found.")
     category, content, timestamp = str(row[0]), str(row[1]), str(row[2])
     metadata = _confirm_metadata(json.loads(row[3] or "{}"), session_id)
-    receipt = observed_evidence.evidence_for_card(root, category, content, metadata, evidence_ids, session_id, turn_id)
+    receipt = observed_evidence.evidence_for_card(
+        root, category, content, metadata, evidence_ids, session_id, turn_id, provider
+    )
     if receipt:
         metadata["observed_evidence"] = receipt
     if observed_evidence.has_observed_evidence(root, category, content, metadata):
@@ -104,7 +106,13 @@ def _confirm_record(connection, record_id: int, session_id: str, turn_id: str, r
     _update_metadata(connection, record_id, timestamp, metadata)
 
 
-def _prepare_card(card: dict[str, Any], session_id: str, turn_id: str, root: str | Path | None = None) -> dict[str, Any]:
+def _prepare_card(
+    card: dict[str, Any],
+    session_id: str,
+    turn_id: str,
+    root: str | Path | None = None,
+    provider: str = "codex",
+) -> dict[str, Any]:
     category = recall_config.normalize_category(_required_string(card, "category"))
     content = _required_string(card, "content")
     summary = _required_string(card, "summary")
@@ -158,6 +166,7 @@ def _prepare_card(card: dict[str, Any], session_id: str, turn_id: str, root: str
         "confidence": float(card.get("confidence", 0.75)),
         "session_id": session_id,
         "turn_id": turn_id,
+        "origin_provider": provider,
         "confirmation_sessions": [session_id],
         "confirmed_count": 1,
         "capture_reason": str(card.get("capture_reason") or "semantic turn finalization"),
@@ -170,7 +179,9 @@ def _prepare_card(card: dict[str, Any], session_id: str, turn_id: str, root: str
     for key in ("claim_key", "claim_value", "source_path", "source_hash", "source_revision", "merged_from"):
         if card.get(key) not in (None, "", []):
             metadata[key] = card[key]
-    receipt = observed_evidence.evidence_for_card(root, category, content, metadata, card.get("evidence_ids"), session_id, turn_id)
+    receipt = observed_evidence.evidence_for_card(
+        root, category, content, metadata, card.get("evidence_ids"), session_id, turn_id, provider
+    )
     if receipt:
         metadata["observed_evidence"] = receipt
         metadata["validated_at"] = receipt["observed_at"]
@@ -242,7 +253,10 @@ def _flag_conflicting_claims(connection, new_id: int, category: str, metadata: d
 
 
 def apply_finalizer_batch(batch: dict[str, Any], root: str | Path | None) -> dict[str, Any]:
-    if turn_policy.policy_status(root, batch.get("session_id"), batch.get("turn_id"))["disabled"]:
+    provider = str(batch.get("origin_provider") or batch.get("provider") or "codex").strip().lower()
+    if turn_policy.policy_status(
+        root, batch.get("session_id"), batch.get("turn_id"), provider=provider
+    )["disabled"]:
         return turn_policy.disabled_result()
     if batch.get("schema") != SCHEMA:
         raise ValueError(f"finalizer batch schema must be {SCHEMA}.")
@@ -260,11 +274,14 @@ def apply_finalizer_batch(batch: dict[str, Any], root: str | Path | None) -> dic
         if not isinstance(operation, dict) or operation.get("op") not in ALLOWED_OPERATIONS:
             raise ValueError("finalizer batch contains an unsupported operation.")
 
-    prepared_cards = [_prepare_card(dict(operation.get("card") or {}), session_id, turn_id, root) for operation in save_operations]
+    prepared_cards = [
+        _prepare_card(dict(operation.get("card") or {}), session_id, turn_id, root, provider)
+        for operation in save_operations
+    ]
     storage.init_store(root)
     if storage.backend(root) != "sqlite":
         raise ValueError("atomic finalizer batches require the SQLite backend.")
-    idempotency_key = f"finalizer:{session_id}:{turn_id}"
+    idempotency_key = f"finalizer:{provider}:{session_id}:{turn_id}"
     results: list[dict[str, Any]] = []
     card_index = 0
     changed = False
@@ -295,7 +312,15 @@ def apply_finalizer_batch(batch: dict[str, Any], root: str | Path | None) -> dic
                         duplicate_id = int(duplicate[0])
                         metadata = json.loads(duplicate[2] or "{}")
                         if str(metadata.get("session_id") or "") != session_id:
-                            _confirm_record(connection, duplicate_id, session_id, turn_id, root, prepared["metadata"].get("evidence_ids"))
+                            _confirm_record(
+                                connection,
+                                duplicate_id,
+                                session_id,
+                                turn_id,
+                                root,
+                                prepared["metadata"].get("evidence_ids"),
+                                provider,
+                            )
                             changed = True
                             results.append({"op": "save", "action": "corroborated", "id": duplicate_id})
                         else:
@@ -322,7 +347,9 @@ def apply_finalizer_batch(batch: dict[str, Any], root: str | Path | None) -> dic
                     results.append(result)
                 elif kind == "confirm":
                     record_id = int(operation["id"])
-                    _confirm_record(connection, record_id, session_id, turn_id, root, operation.get("evidence_ids"))
+                    _confirm_record(
+                        connection, record_id, session_id, turn_id, root, operation.get("evidence_ids"), provider
+                    )
                     changed = True
                     results.append({"op": kind, "id": record_id})
                 elif kind == "resolve":
@@ -358,9 +385,25 @@ def apply_finalizer_batch(batch: dict[str, Any], root: str | Path | None) -> dic
 
     if changed:
         index_store.rebuild(root)
-    turn_buffer.mark_finalized(root, session_id, turn_id)
-    turn_policy.finish_turn(root, session_id, turn_id)
-    observability.trace(root, "finalizer_applied", {"session_id": session_id, "turn_id": turn_id, "operations": results})
+    turn_buffer.mark_finalized(root, session_id, turn_id, provider=provider)
+    turn_policy.finish_turn(root, session_id, turn_id, provider=provider)
+    observability.trace(
+        root,
+        "finalizer_applied",
+        {"session_id": session_id, "turn_id": turn_id, "origin_provider": provider, "operations": results},
+    )
     cfg = recall_config.load_config_if_present(root)
-    turn_buffer.cleanup_success(root, session_id, turn_id, keep_request=cfg.get("observability_mode") == "debug")
-    return {"action": "applied", "session_id": session_id, "turn_id": turn_id, "operations": results}
+    turn_buffer.cleanup_success(
+        root,
+        session_id,
+        turn_id,
+        provider=provider,
+        keep_request=cfg.get("observability_mode") == "debug",
+    )
+    return {
+        "action": "applied",
+        "session_id": session_id,
+        "turn_id": turn_id,
+        "origin_provider": provider,
+        "operations": results,
+    }

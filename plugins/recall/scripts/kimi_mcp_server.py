@@ -18,6 +18,8 @@ import contract as recall_contract
 import memory_hygiene
 import memory_manager
 import security
+import runtime_guard
+import turn_policy
 from models import ContextPacketRequest, ReviewRequest
 from services.context_service import build_context_packet
 from services.health_service import review_memory
@@ -26,9 +28,8 @@ from services.health_service import review_memory
 Json = dict[str, Any]
 
 
-def resolve_root(arguments: Json) -> Path | None:
-    raw = arguments.get("root") or os.environ.get("RECALL_PROJECT_ROOT")
-    return Path(str(raw)).expanduser().resolve() if raw else None
+def resolve_root(arguments: Json) -> Path:
+    return recall_config.project_root(arguments.get("root"))
 
 
 def resolve_provider() -> str:
@@ -128,6 +129,8 @@ TOOLS: list[Json] = [
                 "status": {"type": "string"},
                 "importance": {"type": "number", "minimum": 0, "maximum": 1},
                 "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "evidence_ids": {"type": "array", "items": {"type": "string"},
+                                 "description": "IDs of actual observed hook results for this exact fact and turn."},
                 "origin_agent": {"type": "string"},
                 "source_session": {"type": "string"},
                 "source_turn": {"type": "string"},
@@ -229,14 +232,18 @@ TOOLS: list[Json] = [
             "Keep the memory store trustworthy. mode=route decides whether candidate text belongs in memory, "
             "repo docs, provider config, or nowhere (call before uncertain saves). mode=scan audits the store "
             "for duplicates, conflicts, stale/source-drifted cards, secret-shaped content, raw logs, and vague "
-            "memories. mode=plan lists concrete repair proposals. mode=apply_safe applies only safe, "
-            "non-destructive repairs; risky ones stay proposals for review."
+            "memories. mode=plan returns a plan for review. mode=apply_safe requires that exact plan in the plan "
+            "argument and applies only its safe, non-destructive repairs; risky ones stay proposals for review."
         ),
         "inputSchema": tool_schema(
             {
                 "mode": {"type": "string", "enum": ["route", "scan", "plan", "apply_safe"]},
                 "text": {"type": "string", "description": "Candidate text for mode=route."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 500},
+                "scan_limit": {"type": "integer", "minimum": 1},
+                "output_limit": {"type": "integer", "minimum": 1},
+                "action_limit": {"type": "integer", "minimum": 1},
+                "plan": {"type": "object", "description": "Exact reviewed plan from mode=plan; when claim_key is set, use response.plan. Apply never replans it."},
                 "claim_key": {"type": "string", "description": "Optional claim to reconcile in mode=plan."},
             },
             ["mode"],
@@ -317,7 +324,8 @@ def call_save_insight(arguments: Json) -> Json:
     ):
         value = arguments.get(extra_key)
         if value is not None and str(value).strip():
-            metadata[extra_key] = str(value).strip()
+            metadata[extra_key] = str(value) if extra_key in {"claim_key", "claim_value"} else str(value).strip()
+    metadata["evidence_ids"] = list(arguments.get("evidence_ids") or [])
     outcome = memory_manager.add_record_if_useful(
         str(arguments["category"]),
         content,
@@ -469,18 +477,25 @@ def call_memory_hygiene(arguments: Json) -> Json:
             raise ValueError("mode=route requires text (the candidate fact to route).")
         return memory_hygiene.route_memory(text)
     if mode == "scan":
-        return memory_hygiene.hygiene_scan(root, limit=limit)
+        return memory_hygiene.hygiene_scan(root, limit=limit, scan_limit=arguments.get("scan_limit"),
+                                          output_limit=arguments.get("output_limit"), action_limit=arguments.get("action_limit"))
     if mode == "plan":
-        claim_key = arguments.get("claim_key")
-        if claim_key:
-            return memory_hygiene.reconcile_current_truth(root, claim_key=str(claim_key))
-        return memory_hygiene.hygiene_plan(root, limit=limit)
+        if arguments.get("claim_key"):
+            return memory_hygiene.reconcile_current_truth(root, claim_key=str(arguments["claim_key"]), limit=limit,
+                                                         scan_limit=arguments.get("scan_limit"), output_limit=arguments.get("output_limit"),
+                                                         action_limit=arguments.get("action_limit"))
+        return memory_hygiene.hygiene_plan(root, limit=limit, claim_key=arguments.get("claim_key"),
+                                          scan_limit=arguments.get("scan_limit"), output_limit=arguments.get("output_limit"),
+                                          action_limit=arguments.get("action_limit"))
     if mode == "apply_safe":
-        return memory_hygiene.hygiene_apply(root, safe=True, limit=limit)
+        return memory_hygiene.hygiene_apply(root, safe=True, limit=limit, plan=arguments.get("plan"),
+                                           action_limit=arguments.get("action_limit"))
     raise ValueError(f"Unknown memory_hygiene mode: {mode}")
 
 
 def call_memory_contract(arguments: Json) -> Json:
+    if turn_policy.policy_status(resolve_root(arguments))["disabled"]:
+        return {"contract": recall_contract.contract_dict(), **turn_policy.disabled_result()}
     cfg = recall_config.load_config_if_present(resolve_root(arguments))
     return {
         "action": "memory-contract",
@@ -490,6 +505,8 @@ def call_memory_contract(arguments: Json) -> Json:
 
 
 def call_initialize_project(arguments: Json) -> Json:
+    if not str(arguments.get("root") or "").strip():
+        raise ValueError("initialize_project requires root.")
     root = resolve_root(arguments)
     if root is None:
         raise ValueError("initialize_project requires root.")
@@ -545,7 +562,21 @@ def handle(request: Json) -> Json | None:
                 raise ValueError(f"Unknown RECALL tool: {name}")
             if not isinstance(arguments, dict):
                 raise ValueError("Tool arguments must be an object.")
-            result = content_response(TOOL_HANDLERS[name](arguments))
+            decision = recall_config.root_decision(arguments.get("root"))
+            try:
+                if name != "memory_contract":
+                    runtime_guard.require_memory(arguments.get("root"))
+                payload = TOOL_HANDLERS[name](arguments)
+            except runtime_guard.MemoryDisabledError as exc:
+                payload = exc.to_dict()
+            if payload.get("action") == "hygiene-plan" and "plan_id" in payload:
+                # Keep the reviewed artifact byte-for-byte hashable. Transport
+                # context belongs in a separate content item, outside its digest.
+                result = content_response(payload)
+                result["content"].append({"type": "text", "text": json.dumps({"root_decision": decision})})
+            else:
+                payload["root_decision"] = decision
+                result = content_response(payload)
         elif method and method.startswith("notifications/"):
             return None
         else:
@@ -555,7 +586,8 @@ def handle(request: Json) -> Json | None:
         return {
             "jsonrpc": "2.0",
             "id": request_id,
-            "error": {"code": -32000, "message": str(exc)},
+            "error": {"code": -32000, "message": str(exc),
+                      **({"data": {"root_decision": exc.decision}} if isinstance(exc, recall_config.RootResolutionError) else {})},
         }
 
 
