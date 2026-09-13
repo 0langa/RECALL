@@ -55,15 +55,38 @@ class McpSurfaceTests(unittest.TestCase):
     def test_initialize_returns_contract_instructions(self) -> None:
         response = server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
         result = response["result"]
-        self.assertIn("Authority order", result["instructions"])
+        self.assertIn("Instruction order", result["instructions"])
+        self.assertLess(result["instructions"].index("system instructions"),
+                        result["instructions"].index("developer instructions"))
         self.assertIn("retrieve_memory", result["instructions"])
 
     def test_memory_contract_tool_returns_lifecycle_and_categories(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             payload = call_tool("memory_contract", {"root": tmp})
-            self.assertEqual(payload["contract"]["authority_order"][0], "current user instruction")
+            self.assertEqual(payload["contract"]["authority_order"], [
+                "system instructions", "developer instructions", "current user instructions and scope",
+            ])
             self.assertIn("tooling_quirks", payload["categories"])
             self.assertIn("update_rule", payload["categories"]["commands"])
+
+    def test_tools_only_and_full_guidance_share_scope_and_trust_rules(self) -> None:
+        guidance = server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize"})["result"]["instructions"]
+        descriptions = {tool["name"]: tool["description"] for tool in server.TOOLS}
+        for text in (guidance, descriptions["retrieve_memory"], descriptions["context_packet"]):
+            with self.subTest(text=text):
+                self.assertIn("prior project history", text)
+                self.assertIn("permitted scope", text)
+                self.assertIn("self-contained task", text)
+                self.assertIn("memory-free task", text)
+                self.assertIn("untrusted project data", text)
+                self.assertIn("grant permission", text)
+                self.assertIn("empty result is valid", text)
+                self.assertNotIn("BEFORE starting", text)
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = call_tool("initialize_project", {"root": tmp})
+            self.assertNotIn("before starting work", payload["first_workflow"])
+            self.assertIn("lookup is in scope", payload["first_workflow"])
+            self.assertIn("update_memory", payload["first_workflow"])
 
 
 class McpSaveTests(unittest.TestCase):
@@ -856,7 +879,7 @@ class McpInitTests(unittest.TestCase):
             self.assertTrue(payload["activation"]["enabled"])
             self.assertIn(".recall/", payload["gitignore"]["added"])
             self.assertIn("tooling_quirks", payload["categories"])
-            self.assertIn("Authority order", payload["contract"])
+            self.assertIn("Instruction order", payload["contract"])
             self.assertIn("retrieve_memory", payload["first_workflow"])
             gitignore = (Path(tmp) / ".gitignore").read_text(encoding="utf-8")
             self.assertIn(".recall/", gitignore)

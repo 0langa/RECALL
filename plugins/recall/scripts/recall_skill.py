@@ -358,10 +358,7 @@ def handle_initialize_project(args: argparse.Namespace, root: Path | None) -> No
             "gitignore": gitignore,
             "categories": sorted(cfg.get("categories", {})),
             "contract": recall_contract.compact_contract_text(),
-            "first_workflow": (
-                "1) retrieve-memory before starting work; 2) work normally; 3) save-insight only for "
-                "durable verified facts; 4) edit/supersede memories when facts change; 5) hygiene-scan periodically."
-            ),
+            "first_workflow": recall_contract.first_workflow_text("cli"),
         }
     )
 

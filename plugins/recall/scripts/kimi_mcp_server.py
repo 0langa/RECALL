@@ -75,9 +75,9 @@ TOOLS: list[Json] = [
     {
         "name": "retrieve_memory",
         "description": (
-            "Retrieve relevant RECALL memories from the project's local store. Call this BEFORE starting "
-            "work on bug fixes, unfamiliar code, repeated failures, provider/plugin tasks, security-sensitive "
-            "changes, or after context loss. Results carry a `flag` (current/stale/superseded/deprecated/"
+            "Retrieve relevant RECALL memories from the project's local store. "
+            + recall_contract.retrieval_tool_guidance()
+            + " Results carry a `flag` (current/stale/superseded/deprecated/"
             "needs_verification/conflicting); treat anything not `current` as unverified."
         ),
         "inputSchema": tool_schema(
@@ -98,8 +98,8 @@ TOOLS: list[Json] = [
     {
         "name": "context_packet",
         "description": (
-            "Build a compact, token-budgeted packet of the most relevant project memories. Best first call "
-            "when starting a new session or continuing after context loss."
+            "Build a compact, token-budgeted packet of relevant project memories. "
+            + recall_contract.retrieval_tool_guidance()
         ),
         "inputSchema": tool_schema(
             {
@@ -245,9 +245,8 @@ TOOLS: list[Json] = [
     {
         "name": "memory_contract",
         "description": (
-            "Return RECALL's memory lifecycle contract: source authority order, when to retrieve, what to "
-            "save vs skip, status meanings, and category guidance. Call after context loss or when unsure "
-            "how to use memory correctly."
+            "Return RECALL's canonical instruction hierarchy, memory trust, retrieval relevance, "
+            "save/skip, status, and maintenance rules."
         ),
         "inputSchema": tool_schema({}),
     },
@@ -503,11 +502,7 @@ def call_initialize_project(arguments: Json) -> Json:
         "gitignore": gitignore,
         "categories": sorted(cfg.get("categories", {})),
         "contract": recall_contract.compact_contract_text(),
-        "first_workflow": (
-            "1) retrieve_memory or context_packet before starting work; 2) work normally; "
-            "3) save_insight only for durable verified facts; 4) update_memory when stored facts change; "
-            "5) memory_hygiene mode=scan periodically."
-        ),
+        "first_workflow": recall_contract.first_workflow_text("mcp"),
     }
 
 

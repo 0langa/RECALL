@@ -308,7 +308,7 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
         (session_start.get("hookSpecificOutput") or {}).get("additionalContext") or ""
     )
     require(
-        "Authority order" in contract_context,
+        "Instruction order" in contract_context,
         "SessionStart should inject the lifecycle contract for activated projects",
     )
     checks.append("SessionStart injects the lifecycle contract for the activated project")

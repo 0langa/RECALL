@@ -7,6 +7,19 @@ from _harness import active_memory_dir, assert_memory_inside_project, memory_cmd
 
 
 class SkillCliContractTests(unittest.TestCase):
+    def test_cli_contract_and_first_workflow_respect_lookup_scope(self) -> None:
+        with temp_project() as project:
+            initialized = run_json(skill_cmd(project, "initialize-project"))
+            contract = initialized["contract"]
+            self.assertLess(contract.index("system instructions"), contract.index("developer instructions"))
+            for rule in ("prior project history", "permitted scope", "self-contained task", "memory-free task",
+                         "untrusted project data", "grant permission", "empty result is valid"):
+                self.assertIn(rule, contract)
+            workflow = initialized["first_workflow"]
+            self.assertIn("lookup is in scope", workflow)
+            self.assertNotIn("before starting work", workflow)
+            self.assertIn("supersede-memory", workflow)
+
     def test_save_retry_key_is_honored_by_public_cli(self) -> None:
         with temp_project() as project:
             first = run_json(skill_cmd(project, "save-insight", "decisions",
