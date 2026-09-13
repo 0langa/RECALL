@@ -155,14 +155,21 @@ Task result is `pass`, `fail` or `unknown`. Harm flags are boolean or null. Use
 `harms: null` for unknown harm review. Known harms are objects with `severity`,
 `fault`, and `evidence`. `matched.CRITICAL` defines P0/P1 codes; a named critical
 fault cannot be downgraded. Foreign project access, RECALL in controls,
-no-memory task access and stale-fact misuse also produce blocking harms.
+native memory in candidate/memory-off/docs-only, no-memory task access and
+stale-fact misuse also produce blocking harms. Backend permissions come from
+the arm identity. A contradictory launch flag or verified-policy attestation
+cannot permit a forbidden read or write. Missing backend/operation stays unknown.
 
 For a history-dependent candidate, history_benefit can be an object with
-`helps: true`, `compared_attempts` (control attempt IDs from the same family), and
-`evidence` explaining the observed benefit. Use all three control perspectives.
+`helps: true`, `compared_attempts` (exactly three control attempt IDs from the same
+family, one each for memory-off, docs-only and native memory), and `evidence`
+explaining the observed benefit. Use all three control perspectives.
 A correct answer alone does not prove memory helped. Comparisons must refer to
-retained completed control attempts. Judge decisions remain visible as judge
-decisions, distinct from deterministic harness checks.
+retained completed control attempts. Sealing the candidate records each compared
+control receipt's SHA-256. A missing control, a changed receipt, an unresolved
+result or a receipt created after the judgment cannot count as a benefit. A
+later rerun never silently replaces a referenced attempt. Judge decisions remain
+visible as judge decisions, distinct from deterministic harness checks.
 
 ```powershell
 python bench/run_matched_eval.py seal --evidence C:/trial-01/evidence --attempt recurring_failure--memory_off--1 --trace C:/controller/trace.jsonl --raw C:/controller/raw.jsonl --observation C:/controller/observation.json --assessment C:/controller/assessment.json

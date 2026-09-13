@@ -64,7 +64,7 @@ class MatchedHarnessTests(unittest.TestCase):
         events.extend(extra_events or [])
         events.append({"kind": "run_end", "complete": True, "exit_code": 0})
         events = [{"seq": i, "attempt_id": launch["attempt_id"], **event} for i, event in enumerate(events, 1)]
-        folder = self.root / "incoming" / launch["attempt_id"]
+        folder = self.root / "incoming" / self.evidence.name / launch["attempt_id"]
         folder.mkdir(parents=True)
         trace = folder / "trace.jsonl"
         trace.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
@@ -371,6 +371,86 @@ class MatchedHarnessTests(unittest.TestCase):
         process = subprocess.run([sys.executable, str(BENCH / "run_matched_eval.py"), "report", "--evidence", str(self.evidence)], capture_output=True, text=True)
         self.assertEqual(process.returncode, 2)
         self.assertEqual(json.loads(process.stdout)["status"], "unknown")
+
+    def fresh_matrix(self, label):
+        self.evidence, self.subjects = self.root / f"evidence-{label}", self.root / f"subjects-{label}"
+        self.manifest = m.prepare(self.repo, self.commit, self.fixture, self.evidence, self.subjects,
+                                  self.host, self.models)
+
+    def test_review_arm_policy_checks_both_backends_and_operations(self):
+        for arm in m.ARMS:
+            for backend in ("recall", "native_memory"):
+                for operation in ("read", "write"):
+                    with self.subTest(arm=arm, backend=backend, operation=operation):
+                        self.fresh_matrix(f"{arm}-{backend}-{operation}")
+                        launch = self.begin(arm=arm)
+                        # A contradictory mutable policy/attestation cannot grant access.
+                        launch["runtime_policy"].update(recall_enabled=True, native_memory_enabled=True)
+                        (self.evidence / "attempts" / launch["attempt_id"] / "launch.json").write_text(json.dumps(launch))
+                        result, _ = self.seal(launch, extra_events=[{"kind": "memory_access", "backend": backend,
+                            "operation": operation, "phase_id": "task", "project_root": launch["workspace"]}])
+                        permitted = (arm, backend) in (("candidate", "recall"), ("native_memory", "native_memory"))
+                        self.assertEqual(result["status"], "pass" if permitted else "blocked")
+                        if not permitted:
+                            self.assertTrue(any(f["severity"] == "P1" for f in result["critical_faults"]))
+                            with self.assertRaisesRegex(ValueError, "halted"):
+                                self.begin("stale_fact", arm)
+
+    def test_review_forbidden_access_still_blocks_when_metrics_are_unknown(self):
+        launch = self.begin(arm="memory_off")
+        result, _ = self.seal(launch, extra_events=[{"kind": "memory_access", "backend": "native_memory",
+            "operation": "write", "phase_id": "task", "project_root": launch["workspace"]}],
+            observation_changes={"tokens": None, "elapsed_seconds": None})
+        self.assertEqual(result["status"], "blocked")
+        self.assertIsNone(result["tokens"])
+        self.assertIsNone(result["elapsed_seconds"])
+
+    def test_review_null_backend_or_operation_remains_unknown(self):
+        for backend, operation in ((None, "read"), ("native_memory", None)):
+            with self.subTest(backend=backend, operation=operation):
+                self.fresh_matrix(f"null-{backend}-{operation}")
+                launch = self.begin(arm="memory_off")
+                result, _ = self.seal(launch, extra_events=[{"kind": "memory_access", "backend": backend,
+                    "operation": operation, "phase_id": "task", "project_root": launch["workspace"]}])
+                self.assertEqual(result["status"], "unknown")
+                self.assertEqual(result["critical_faults"], [])
+                self.assertIsNone(result["recall_reads"])
+
+    def history_controls(self):
+        controls = []
+        for arm in ("memory_off", "docs_only", "native_memory"):
+            launch = self.begin("recurring_failure", arm)
+            self.seal(launch)
+            controls.append(launch["attempt_id"])
+        return controls
+
+    def test_review_history_benefit_needs_each_control_arm(self):
+        for omitted in ("memory_off", "docs_only", "native_memory"):
+            with self.subTest(omitted=omitted):
+                self.fresh_matrix(omitted)
+                controls = self.history_controls()
+                selected = [ref for ref in controls if f"--{omitted}--" not in ref]
+                self.seal(self.begin("recurring_failure"), assessment_changes={"history_benefit": {
+                    "helps": True, "compared_attempts": selected, "evidence": "Synthetic missing-control probe"}})
+                self.assertEqual(m.summarize(self.evidence)["history_benefit_families"], [])
+
+    def test_review_history_control_receipts_are_frozen_with_judgment(self):
+        controls = self.history_controls()
+        launch = self.begin("recurring_failure")
+        self.seal(launch, assessment_changes={"history_benefit": {
+            "helps": True, "compared_attempts": controls, "evidence": "Synthetic complete-control probe"}})
+        self.assertEqual(m.summarize(self.evidence)["history_benefit_families"], ["recurring_failure"])
+        candidate_folder = self.evidence / "attempts" / launch["attempt_id"]
+        original_receipt = (candidate_folder / "receipt.json").read_bytes()
+        original_judgment = (candidate_folder / "assessment.json").read_bytes()
+        control_receipt = self.evidence / "attempts" / controls[0] / "receipt.json"
+        changed = m.read_json(control_receipt)
+        changed["sealed_at"] = "changed after comparison"
+        control_receipt.write_text(json.dumps(changed))
+        # Control artifact hashes still verify, but it is not the compared receipt.
+        self.assertEqual(m.summarize(self.evidence)["history_benefit_families"], [])
+        self.assertEqual((candidate_folder / "receipt.json").read_bytes(), original_receipt)
+        self.assertEqual((candidate_folder / "assessment.json").read_bytes(), original_judgment)
 
 
 if __name__ == "__main__":

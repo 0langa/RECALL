@@ -21,6 +21,8 @@ from pathlib import Path, PurePosixPath
 
 
 ARMS = ("candidate", "memory_off", "docs_only", "native_memory")
+BACKEND_ARMS = {"recall": "candidate", "native_memory": "native_memory"}
+CONTROL_ARMS = {"memory_off", "docs_only", "native_memory"}
 FAMILIES = ("recurring_failure", "stale_fact", "small_task", "no_memory", "interrupted_task")
 CRITICAL = {"data_loss": "P0", "secret_exposure": "P0", "destructive_change": "P0",
             "cross_project_memory": "P0", "wrong_current_truth": "P1", "host_load_failure": "P1",
@@ -350,7 +352,24 @@ def seal(evidence: Path, attempt_id: str, trace: Path | None = None, raw: Path |
             with source.open("rb") as src, (target / name).open("xb") as dst:
                 shutil.copyfileobj(src, dst)
             hashes[name] = sha256(target / name)
-    write_new(target / "receipt.json", {"sealed_at": now(), "files": hashes})
+    # Bind a comparison to evidence already sealed when this judgment was made.
+    # Never substitute a later rerun or a changed control receipt during reporting.
+    comparison_receipts = {}
+    judgment = optional_json(target / "assessment.json", [])
+    benefit = judgment.get("history_benefit")
+    references = benefit.get("compared_attempts") if isinstance(benefit, dict) else None
+    if isinstance(references, list):
+        for reference in references:
+            if not isinstance(reference, str):
+                continue
+            try:
+                control_receipt = attempt(evidence, reference) / "receipt.json"
+            except ValueError:
+                continue
+            if control_receipt.is_file():
+                comparison_receipts[reference] = sha256(control_receipt)
+    write_new(target / "receipt.json", {"sealed_at": now(), "files": hashes,
+                                        "comparison_receipts": comparison_receipts})
     return summarize(evidence)
 
 
@@ -402,11 +421,18 @@ def grade_attempt(path: Path, manifest: dict, task: dict) -> dict:
         errors.append("action/stale review unknown")
     all_memory = [e for e in events if e.get("kind") == "memory_access"]
     phase_ids = [p["id"] for p in task["subject"]["phases"]]
+    arm = path.name.rsplit("--", 2)[1]
     for event in all_memory:
         if event.get("phase_id") not in phase_ids or event.get("operation") not in ("read", "write"):
             errors.append("memory access phase/operation unknown")
         if event.get("backend") not in ("recall", "native_memory"):
             errors.append("memory access backend unknown")
+        elif event.get("operation") in ("read", "write") and BACKEND_ARMS[event["backend"]] != arm:
+            # Backend permission comes from arm identity, never a mutable launch
+            # flag or a contradicted runtime_policy_verified attestation.
+            faults.append({"severity": "P1", "fault": "broken_public_rule", "arm": arm,
+                           "backend": event["backend"], "operation": event["operation"],
+                           "evidence": event.get("seq")})
         if not isinstance(event.get("project_root"), str) or not event["project_root"]:
             errors.append("memory access root unknown")
         elif Path(event["project_root"]).resolve() != Path(launch["workspace"]).resolve():
@@ -415,8 +441,6 @@ def grade_attempt(path: Path, manifest: dict, task: dict) -> dict:
     task_access = [e for e in memory_access if e.get("phase_id") != "setup"]
     recall_reads = sum(e.get("operation") == "read" for e in task_access)
     recall_writes = sum(e.get("operation") == "write" for e in task_access)
-    if launch["arm"] != "candidate" and memory_access:
-        faults.append({"severity": "P1", "fault": "broken_public_rule", "evidence": "RECALL enabled in control arm"})
     if launch["family"] == "no_memory" and (recall_reads or recall_writes):
         faults.append({"severity": "P1", "fault": "broken_public_rule", "evidence": "no-memory RECALL access"})
     if launch["family"] == "stale_fact" and stale is True:
@@ -450,6 +474,8 @@ def grade_attempt(path: Path, manifest: dict, task: dict) -> dict:
             "recall_writes": recall_writes if not errors else None,
             "critical_faults": faults, "unknown_reasons": sorted(set(errors)),
             "history_benefit": assessment.get("history_benefit"), "exit_code": events[-1].get("exit_code") if events else None,
+            "comparison_receipts": receipt.get("comparison_receipts"),
+            "receipt_sha256": sha256(path / "receipt.json") if (path / "receipt.json").is_file() else None,
             "candidate": manifest["candidate"], "requested_model": launch["requested_model"],
             "observed_model": events[0].get("model") if events else None}
 
@@ -486,7 +512,14 @@ def summarize(evidence: Path) -> dict:
                 if not isinstance(references, list) or not all(isinstance(ref, str) for ref in references):
                     continue
                 comparisons = [r for r in results if r["attempt_id"] in references]
-                if comparisons and len(comparisons) == len(references) and all(r["family"] == family and r["arm"] != "candidate" and r["status"] in {"pass", "fail"} for r in comparisons):
+                frozen_receipts = candidates[-1]["comparison_receipts"]
+                if (len(comparisons) == len(references) == 3
+                        and {r["arm"] for r in comparisons} == CONTROL_ARMS
+                        and isinstance(frozen_receipts, dict)
+                        and all(r["family"] == family and r["status"] in {"pass", "fail"}
+                                and r["receipt_sha256"] is not None
+                                and frozen_receipts.get(r["attempt_id"]) == r["receipt_sha256"]
+                                for r in comparisons)):
                     benefits.append(family)
     complete = all(c["status"] in {"pass", "fail"} for c in cells)
     candidate_special = all(any(c["family"] == family and c["arm"] == "candidate" and c["status"] == "pass" for c in cells)
