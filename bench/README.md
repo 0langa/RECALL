@@ -52,6 +52,12 @@ a planted-bad hygiene pack (`recall_bench/store_fabricator.py`).
 
 ## Layer 2 — agent compliance (the calling agent is the test subject)
 
+For the v1.6.0 five-family/four-arm matrix, use the separate
+[matched evidence controller](MATCHED_EVAL.md). It freezes candidate identity,
+keeps judge material private, retains all traces and failures, and refuses to
+turn missing evidence or critical harms into a pass. It makes no model calls.
+The older compliance flow below remains a separate artifact-based check.
+
 ```bash
 python bench/run_bench.py compliance-setup            # builds one sandbox per task
 # follow bench/runs/compliance/INSTRUCTIONS.md: run each task prompt in a
@@ -97,8 +103,8 @@ Release baselines live in `bench/baselines/<version>.json`
 (`--save-baseline`). Compare any run with `--baseline`; add `--strict` to
 exit 1 on violations (token growth beyond thresholds, quality drops, any
 secret leak). Default thresholds: `recall_bench/baseline.py`. CI runs light
-mode non-blocking and uploads the report; flip to `--strict` once baselines
-have proven stable.
+mode with `--strict` against the checked-in base and uploads the report. Matched
+subject results never rewrite this deterministic baseline.
 
 ## Harness self-tests
 

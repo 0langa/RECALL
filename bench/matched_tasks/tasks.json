@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "purpose": "Controller-private synthetic project tasks. Never send this file or judge fields to a subject.",
+  "tasks": [
+    {
+      "id": "recurring_failure",
+      "subject": {
+        "files": {
+          "reader.py": "import json\nfrom pathlib import Path\n\ndef load_settings(path):\n    return json.loads(Path(path).read_text(encoding='utf-8'))\n",
+          "sample.json": "\ufeff{\"region\": \"west\"}\n",
+          "README.md": "Settings loader. Keep the public function load_settings(path). The sample comes from a Windows editor.\n"
+        },
+        "history_document": "Prior incident: files from the Windows editor may start with a UTF-8 BOM. The accepted fix was to read with utf-8-sig. Do not strip arbitrary first characters. Plain UTF-8 input must still work.\n",
+        "phases": [
+          {"id": "setup", "prompt": "Remember this project incident for later work: files from the Windows editor may start with a UTF-8 BOM. We fixed it by reading with utf-8-sig. Plain UTF-8 must still work. Do not strip arbitrary first characters. Make no source change now.", "new_session": true, "interrupt_after": false},
+          {"id": "task", "prompt": "The settings loader fails again on sample.json. Fix the cause and check that plain UTF-8 input still works. Keep the public function. Report the check result.", "new_session": true, "interrupt_after": false}
+        ]
+      },
+      "judge": {
+        "expected": "load_settings reads the BOM sample and ordinary UTF-8 JSON correctly, without dropping valid content or changing the function API.",
+        "checks": ["Run load_settings('sample.json') and compare to {'region': 'west'}.", "Create an ordinary UTF-8 JSON fixture and run the same function.", "Inspect source diff for arbitrary character stripping."],
+        "history_benefit": "Compare traced diagnosis and actions with the retained memory_off, docs_only and native_memory arms. A green loader test alone does not prove history helped."
+      }
+    },
+    {
+      "id": "stale_fact",
+      "subject": {
+        "files": {
+          "service.json": "{\"request_timeout_seconds\": 90}\n",
+          "release-note.md": "Change R17 accepted: request timeout is 90 seconds. service.json is the current run-time setting.\n",
+          "operator-note.md": "Request timeout: 30 seconds.\n"
+        },
+        "history_document": "Historical decision R8: request timeout was 30 seconds. This note records old history and is not proof of the current setting.\n",
+        "phases": [
+          {"id": "setup", "prompt": "Remember historical decision R8: the request timeout was 30 seconds. Do not edit project files in this step.", "new_session": true, "interrupt_after": false},
+          {"id": "task", "prompt": "Check the current request timeout using the project files. Fix operator-note.md if it is out of date. State the evidence for your answer. If you use project memory, correct any old timeout claim from that evidence.", "new_session": true, "interrupt_after": false}
+        ]
+      },
+      "judge": {
+        "expected": "The answer and operator note state 90 seconds with observed service.json and release-note.md evidence. No old 30-second claim is treated as current truth. Candidate memory updates preserve coherent current claim state.",
+        "checks": ["Read the final note and source files.", "Inspect trace for file evidence before truth correction.", "For memory arms, inspect final store and recorded update actions for old current claims."],
+        "history_benefit": "A correct answer alone does not show benefit. Compare old-claim correction and evidence use across matched arms."
+      }
+    },
+    {
+      "id": "small_task",
+      "subject": {
+        "files": {"label.txt": "recieve the package\n"},
+        "history_document": "",
+        "phases": [
+          {"id": "task", "prompt": "Fix the spelling of recieve in label.txt. Keep the rest of the text as it is.", "new_session": true, "interrupt_after": false}
+        ]
+      },
+      "judge": {
+        "expected": "label.txt is exactly 'receive the package' plus the existing newline. No unrelated file edits.",
+        "checks": ["Compare final bytes and workspace diff.", "Report memory use and cost separately from spelling correctness."],
+        "history_benefit": "Not a history-dependent case."
+      }
+    },
+    {
+      "id": "no_memory",
+      "subject": {
+        "files": {"label.txt": "recieve the parcel\n"},
+        "history_document": "Historical project convention: labels use British English.\n",
+        "phases": [
+          {"id": "setup", "prompt": "Remember this project convention: labels use British English. Do not change files now.", "new_session": true, "interrupt_after": false},
+          {"id": "task", "prompt": "Do not read or write project memory for this task. Use only label.txt. Fix the spelling of recieve and keep all other text unchanged.", "new_session": true, "interrupt_after": false}
+        ]
+      },
+      "judge": {
+        "expected": "label.txt is exactly 'receive the parcel' plus the newline. No RECALL read or write occurs during the task phase, including hooks and automatic capture. Setup memory is allowed.",
+        "checks": ["Compare final bytes.", "Require complete instrumentation of reads and writes across task SessionStart, prompt, tools, Stop and finalizers. Absence of a tool call in a partial transcript is unknown, not zero."],
+        "history_benefit": "Not a history-dependent case."
+      }
+    },
+    {
+      "id": "interrupted_task",
+      "subject": {
+        "files": {
+          "formatting.py": "def display_code(value):\n    return str(value)\n",
+          "README.md": "Tiny display formatter. Preserve the display_code(value) function.\n"
+        },
+        "history_document": "Approved display format: prefix Q and pad the integer to three digits. Thus integer 7 displays as Q007. Keep the public function display_code(value).\n",
+        "phases": [
+          {"id": "setup", "prompt": "Remember the approved display format for later: prefix Q and pad the integer to three digits. Integer 7 must display as Q007. Keep display_code(value). Do not change source yet.", "new_session": true, "interrupt_after": true},
+          {"id": "resume", "prompt": "Resume the display formatter work after the interruption. Implement the approved format in formatting.py and check the result. Use project evidence available to you. State any missing requirement.", "new_session": true, "interrupt_after": false}
+        ]
+      },
+      "judge": {
+        "expected": "display_code(7) returns Q007 and display_code(42) returns Q042 with the same public function. One setup interruption and a fresh resume session are evidenced.",
+        "checks": ["Run both function calls.", "Check interrupted phase and distinct session IDs.", "Record honest missing-requirement reports as incomplete task results, without inventing a solution or harm."],
+        "history_benefit": "Compare the resume result and evidence path with all retained control arms. Preserve a control's missing-information result."
+      }
+    }
+  ]
+}
