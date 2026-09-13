@@ -116,6 +116,82 @@ class MemoryHygieneTests(unittest.TestCase):
             self.assertEqual(result["applied"][0]["reason"], "source_state_changed")
             self.assertEqual(storage.get_record(record.id, tmp).metadata["status"], "active")
 
+    def test_source_change_before_operation_keeps_old_observation_and_skips_apply(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "truth.md"
+            source.write_text("Truth A.", encoding="utf-8")
+            initial = provenance_service.describe_file(tmp, "truth.md")
+            record = memory_manager.add_record(
+                "requirements",
+                "Release truth uses the source document.",
+                {"source": "fixture", "status": "active", **initial},
+                tmp,
+            )
+            original_operation = memory_hygiene._operation
+
+            def source_changes_before_operation(proposal, records, observations):
+                source.write_text("Truth B.", encoding="utf-8")
+                return original_operation(proposal, records, observations)
+
+            with patch.object(memory_hygiene, "_operation", side_effect=source_changes_before_operation):
+                plan = memory_hygiene.hygiene_plan(tmp)
+            operation = next(item for item in plan["operations"] if item["id"] == record.id)
+            self.assertEqual(operation["proposed_action"], "refresh_source")
+            self.assertEqual(operation["source_preconditions"][0]["sha256"], initial["source_hash"])
+            self.assertEqual(operation["source_descriptor"]["source_hash"], initial["source_hash"])
+
+            result = memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
+            refreshed = storage.get_record(record.id, tmp)
+            self.assertEqual(result["applied_count"], 0)
+            self.assertEqual(result["applied"][0]["reason"], "source_state_changed")
+            self.assertEqual(refreshed.metadata["source_hash"], initial["source_hash"])
+            self.assertNotIn("last_confirmed", refreshed.metadata)
+
+    def test_refresh_plan_uses_one_observation_for_precondition_and_descriptor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "truth.md"
+            source.write_text("Truth A.", encoding="utf-8")
+            source_hash = provenance_service.hash_file(source)
+            record = memory_manager.add_record(
+                "requirements",
+                "Release truth uses the source document.",
+                {
+                    "source": "fixture",
+                    "status": "active",
+                    "source_kind": "file",
+                    "source_path": "truth.md",
+                    "source_hash": source_hash,
+                },
+                tmp,
+            )
+            original_describe = provenance_service.describe_file
+            with (
+                patch.object(provenance_service, "describe_file", wraps=original_describe) as describe,
+                patch.object(memory_hygiene, "_source_state", side_effect=AssertionError("source was re-read")),
+            ):
+                plan = memory_hygiene.hygiene_plan(tmp)
+            operation = next(item for item in plan["operations"] if item["id"] == record.id)
+            self.assertEqual(describe.call_count, 1)
+            self.assertEqual(operation["source_preconditions"], [{
+                "source_path": "truth.md", "state": "file", "sha256": source_hash,
+            }])
+            self.assertEqual(operation["source_descriptor"]["source_path"], "truth.md")
+            self.assertEqual(operation["source_descriptor"]["source_hash"], source_hash)
+
+    def test_apply_rejects_missing_reviewed_plan_before_planning_or_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            record = memory_manager.add_record(
+                "preferences",
+                "Project layout preference requires evidence.",
+                {"status": "active", "source": "fixture"},
+                tmp,
+            )
+            before = memory_hygiene._record_state(storage.get_record(record.id, tmp))
+            with patch.object(memory_hygiene, "hygiene_plan", side_effect=AssertionError("planned")):
+                with self.assertRaisesRegex(ValueError, "explicit reviewed plan"):
+                    memory_hygiene.hygiene_apply(tmp, safe=True)
+            self.assertEqual(memory_hygiene._record_state(storage.get_record(record.id, tmp)), before)
+
     def test_saved_plan_is_stable_and_skips_changed_records_without_replanning(self) -> None:
         for backend in ("sqlite", "jsonl"):
             with self.subTest(backend=backend), tempfile.TemporaryDirectory() as tmp:
@@ -386,7 +462,7 @@ class MemoryHygieneTests(unittest.TestCase):
 
             plan = memory_hygiene.hygiene_plan(tmp)
             stale = [item for item in plan["proposals"] if item["id"] == record.id and item["proposed_action"] == "stale"]
-            applied = memory_hygiene.hygiene_apply(tmp, safe=True)
+            applied = memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
             result = memory_manager.query("Architecture follows docs truth", categories=["architecture"], statuses=["stale"], root=tmp)
 
             self.assertEqual(stale[0]["reason"], "source_path no longer exists")
@@ -430,7 +506,7 @@ class MemoryHygieneTests(unittest.TestCase):
                 ]
 
                 report = memory_hygiene.reconcile_current_truth(tmp, claim_key="release.path")
-                applied = memory_hygiene.hygiene_apply(tmp, safe=True)
+                applied = memory_hygiene.hygiene_apply(tmp, safe=True, plan=report["plan"])
                 proposal = report["proposals"][0]
 
                 self.assertEqual(report["action"], "reconcile-current-truth")
@@ -463,7 +539,7 @@ class MemoryHygieneTests(unittest.TestCase):
             duplicate = memory_manager.add_record("architecture", "Workers use an event queue.", root=tmp)
 
             plan = memory_hygiene.hygiene_plan(tmp)
-            applied = memory_hygiene.hygiene_apply(tmp, safe=True)
+            applied = memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
 
             self.assertFalse(any(item["proposed_action"] == "review_claim_conflict" for item in plan["proposals"]))
             self.assertTrue(
@@ -494,7 +570,7 @@ class MemoryHygieneTests(unittest.TestCase):
             )
 
             plan = memory_hygiene.hygiene_plan(tmp)
-            applied = memory_hygiene.hygiene_apply(tmp, safe=True)
+            applied = memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
             command_after = memory_manager.query("pytest tests validation", categories=["commands"], statuses=["stale"], root=tmp)
             preference_after = memory_manager.query("verbose release notes", categories=["preferences"], statuses=["needs_confirmation"], root=tmp)
 

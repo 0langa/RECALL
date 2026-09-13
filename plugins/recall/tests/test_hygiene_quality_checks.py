@@ -31,7 +31,7 @@ def seed_raw(tmp: str, category: str, content: str, metadata: dict, days_ago: fl
     return storage.add_record(category, utc(days_ago), content, metadata, embed(content), tmp)
 
 
-F07_FROZEN_CLEAR_NOISE_CASES = (
+F07_SYNTHETIC_CLEAR_NOISE_CASES = (
     ("question", "decisions", "finalizer", "The capture option changed. What does that mean?"),
     ("uncertainty", "decisions", "finalizer", "Actually no idea whether the CI configuration still works."),
     ("attachment-wrapper", "decisions", "finalizer", "Files mentioned by the user: attachment.png. My request: audit this feature."),
@@ -124,7 +124,7 @@ class HygieneQualityCheckTests(unittest.TestCase):
             scan = memory_hygiene.hygiene_scan(tmp)
             self.assertIn("secret-shaped", scan["next_action"])
 
-            memory_hygiene.hygiene_apply(tmp, safe=True)
+            memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
             repaired = storage.get_record(bad.id, tmp)
             self.assertNotIn("sk-proj-", repaired.content)
             self.assertIn("[REDACTED]", repaired.content)
@@ -156,9 +156,9 @@ class HygieneQualityCheckTests(unittest.TestCase):
             plan = memory_hygiene.hygiene_plan(tmp)
             self.assertIn(dump.id, [op["id"] for op in plan["operations"] if op["proposed_action"] == "prune"])
 
-    def test_f07_frozen_noise_mapping_returns_21_review_only_proposals(self) -> None:
-        self.assertEqual(len(F07_FROZEN_CLEAR_NOISE_CASES), 21)
-        for case_id, category, source, text in F07_FROZEN_CLEAR_NOISE_CASES:
+    def test_f07_synthetic_noise_cases_return_21_review_only_proposals(self) -> None:
+        self.assertEqual(len(F07_SYNTHETIC_CLEAR_NOISE_CASES), 21)
+        for case_id, category, source, text in F07_SYNTHETIC_CLEAR_NOISE_CASES:
             with self.subTest(case_id=case_id):
                 record = storage.MemoryRecord(1, category, utc(), text, {"source": source, "status": "active"})
                 proposal = memory_hygiene._review_noise_proposal(record)
@@ -209,7 +209,7 @@ class HygieneQualityCheckTests(unittest.TestCase):
             self.assertIn(snapshot.id, stale_ids)
             self.assertNotIn(fresh.id, stale_ids)
 
-            memory_hygiene.hygiene_apply(tmp, safe=True)
+            memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
             self.assertEqual(storage.get_record(snapshot.id, tmp).metadata.get("status"), "stale")
             self.assertEqual(storage.get_record(fresh.id, tmp).metadata.get("status"), "active")
 
@@ -258,7 +258,7 @@ class HygieneQualityCheckTests(unittest.TestCase):
             self.assertIn("README.md", proposal["reason"])
 
             # Review-only: safe apply must not archive the flagged memory.
-            memory_hygiene.hygiene_apply(tmp, safe=True)
+            memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
             self.assertEqual(storage.get_record(duplicate.id, tmp).metadata.get("status"), "active")
 
     def test_docs_corpus_covers_docs_directory_and_missing_docs_is_quiet(self) -> None:

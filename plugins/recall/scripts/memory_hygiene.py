@@ -280,20 +280,36 @@ def route_memory(candidate_fact: str) -> dict[str, Any]:
     }
 
 
-def _source_proposal(record: storage.MemoryRecord, root: str | Path | None) -> HygieneProposal | None:
+def _source_proposal(
+    record: storage.MemoryRecord,
+    source_observations: dict[str, dict[str, Any]],
+) -> HygieneProposal | None:
     metadata = record.metadata or {}
     if metadata.get("source_kind") != "file" or not metadata.get("source_path") or not _is_current(record):
         return None
-    try:
-        source_path = str(metadata["source_path"])
-        path = _project_file(root, source_path)
-    except Exception as exc:  # noqa: BLE001 - hygiene report should not abort scan.
-        return HygieneProposal(record.id, "stale", 0.85, f"source path is invalid: {exc}", True)
-    if not path.is_file():
-        return HygieneProposal(record.id, "stale", 0.94, "source_path no longer exists", True, details={"source_path": source_path})
+    source_path = str(metadata["source_path"])
+    observation = source_observations.get(source_path)
+    if observation is None:
+        return HygieneProposal(record.id, "stale", 0.85, "source observation is unavailable", True,
+                               details={"source_path": source_path})
+    if observation["state"] != "file":
+        if observation["state"] == "missing":
+            reason = "source_path no longer exists"
+            confidence = 0.94
+        else:
+            reason = "source path cannot be read"
+            confidence = 0.85
+        return HygieneProposal(
+            record.id,
+            "stale",
+            confidence,
+            reason,
+            True,
+            details={"source_path": source_path, "source_observation": observation},
+        )
     expected_hash = str(metadata.get("source_hash") or "")
     if expected_hash:
-        observed_hash = provenance_service.hash_file(path)
+        observed_hash = str(observation["sha256"])
         if observed_hash != expected_hash:
             return HygieneProposal(
                 record.id,
@@ -301,9 +317,17 @@ def _source_proposal(record: storage.MemoryRecord, root: str | Path | None) -> H
                 0.91,
                 "source_path content hash changed",
                 True,
-                details={"source_path": source_path, "observed_source_hash": observed_hash},
+                details={"source_path": source_path, "observed_source_hash": observed_hash,
+                         "source_observation": observation},
             )
-    return HygieneProposal(record.id, "refresh_source", 0.88, "source-backed memory still matches current file", True, details={"source_path": source_path})
+    return HygieneProposal(
+        record.id,
+        "refresh_source",
+        0.88,
+        "source-backed memory still matches current file",
+        True,
+        details={"source_path": source_path, "source_observation": observation},
+    )
 
 
 def _command_stale_proposal(record: storage.MemoryRecord) -> HygieneProposal | None:
@@ -677,7 +701,11 @@ def _doc_duplicate_proposals(
     return proposals
 
 
-def _single_record_proposals(records: list[storage.MemoryRecord], root: str | Path | None) -> list[HygieneProposal]:
+def _single_record_proposals(
+    records: list[storage.MemoryRecord],
+    root: str | Path | None,
+    source_observations: dict[str, dict[str, Any]],
+) -> list[HygieneProposal]:
     stale_days = float(
         recall_config.load_config_if_present(root).get("staleness", {}).get("snapshot_stale_days", SNAPSHOT_STALE_DAYS)
     )
@@ -685,7 +713,7 @@ def _single_record_proposals(records: list[storage.MemoryRecord], root: str | Pa
     for record in records:
         for proposal in (
             _secret_proposal(record),
-            _source_proposal(record, root),
+            _source_proposal(record, source_observations),
             _command_stale_proposal(record),
             _preference_proposal(record),
             _raw_log_proposal(record),
@@ -753,6 +781,36 @@ def _limit_value(value: int | None, name: str) -> int | None:
     return value
 
 
+def _source_observation(root: str | Path | None, source_path: str) -> dict[str, Any]:
+    """Capture one source result for every plan field that depends on it."""
+
+    try:
+        descriptor = provenance_service.describe_file(root or Path.cwd(), source_path)
+    except FileNotFoundError:
+        return {"source_path": source_path, "state": "missing"}
+    except (OSError, ValueError):
+        return {"source_path": source_path, "state": "unreadable"}
+    descriptor.pop("source_checked_at", None)
+    return {
+        "source_path": source_path,
+        "state": "file",
+        "sha256": descriptor["source_hash"],
+        "descriptor": descriptor,
+    }
+
+
+def _source_observations(
+    records: list[storage.MemoryRecord], root: str | Path | None,
+) -> dict[str, dict[str, Any]]:
+    paths = sorted({
+        str(metadata["source_path"])
+        for record in records
+        if (metadata := record.metadata or {}).get("source_kind") == "file"
+        and metadata.get("source_path")
+    })
+    return {source_path: _source_observation(root, source_path) for source_path in paths}
+
+
 def _source_state(root: str | Path | None, source_path: str) -> dict[str, Any]:
     try:
         path = _project_file(root, source_path)
@@ -763,20 +821,37 @@ def _source_state(root: str | Path | None, source_path: str) -> dict[str, Any]:
         return {"source_path": source_path, "state": "unreadable"}
 
 
-def _operation(proposal: HygieneProposal, records: dict[int, storage.MemoryRecord],
-               root: str | Path | None) -> dict[str, Any]:
+def _operation(
+    proposal: HygieneProposal,
+    records: dict[int, storage.MemoryRecord],
+    source_observations: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
     payload = proposal.to_dict()
     ids = sorted({int(proposal.id), *proposal.related_ids}) if proposal.id is not None else []
     payload["preconditions"] = {str(record_id): _record_state(records[record_id]) for record_id in ids}
     paths = sorted({str(records[i].metadata["source_path"]) for i in ids
                     if records[i].metadata.get("source_kind") == "file" and records[i].metadata.get("source_path")})
-    payload["source_preconditions"] = [_source_state(root, path) for path in paths]
+    observations: list[dict[str, Any]] = []
+    for path in paths:
+        observation = source_observations.get(path)
+        if observation is None:
+            raise ValueError("Hygiene operation is missing a source observation.")
+        observations.append(observation)
+    payload["source_preconditions"] = [
+        {
+            key: observation[key]
+            for key in ("source_path", "state", "sha256")
+            if key in observation
+        }
+        for observation in observations
+    ]
     if proposal.proposed_action == "refresh_source":
         assert proposal.id is not None
-        payload["source_descriptor"] = provenance_service.describe_file(
-            root or Path.cwd(), str(records[int(proposal.id)].metadata["source_path"]),
-        )
-        payload["source_descriptor"].pop("source_checked_at", None)
+        source_path = str(records[int(proposal.id)].metadata["source_path"])
+        observation = source_observations.get(source_path)
+        if observation is None or observation["state"] != "file":
+            raise ValueError("Hygiene refresh operation has no readable source observation.")
+        payload["source_descriptor"] = dict(observation["descriptor"])
     payload["operation_id"] = _operation_digest(payload)
     return payload
 
@@ -799,16 +874,17 @@ def hygiene_plan(
     action_limit = _limit_value(action_limit, "action_limit")
     records = sorted(storage.iter_records(root), key=lambda record: record.id)
     inspected_records = records[:scan_limit] if scan_limit is not None else records
+    source_observations = _source_observations(inspected_records, root)
     proposals = _dedupe_proposals(
         [
-            *_single_record_proposals(inspected_records, root),
+            *_single_record_proposals(inspected_records, root, source_observations),
             *_duplicate_proposals(inspected_records),
             *_claim_conflict_proposals(inspected_records, claim_key),
             *_doc_duplicate_proposals(inspected_records, root),
         ]
     )
     record_map = {record.id: record for record in records}
-    candidates = [_operation(proposal, record_map, root) for proposal in proposals]
+    candidates = [_operation(proposal, record_map, source_observations) for proposal in proposals]
     # A merge also updates its primary. Reserve every touched card so later
     # stale/archive/refresh operations cannot overwrite that relation or status.
     touched: set[str] = set()
@@ -1023,8 +1099,17 @@ def _validate_plan(plan: dict[str, Any], root: str | Path | None) -> None:
             or source.get("state") not in {"file", "missing", "unreadable"} for source in sources
         ):
             raise ValueError("Hygiene operation has invalid source preconditions.")
-        if operation["proposed_action"] == "refresh_source" and not isinstance(operation.get("source_descriptor"), dict):
-            raise ValueError("Hygiene refresh operation has no saved source descriptor.")
+        if operation["proposed_action"] == "refresh_source":
+            descriptor = operation.get("source_descriptor")
+            if (
+                not isinstance(descriptor, dict)
+                or len(sources) != 1
+                or sources[0].get("state") != "file"
+                or descriptor.get("source_kind") != "file"
+                or descriptor.get("source_path") != sources[0].get("source_path")
+                or descriptor.get("source_hash") != sources[0].get("sha256")
+            ):
+                raise ValueError("Hygiene refresh operation has inconsistent source observation.")
         touched.update(required)
 
 
@@ -1038,13 +1123,11 @@ def hygiene_apply(
 ) -> dict[str, Any]:
     if not safe:
         raise ValueError("hygiene-apply requires --safe.")
+    if plan is None:
+        raise ValueError("hygiene-apply requires an explicit reviewed plan.")
     if limit is not None and action_limit is not None and limit != action_limit:
         raise ValueError("limit and action_limit disagree.")
     action_limit = _limit_value(action_limit if action_limit is not None else limit, "action_limit")
-    # Legacy one-call safe maintenance generates exactly once. A supplied plan
-    # never invokes a planner, even when its store snapshot no longer matches.
-    if plan is None:
-        plan = hygiene_plan(root, action_limit=action_limit)
     plan = json.loads(json.dumps(plan))
     _validate_plan(plan, root)
     selected = plan["operations"][:action_limit] if action_limit is not None else plan["operations"]

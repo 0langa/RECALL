@@ -26,8 +26,10 @@ Every plan item should include:
 
 Plans also carry `plan_version`, `store_identity`, `snapshot_identity`, and `plan_id`.
 Each proposal carries `operation_id`, exact record `preconditions`, and source-file
-preconditions when relevant. `operations` is the selected safe subset of the visible
-`proposals`. Save the entire plan, review it, then pass that plan to apply.
+preconditions when relevant. A source refresh uses one captured source observation for
+its action, precondition, and descriptor. `operations` is the selected safe subset of
+the visible `proposals`. Save the entire plan, review it, then pass that plan to apply.
+Apply requires the saved plan and rejects a missing plan before scanning or changing the store.
 
 `scan_limit`, `output_limit`, and `action_limit` are separate. Hidden proposals never
 become saved operations. Apply can further reduce the operation count, but cannot

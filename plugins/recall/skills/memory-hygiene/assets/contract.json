@@ -30,7 +30,7 @@
     "identity": ["store_identity", "snapshot_identity", "plan_id"],
     "operation_identity": ["operation_id", "preconditions", "source_preconditions"],
     "limits": ["scan_limit", "output_limit", "action_limit"],
-    "apply": "Exact saved operations only; changed records or sources skip without replanning.",
+    "apply": "A reviewed saved plan is required. Apply uses exact saved operations only; changed records or sources skip without replanning.",
     "omissions": "Report unscanned records, scanned records without proposals, output and action limits, and transition conflicts."
   },
   "forbidden_without_user_confirmation": [

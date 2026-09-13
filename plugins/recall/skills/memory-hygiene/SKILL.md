@@ -57,7 +57,7 @@ Read `references/hygiene-policy.md` when a routing or cleanup decision is ambigu
 | `--action-limit` | optional | cap safe operations selected in the plan or reduce the saved selection at apply |
 | `--limit` | optional | legacy alias: scan limit for scan/plan; action limit for apply |
 | `--save-plan` | optional | write the full versioned plan to a JSON file for review |
-| `--plan-file` | for reviewed apply | read the exact saved plan; never replan during apply |
+| `--plan-file` | for `hygiene-apply` | required; read the exact reviewed plan and never replan during apply |
 | `result` | yes | JSON summary of proposals, inspected count, safe/apply status |
 
 ## Workflow
@@ -99,9 +99,13 @@ Secret repair comes first among scanned candidates. Secret status outside the sc
 unknown. A card participates in at most one selected lifecycle operation, including merge
 primaries. Further duplicate merges may need a new review after the first apply.
 
-Without `--plan-file`, the legacy safe call generates one plan and applies that exact plan.
-Use the saved-plan path whenever review precedes apply. An apply-time action limit can
-only reduce saved operations; it cannot add operations or change their order.
+`hygiene-apply` requires `--plan-file`. It rejects a missing plan before it scans or
+changes the store. An apply-time action limit can only reduce saved operations; it
+cannot add operations or change their order.
+
+A refresh plan captures one source observation. Its action, source precondition, and
+source descriptor use that same hash. If the source changes after planning, apply
+skips the saved operation.
 
 `review_claim_conflict` reports one deterministic cluster with every record ID and value.
 It never names a winner. Status, confidence, age, and record ID are presentation metadata,
@@ -161,7 +165,7 @@ python ./scripts/recall_skill.py reconcile-current-truth --claim-key recall.kimi
 
 ## Inputs
 
-Required: candidate fact for `route-memory`; claim key for `reconcile-current-truth`; `--safe` flag for `hygiene-apply`. Optional: `--limit`, `--scope`. Reject requests to run destructive actions from this skill; reject secret-shaped candidate facts before routing.
+Required: candidate fact for `route-memory`; claim key for `reconcile-current-truth`; `--safe` and `--plan-file` for `hygiene-apply`. Optional: `--limit`, `--scope`. Reject requests to run destructive actions from this skill; reject secret-shaped candidate facts before routing.
 
 ## Output Format
 
@@ -226,7 +230,7 @@ Plans return JSON-like summaries:
 
 ## Troubleshooting
 
-- `hygiene-apply` refuses without `--safe`: this is intentional; do not remove the guard.
+- `hygiene-apply` refuses without `--safe` or `--plan-file`: this is intentional; do not remove either guard.
 - Adapter path errors: run from installed/source plugin root, or use absolute path plus `--root`.
 - Missing proposals for an obvious stale record: rerun `hygiene-scan --limit <higher>` to widen the window.
 - Persistent conflicts on the same claim key: hand to `manage-memory resolve-conflict`.
