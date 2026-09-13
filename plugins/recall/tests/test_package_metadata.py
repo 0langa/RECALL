@@ -42,6 +42,8 @@ class PackageMetadataTests(unittest.TestCase):
                     self.assertIn("${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}", hook["command"])
                     self.assertIn("os.environ.get('CLAUDE_PLUGIN_ROOT')", hook["commandWindows"])
                     self.assertIn("os.environ['PLUGIN_ROOT']", hook["commandWindows"])
+                    self.assertIn("--provider claude-code", hook["command"])
+                    self.assertIn("sys.argv=[p,'--provider','claude-code']", hook["commandWindows"])
                     self.assertNotIn("%PLUGIN_ROOT%", hook["commandWindows"])
 
     def test_no_unsupported_update_categories_hook_surface(self) -> None:
@@ -282,6 +284,7 @@ class PackageMetadataTests(unittest.TestCase):
             },
         }
         with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / ".git").mkdir()
             env = os.environ.copy()
             env["PLUGIN_ROOT"] = str(ROOT)
             for event_name, matcher_groups in hooks.items():
@@ -305,6 +308,10 @@ class PackageMetadataTests(unittest.TestCase):
                 self.assertEqual(completed.returncode, 0, f"{event_name}: {completed.stderr}")
                 output = json.loads(completed.stdout)
                 self.assertTrue(output["continue"], event_name)
+                if event_name == "UserPromptSubmit":
+                    current_scope = Path(tmp) / ".recall" / "runtime" / "policy" / "current-scope.json"
+                    policy = json.loads(current_scope.read_text(encoding="utf-8"))
+                    self.assertEqual(policy["provider"], "claude-code")
 
     @unittest.skipUnless(os.name == "nt", "Windows hook command regression only runs on Windows.")
     def test_windows_hook_commands_run_with_claude_plugin_root_and_no_plugin_root(self) -> None:
