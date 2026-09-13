@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import config as recall_config
+import turn_policy
 
 
 SCHEMA_EVENT = "recall.turn_event.v1"
@@ -28,7 +29,11 @@ def utc_now() -> str:
 
 def safe_name(value: str | None, fallback: str) -> str:
     text = (value or "").strip() or fallback
-    return re.sub(r"[^A-Za-z0-9_.-]+", "-", text)[:160] or fallback
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", text)[:120] or fallback
+    if safe != text or safe in {".", ".."}:
+        import hashlib
+        safe += "-" + hashlib.sha256(text.encode("utf-8")).hexdigest()[:20]
+    return safe
 
 
 def memory_dir(root: str | Path | None) -> Path:
@@ -98,6 +103,8 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def append_event(root: str | Path | None, session_id: str | None, turn_id: str | None, event: dict[str, Any]) -> Path:
     path = turn_events_path(root, session_id, turn_id)
+    if turn_policy.policy_status(root, session_id, turn_id)["disabled"]:
+        return path
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = dict(event)
     idempotency_key = str(payload.get("idempotency_key") or "").strip()
@@ -123,6 +130,8 @@ def append_event(root: str | Path | None, session_id: str | None, turn_id: str |
 
 
 def load_events(root: str | Path | None, session_id: str | None, turn_id: str | None) -> list[dict[str, Any]]:
+    if turn_policy.policy_status(root, session_id, turn_id)["disabled"]:
+        return []
     path = turn_events_path(root, session_id, turn_id)
     if not path.exists():
         return []
@@ -145,6 +154,8 @@ def load_events(root: str | Path | None, session_id: str | None, turn_id: str | 
 
 def mark_active(root: str | Path | None, session_id: str | None, turn_id: str | None, prompt: str) -> Path:
     path = activation_path(root, session_id, turn_id)
+    if turn_policy.policy_status(root, session_id, turn_id)["disabled"]:
+        return path
     payload = {
         "schema": SCHEMA_ACTIVATION,
         "status": "active",
@@ -152,13 +163,14 @@ def mark_active(root: str | Path | None, session_id: str | None, turn_id: str | 
         "session_id": session_id,
         "turn_id": turn_id,
         "reason": "persistently-activated-project",
-        "prompt_excerpt": truncate(prompt, 500),
     }
     atomic_write_json(path, payload)
     return path
 
 
 def is_active(root: str | Path | None, session_id: str | None, turn_id: str | None) -> bool:
+    if turn_policy.policy_status(root, session_id, turn_id)["disabled"]:
+        return False
     path = activation_path(root, session_id, turn_id)
     if not path.exists():
         return False
@@ -256,7 +268,10 @@ def create_finalizer_request(
             "network": "not required",
         },
     }
-    atomic_write_json(path, payload)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Exclusive creation makes concurrent Stop deliveries request one pass.
+    with path.open("x", encoding="utf-8") as handle:
+        json.dump(payload, handle, sort_keys=True)
     return path
 
 
@@ -289,6 +304,7 @@ def cleanup_success(root: str | Path | None, session_id: str | None, turn_id: st
 
 
 def cleanup_expired(root: str | Path | None, retention_days: int = 7) -> None:
+    turn_policy.cleanup_expired(root)
     cutoff = datetime.now(timezone.utc).timestamp() - max(1, retention_days) * 86400
     runtime = runtime_dir(root)
     if not runtime.exists():

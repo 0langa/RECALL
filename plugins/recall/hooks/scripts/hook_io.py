@@ -12,6 +12,7 @@ from typing import Any
 import _recall_path  # noqa: F401
 from hook_events import HookEvent
 import project_context
+import turn_policy
 
 
 def normalize_hook_event(
@@ -22,13 +23,14 @@ def normalize_hook_event(
     provider: str = "codex",
     fallback_root: str | None = None,
 ) -> HookEvent:
-    return HookEvent.from_payload(
+    event = HookEvent.from_payload(
         payload,
         raw,
         fallback_event=fallback_event,
         provider=provider,
         fallback_root=fallback_root,
     )
+    return turn_policy.normalize_identity(event)
 
 
 def idempotency_key(payload: dict[str, Any], fallback_event: str) -> str | None:
@@ -38,7 +40,9 @@ def idempotency_key(payload: dict[str, Any], fallback_event: str) -> str | None:
 
 
 def read_hook_input() -> tuple[dict[str, Any], str]:
-    raw = sys.stdin.read()
+    # Native hook payloads are UTF-8, independent of the Windows console page.
+    buffer = getattr(sys.stdin, "buffer", None)
+    raw = buffer.read().decode("utf-8-sig", errors="replace") if buffer is not None else sys.stdin.read()
     if not raw.strip():
         return {}, ""
     try:

@@ -170,8 +170,8 @@ class HookEvent:
             raw_text=raw_text,
             cwd=resolved_cwd,
             root=root,
-            session_id=_string(payload, "session_id", "session"),
-            turn_id=_string(payload, "turn_id", "message_id", "turn"),
+            session_id=_string(payload, "session_id", "session", "thread_id", "conversation_id"),
+            turn_id=_string(payload, "turn_id", "turn", "request_id") or (_string(payload, "message_id") if event_name == "UserPromptSubmit" else ""),
             trigger=_string(payload, "trigger", "source", "reason", "matcher"),
             prompt=prompt,
             tool_name=_string(payload, "tool_name", "tool", "name"),
@@ -246,7 +246,7 @@ class HookEvent:
         return messages[-1] if messages else ""
 
     def idempotency_key(self, fallback_event: str | None = None) -> str | None:
-        tool_use_id = _string(self.raw_payload, "tool_use_id")
+        tool_use_id = _string(self.raw_payload, "tool_use_id", "tool_call_id", "call_id", "hook_event_id", "delivery_id")
         if not tool_use_id and not self.turn_id:
             return None
         identity = {
@@ -257,6 +257,8 @@ class HookEvent:
             "tool_use_id": tool_use_id,
             "trigger": self.trigger,
         }
+        if not tool_use_id and self.event_name in {"PostToolUse", "PostToolUseFailure"}:
+            identity["result"] = json.dumps({"command": self.command, "response": self.tool_response}, sort_keys=True)
         digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode("utf-8")).hexdigest()
         return f"hook:{digest}"
 

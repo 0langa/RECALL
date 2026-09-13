@@ -182,7 +182,7 @@ class PromptSignalModeTests(unittest.TestCase):
                         self.assertEqual(bool(records), expected)
                         if expected:
                             self.assertEqual(records[0].content, text if explicit else text.rstrip("."))
-                            self.assertEqual(records[0].metadata["status"], "active" if explicit else "validated")
+                            self.assertEqual(records[0].metadata["status"], "active")  # F13: a user claim is not verification.
                         run_hook("stop.py", {**payload, "hook_event_name": "Stop"})
                         self.assertEqual([(r.id, r.metadata) for r in records], [(r.id, r.metadata) for r in storage.iter_records(tmp)])
 
@@ -209,7 +209,7 @@ class PromptSignalModeTests(unittest.TestCase):
                         if expected:
                             self.assertEqual(records[0].category, "requirements")
                             self.assertEqual(records[0].content, fact if explicit else fact.rstrip("."))
-                            self.assertEqual(records[0].metadata["status"], "active" if explicit else "validated")
+                            self.assertEqual(records[0].metadata["status"], "active")  # F13: admission does not validate truth.
                             self.assertEqual(records[0].metadata["claim_key"], "release_notes.path")
                             self.assertEqual(records[0].metadata["claim_value"], "docs/accepted.md")
                         run_hook("stop.py", {**payload, "hook_event_name": "Stop"})

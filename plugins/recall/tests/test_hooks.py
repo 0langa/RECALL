@@ -125,8 +125,10 @@ def run_recall_skill(root: str, *args: str) -> dict:
 
 
 def runtime_events(root: str, session_id: str, turn_id: str) -> list[dict]:
-    safe_session = session_id or "session"
-    safe_turn = turn_id or "turn"
+    import turn_policy
+    policy = turn_policy.policy_status(root, session_id or None, turn_id or None)
+    safe_session = session_id or str(policy.get("session_id") or "session")
+    safe_turn = turn_id or str(policy.get("turn_id") or "turn")
     path = recall_config.memory_dir(root) / "runtime" / "turns" / safe_session / f"{safe_turn}.jsonl"
     if not path.exists():
         return []
@@ -230,7 +232,7 @@ class HookTests(unittest.TestCase):
             self.assertEqual(events[0]["category_hint"], "requirements")
             self.assertIn("generated release notes", events[0]["summary"])
 
-    def test_release_notes_correction_supersedes_previous_requirement(self) -> None:
+    def test_release_notes_correction_keeps_conflicting_requirements_current(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0.1.0'\n", encoding="utf-8")
             run_hook(
@@ -286,8 +288,10 @@ class HookTests(unittest.TestCase):
                 "--limit",
                 "20",
             )["review"]
-            self.assertEqual(active_review["matched"], 1)
-            self.assertIn("docs/release/manual-notes.md", active_review["memories"][0]["summary"])
+            self.assertEqual(active_review["matched"], 2)
+            summaries = {memory["summary"] for memory in active_review["memories"]}
+            self.assertTrue(any("docs/manual-release-notes.md" in summary for summary in summaries))
+            self.assertTrue(any("docs/release/manual-notes.md" in summary for summary in summaries))
 
             superseded_review = run_recall_skill(
                 tmp,
@@ -299,7 +303,7 @@ class HookTests(unittest.TestCase):
                 "--limit",
                 "20",
             )["review"]
-            self.assertGreaterEqual(superseded_review["matched"], 1)
+            self.assertEqual(superseded_review["matched"], 0)
 
     def test_prompt_inspector_ignores_incidental_remembered_word(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -700,7 +704,7 @@ class HookTests(unittest.TestCase):
             self.assertNotIn("reason", output)
             result = query_memory(tmp, "finalizer internals hidden", "requirements")
             self.assertEqual(len(result["results"]), 1)
-            self.assertEqual(result["results"][0]["metadata"]["status"], "validated")
+            self.assertEqual(result["results"][0]["metadata"]["status"], "active")  # F13: asserted intent is unverified.
 
     def test_explicit_recall_requirement_stores_clean_requirement_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1008,7 +1012,11 @@ class ConservativePromptAdmissionTests(unittest.TestCase):
             self.assertEqual(records[0].metadata["turn_id"], "admission-turn")
         # Redelivery cannot add records or confirmations.
         replay = run_hook("stop.py", {**payload, "hook_event_name": "Stop"})
-        self.assertEqual(replay, {"continue": True})
+        if submitted.get("memory_action") == "disabled":
+            self.assertEqual(replay["action"], "disabled")
+            self.assertEqual(replay["reason"], "task_no_memory")
+        else:
+            self.assertEqual(replay, {"continue": True})
         self.assertEqual([(r.id, r.metadata) for r in storage.iter_records(root)],
                          [(r.id, r.metadata) for r in records])
         return records
@@ -1082,7 +1090,7 @@ class ConservativePromptAdmissionTests(unittest.TestCase):
                 self.assertEqual(records[0].metadata["summary"], content)
                 self.assertEqual(records[0].metadata["details"], content)
                 self.assertEqual(records[0].category, category)
-                self.assertEqual(records[0].metadata["status"], "validated")
+                self.assertEqual(records[0].metadata["status"], "active")  # F13: keep admission, require observed verification.
 
     def test_memory_cue_preserves_facts_but_does_not_certify_questions(self) -> None:
         cases = [
@@ -1126,7 +1134,7 @@ class ConservativePromptAdmissionTests(unittest.TestCase):
                 self.assertEqual(record.content, fact.rstrip("."))
                 self.assertEqual(record.metadata["summary"], fact.rstrip("."))
                 self.assertEqual(record.metadata["details"], fact.rstrip("."))
-                self.assertEqual(record.metadata["status"], "validated")
+                self.assertEqual(record.metadata["status"], "active")  # F13: accepted user text alone cannot validate.
                 self.assertEqual(record.metadata["claim_key"], "release_notes.path")
                 self.assertEqual(record.metadata["claim_value"], "docs/accepted.md")
 
@@ -1201,7 +1209,7 @@ class ConservativePromptAdmissionTests(unittest.TestCase):
                     continue
                 self.assertEqual(len(records), 1)
                 record = records[0]
-                self.assertEqual(record.metadata["status"], "active" if explicit else "validated")
+                self.assertEqual(record.metadata["status"], "active")  # F13: preserve all content and claim checks below.
                 if expected_content:
                     self.assertEqual(record.content, expected_content)
                     self.assertEqual(record.metadata["summary"], expected_content)

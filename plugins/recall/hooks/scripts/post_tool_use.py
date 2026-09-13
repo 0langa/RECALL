@@ -17,6 +17,8 @@ from hook_io import (
 )
 import security
 import turn_buffer
+import turn_policy
+import observed_evidence
 
 
 ERROR_RE = re.compile(r"(?i)\b(error|exception|traceback|failed|failure)\b")
@@ -102,6 +104,13 @@ def main() -> None:
     root = event.root
     session_id = event.session_id
     turn_id = event.turn_id
+    policy = turn_policy.policy_status(root, session_id, turn_id)
+    if policy["disabled"]:
+        print(json.dumps(turn_policy.disabled_result(hook=True)))
+        return
+    if policy.get("closed"):
+        print(json.dumps({"continue": True}))
+        return
     if not turn_buffer.is_active(root, session_id, turn_id):
         if not (root and recall_config.project_is_active(root) and capture_policy.auto_capture_allowed(root)):
             print(json.dumps({"continue": True}))
@@ -132,7 +141,7 @@ def main() -> None:
         print(json.dumps({"continue": True}))
         return
 
-    event = {
+    buffered = {
         "durable_candidate": True,
         "signal": decision.signal,
         "summary": decision.summary,
@@ -149,7 +158,10 @@ def main() -> None:
         "idempotency_key": event.idempotency_key("PostToolUse"),
         **event.provider_metadata(capture_channel="hook"),
     }
-    turn_buffer.append_event(root, session_id, turn_id, event)
+    if decision.signal in {"test_pass", "build_pass", "release_pass"}:
+        buffered["details"] = observed_evidence.observed_content(command or "", event.tool_response)
+        observed_evidence.observe_tool_result(root, {**buffered, "session_id": session_id, "turn_id": turn_id, "tool_response": event.tool_response})
+    turn_buffer.append_event(root, session_id, turn_id, buffered)
     if cfg.get("observability_mode") == "debug":
         import observability
         observability.trace(root, "tool_evidence_buffered", {"signal": decision.signal, "record_kind": decision.record_kind})

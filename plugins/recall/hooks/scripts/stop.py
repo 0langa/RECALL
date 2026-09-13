@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 
 import _recall_path  # noqa: F401
@@ -17,9 +18,10 @@ import observability
 import security
 from services.finalizer_service import apply_finalizer_batch
 import turn_buffer
+import turn_policy
 
 
-QUIET_SAVE_SIGNALS = {"explicit_requirement", "explicit_decision", "explicit_correction", "test_fail", "error_root_cause", "read_failure"}
+QUIET_SAVE_SIGNALS = {"explicit_requirement", "explicit_decision", "explicit_correction", "test_fail", "error_root_cause", "read_failure", "test_pass", "build_pass", "release_pass"}
 FAILURE_SIGNALS = {"test_fail", "error_root_cause", "read_failure"}
 FINALIZER_META_MARKERS = (
     "RECALL_FINALIZER_REQUEST",
@@ -37,7 +39,13 @@ def plugin_root() -> Path:
 
 
 def output(payload: dict) -> None:
-    print(json.dumps(payload))
+    serialized = json.dumps(payload, ensure_ascii=False) + "\n"
+    buffer = getattr(sys.stdout, "buffer", None)
+    if buffer is not None:
+        buffer.write(serialized.encode("utf-8"))
+        buffer.flush()
+    else:
+        sys.stdout.write(serialized)
 
 
 def finalizer_meta_text(text: str) -> bool:
@@ -73,7 +81,8 @@ def quiet_card_from_event(event: dict, *, session_id: str, turn_id: str) -> dict
     if not isinstance(tags, list):
         tags = []
     evidence_id = str(event.get("event_id") or f"{session_id}:{turn_id}:{signal}").strip()
-    status = "validated" if explicit and category in {"requirements", "constraints", "decisions"} else "active"
+    # User assertions establish intent, not observed factual verification.
+    status = "validated" if signal in {"test_pass", "build_pass", "release_pass"} else "active"
     card = {
         "category": category,
         "content": details[:4000],
@@ -93,8 +102,10 @@ def quiet_card_from_event(event: dict, *, session_id: str, turn_id: str) -> dict
 
 
 def quiet_finalizer_batch(events: list[dict], *, session_id: str, turn_id: str) -> dict:
-    safe_session_id = session_id.strip() or "session"
-    safe_turn_id = turn_id.strip() or "turn"
+    safe_session_id = session_id.strip()
+    safe_turn_id = turn_id.strip()
+    if not safe_session_id or not safe_turn_id:
+        raise ValueError("Finalization requires normalized session and turn identity.")
     operations = []
     seen: set[tuple[str, str]] = set()
     for event in events:
@@ -148,12 +159,23 @@ def main() -> None:
         root = event.root
         session_id = event.session_id
         turn_id = event.turn_id
+        policy = turn_policy.policy_status(root, session_id, turn_id)
+        if policy["disabled"]:
+            turn_policy.finish_turn(root, session_id, turn_id)
+            output(turn_policy.disabled_result(hook=True))
+            return
+        if policy.get("closed"):
+            output({"continue": True})
+            return
         if not turn_buffer.is_active(root, session_id, turn_id):
             output({"continue": True})
             return
 
         if event.stop_hook_active:
-            turn_buffer.mark_finalized(root, session_id, turn_id)
+            output({"continue": True})
+            return
+
+        if turn_buffer.finalizer_status(root, session_id, turn_id) in {"requested", "finalized"}:
             output({"continue": True})
             return
 
@@ -173,6 +195,7 @@ def main() -> None:
         events = turn_buffer.load_events(root, session_id, turn_id)
 
         if not turn_buffer.is_dirty(events):
+            turn_policy.finish_turn(root, session_id, turn_id)
             output({"continue": True})
             return
 
@@ -205,6 +228,9 @@ def main() -> None:
         packet_payload = json.loads(packet.read_text(encoding="utf-8"))
         observability.trace(root, "finalizer_requested", {"session_id": session_id, "turn_id": turn_id, "candidate_count": packet_payload.get("candidate_count")})
         output({"continue": True, "decision": "block", "reason": build_finalizer_prompt(str(packet), packet_payload)})
+    except FileExistsError:
+        # A competing Stop delivery already owns the request for this turn.
+        output({"continue": True})
     except Exception as exc:  # Hooks must not break the user turn.
         output({"continue": True, "systemMessage": f"RECALL finalizer failed: {type(exc).__name__}. Evidence was retained for retry."})
 

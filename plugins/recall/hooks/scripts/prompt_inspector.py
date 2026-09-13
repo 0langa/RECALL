@@ -19,6 +19,7 @@ import retrieval
 from services import lifecycle_service
 import session_context
 import turn_buffer
+import turn_policy
 
 
 RECALL_INVOKE_RE = re.compile(r"(?i)(\[[^\]]*recall[^\]]*\]\(\s*plugin://recall[^)]*\)|@recall\b|plugin://recall[^\s)]*|\$recall:)")
@@ -50,6 +51,9 @@ def main() -> None:
     cwd = event.cwd or event.root
     resolved_root = event.root
     prompt = event.prompt.strip()
+    if turn_policy.policy_status(resolved_root, event.session_id, event.turn_id)["disabled"]:
+        print(json.dumps(turn_policy.disabled_result(hook=True)))
+        return
     if not prompt:
         print(json.dumps({"continue": True}))
         return

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+import shlex
 from typing import Any
 
 import config as recall_config
@@ -38,7 +39,7 @@ GIT_STATE_CHANGE_RE = re.compile(
 RELEASE_COMMAND_RE = re.compile(r"(?i)\b(codex\s+plugin|release|marketplace|dist/|recall\.zip)\b")
 FAILURE_RE = re.compile(r"(?i)\b(error|exception|traceback|failed|failure|assertionerror)\b")
 TEST_SUMMARY_RE = re.compile(r"(?im)^(Ran\s+\d+\s+tests?.*|.*\b\d+\s+passed\b.*|.*\b0 failures\b.*)$")
-BUILD_SUMMARY_RE = re.compile(r"(?im)^(.*\b(status|build|package|smoke)\b.*\b(pass|passed|success|succeeded|ok)\b.*)$")
+BUILD_SUMMARY_RE = re.compile(r"(?im)^(.*\b(status|build|package|smoke)\b.*\b(pass|passed|success|successfully|succeeded|ok)\b.*)$")
 EXIT_CODE_RE = re.compile(r"(?i)\bexit[_ ]code:\s*(-?\d+)\b")
 STOP_DURABLE_RE = re.compile(
     r"(?i)\b("
@@ -195,6 +196,50 @@ def exit_code(payload: dict[str, Any], output: str) -> int | None:
         return None
 
 
+def material_command_kind(command: str) -> str | None:
+    """Accept a material executable/argument shape, never a keyword in echo text."""
+    try:
+        words = shlex.split(command, posix=False)
+    except ValueError:
+        return None
+    if not words:
+        return None
+    executable = words[0].strip("\"'").replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe")
+    arguments = [word.strip("\"'").lower() for word in words[1:]]
+    args = " ".join(arguments)
+    if executable in {"python", "python3", "py"}:
+        script = arguments[0].replace("\\", "/").rsplit("/", 1)[-1] if arguments else ""
+        if (len(arguments) >= 2 and arguments[0] == "-m" and arguments[1] in {"pytest", "unittest"}) or script == "run_tests.py":
+            return "test"
+        if script in {"build_plugin.py", "smoke_recall.py", "inspect_package.py", "validate_plugin.py"}:
+            return "build"
+    if executable in {"pytest", "unittest"}:
+        return "test"
+    if executable in {"npm", "pnpm", "yarn", "cargo", "go", "dotnet"}:
+        if re.match(r"(?:run\s+)?test\b", args):
+            return "test"
+        if re.match(r"(?:run\s+)?(?:build|pack|publish)\b", args):
+            return "build"
+    if executable == "gh" and re.match(r"release\s+(?:create|upload)\b", args):
+        return "release"
+    return None
+
+
+def observed_material_success(command: str, response: dict[str, Any]) -> bool:
+    kind = material_command_kind(command)
+    code = response.get("exit_code")
+    if kind is None or type(code) is not int or code != 0 or response.get("success") is False:
+        return False
+    output = "\n".join(str(response.get(key) or "") for key in ("stdout", "stderr", "output", "message"))
+    if not output.strip():
+        return False
+    if kind == "test":
+        return bool(re.search(r"(?im)(\b\d+\s+passed\b|^Ran\s+\d+\s+tests?\b|\b0 failures\b|\"passed\"\s*:\s*true)", output)) and not bool(re.search(r"(?i)\b(?:[1-9]\d*\s+failed|FAILED\s*\()", output))
+    if kind == "release":
+        return bool(re.search(r"(?i)(https://\S+/releases/|\brelease\b.*\b(?:created|uploaded|published|success)\b)", output))
+    return bool(BUILD_SUMMARY_RE.search(output) or re.search(r'(?i)"(?:passed|success)"\s*:\s*true', output))
+
+
 def cleaned_lines(output: str) -> list[str]:
     return [line.strip() for line in output.splitlines() if line.strip()]
 
@@ -290,7 +335,11 @@ def classify_tool_capture(
             auto_capture_policy="failure",
         )
 
-    is_test = bool(TEST_COMMAND_RE.search(command))
+    response = payload.get("tool_response")
+    if not isinstance(response, dict) or not observed_material_success(command, response):
+        return None
+
+    is_test = material_command_kind(command) == "test"
     if is_test:
         return CaptureDecision(
             category="commands",
@@ -304,11 +353,11 @@ def classify_tool_capture(
             auto_capture_policy="test_result",
         )
 
-    is_build = bool(BUILD_COMMAND_RE.search(command) or RELEASE_COMMAND_RE.search(command))
+    is_build = material_command_kind(command) in {"build", "release"}
     if is_build:
         return CaptureDecision(
             category="commands",
-            signal="build_pass",
+            signal="release_pass" if material_command_kind(command) == "release" else "build_pass",
             summary=success_summary(command, lines, build=True),
             details=content,
             tags=["tool-use", lower_tool or "tool", "build"],
@@ -316,32 +365,6 @@ def classify_tool_capture(
             confidence=0.86,
             record_kind="build_result",
             auto_capture_policy="build_result",
-        )
-
-    if GIT_STATE_CHANGE_RE.search(command):
-        return CaptureDecision(
-            category="project_state",
-            signal="git_state_change",
-            summary=success_summary(command, lines),
-            details=content,
-            tags=["tool-use", lower_tool or "tool", "git", "state-change"],
-            importance=0.72,
-            confidence=0.84,
-            record_kind="state_change",
-            auto_capture_policy="state_change",
-        )
-
-    if mode == "standard" and command:
-        return CaptureDecision(
-            category="commands",
-            signal="state_change",
-            summary=success_summary(command, lines),
-            details=content,
-            tags=["tool-use", lower_tool or "tool", "command"],
-            importance=0.55,
-            confidence=0.75,
-            record_kind="state_change",
-            auto_capture_policy="state_change",
         )
 
     return None
@@ -381,6 +404,15 @@ def suppress_auto_retrieval(prompt: str) -> bool:
     if INFORMATION_REQUEST_RE.search(clean) or RELEASE_CONTEXT_RE.search(clean):
         return False
     return bool(EXECUTION_ONLY_RE.search(clean))
+
+
+def no_memory_requested(prompt: str) -> bool:
+    """Match task controls outside quotes/examples; do this before any capture."""
+    text = unquoted_prompt_text(prompt)
+    return bool(re.search(
+        r"(?i)\b(?:no[- ]memory|without\s+(?:using\s+)?memory|(?:do\s+not|don['’]t|never)\s+"
+        r"(?:(?:read|write|use|save|store|capture|retrieve|access|consult|load|inject)\b[\w\s,/&-]{0,45})"
+        r"(?:memory|\.?recall)\b|(?:disable|skip|avoid)\s+(?:all\s+)?(?:memory|\.?recall)\b)", text))
 
 
 def normalize_prompt_memory_text(prompt: str) -> str:
