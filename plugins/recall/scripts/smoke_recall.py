@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import config as recall_config
+import turn_buffer
 
 
 DEFAULT_RECORDS = [
@@ -253,7 +254,7 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
         cwd=plugin_root,
     )
     require(not tool_result["results"], "PostToolUse created a durable command before finalization")
-    event_path = recall_config.memory_dir(project_root) / "runtime" / "turns" / "smoke-session" / "smoke-turn.jsonl"
+    event_path = turn_buffer.turn_events_path(project_root, "smoke-session", "smoke-turn", "codex")
     require(event_path.exists(), "PostToolUse did not buffer runtime evidence")
     checks.append("PostToolUse buffers evidence without durable command spam")
 

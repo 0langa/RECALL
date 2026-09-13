@@ -53,7 +53,9 @@ def main() -> None:
         fallback_root=args.root,
     )
     root = event.root
-    policy = turn_policy.policy_status(root, event.session_id, event.turn_id, provider=event.provider)
+    # SessionStart has no task-owned turn identity. Generated fallback ids must
+    # not look like a late delivery from an unknown turn.
+    policy = turn_policy.policy_status(root, provider=event.provider)
     if policy["disabled"]:
         print(json.dumps(turn_policy.disabled_result(hook=True)))
         return
