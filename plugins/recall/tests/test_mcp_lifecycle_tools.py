@@ -90,6 +90,49 @@ class McpSurfaceTests(unittest.TestCase):
 
 
 class McpSaveTests(unittest.TestCase):
+    def test_keyed_preference_update_replay_keeps_prior_evidence(self) -> None:
+        for backend in ("sqlite", "jsonl"):
+            with self.subTest(backend=backend), tempfile.TemporaryDirectory() as tmp:
+                cfg = config.default_config()
+                cfg["backend"] = backend
+                config.save_config(cfg, tmp)
+                arguments = {"root": tmp, "category": "preferences", "content": "Use the isolated test runner.",
+                             "preference_key": "runner", "preference_evidence_type": "approved_plan",
+                             "preference_scope": "project", "applies_to_provider": "codex"}
+                original = call_tool("save_insight", {**arguments, "decision_id": "event-1"})
+                for event, key in (("event-2", "retry-a"), ("event-3", "retry-b")):
+                    first = call_tool("save_insight", {**arguments, "decision_id": event, "idempotency_key": key})
+                    self.assertEqual(first["result"], "updated_existing")
+                    self.assertEqual(first["id"], original["id"])
+                before = memory_manager.get_record(original["id"], tmp)
+                for key in ("retry-a", "retry-b"):
+                    replay = call_tool("save_insight", {**arguments, "decision_id": "must-not-apply", "idempotency_key": key})
+                    self.assertEqual(replay["reason"], "idempotent_replay")
+                    self.assertEqual(memory_manager.get_record(original["id"], tmp), before)
+                self.assertEqual(before.metadata["supporting_event_ids"], ["event-1", "event-2", "event-3"])
+
+    def test_keyed_confirmations_replay_without_extra_evidence(self) -> None:
+        for backend in ("sqlite", "jsonl"):
+            with self.subTest(backend=backend), tempfile.TemporaryDirectory() as tmp:
+                cfg = config.default_config()
+                cfg["backend"] = backend
+                config.save_config(cfg, tmp)
+                args = {"root": tmp, "category": "decisions", "content": "Use SQLite for durable project data."}
+                initial = call_tool("save_insight", args)
+                for count, key in enumerate(("public-confirm-1", "public-confirm-2"), start=1):
+                    confirmed = call_tool("save_insight", {**args, "idempotency_key": key})
+                    self.assertEqual(confirmed["id"], initial["id"])
+                    self.assertEqual(confirmed["metadata"]["confirmed_count"], count)
+                before = memory_manager.get_record(initial["id"], tmp)
+                for key in ("public-confirm-1", "public-confirm-2"):
+                    replay = call_tool("save_insight", {**args, "idempotency_key": key})
+                    self.assertEqual(replay["id"], initial["id"])
+                    self.assertEqual(replay["reason"], "idempotent_replay")
+                    self.assertEqual(memory_manager.get_record(initial["id"], tmp), before)
+                records = list(memory_manager.iter_records(tmp))
+                self.assertEqual(len(records), 1)
+                self.assertEqual(records[0].metadata["confirmed_count"], 2)
+
     def test_explicit_retry_key_preserves_one_acknowledged_public_save(self) -> None:
         for backend in ("sqlite", "jsonl"):
             with self.subTest(backend=backend), tempfile.TemporaryDirectory() as tmp:

@@ -7,6 +7,26 @@ from _harness import active_memory_dir, assert_memory_inside_project, memory_cmd
 
 
 class SkillCliContractTests(unittest.TestCase):
+    def test_cli_keyed_confirmations_keep_all_retry_keys(self) -> None:
+        for backend in ("sqlite", "jsonl"):
+            with self.subTest(backend=backend), temp_project() as project:
+                run_json(skill_cmd(project, "list-categories"))
+                config_path = active_memory_dir(project) / "memory_config.json"
+                cfg = json.loads(config_path.read_text(encoding="utf-8"))
+                cfg["backend"] = backend
+                config_path.write_text(json.dumps(cfg), encoding="utf-8")
+                args = ("save-insight", "decisions", "Use SQLite for durable project data.")
+                initial = run_json(skill_cmd(project, *args))
+                for key in ("cli-confirm-1", "cli-confirm-2"):
+                    confirmed = run_json(skill_cmd(project, *args, "--idempotency-key", key))
+                    self.assertEqual(confirmed["id"], initial["id"])
+                for key in ("cli-confirm-1", "cli-confirm-2"):
+                    replay = run_json(skill_cmd(project, *args, "--idempotency-key", key))
+                    self.assertEqual(replay["id"], initial["id"])
+                    self.assertEqual(replay["reason"], "idempotent_replay")
+                record = run_json(skill_cmd(project, "edit-memory", str(initial["id"])))
+                self.assertEqual(record["metadata"]["confirmed_count"], 2)
+
     def test_cli_contract_and_first_workflow_respect_lookup_scope(self) -> None:
         with temp_project() as project:
             initialized = run_json(skill_cmd(project, "initialize-project"))
