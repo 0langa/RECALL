@@ -397,6 +397,7 @@ def add_record_if_useful(
         }
     idempotency_key = str(metadata.get("idempotency_key") or "").strip()
     if idempotency_key:
+        metadata["idempotency_key"] = idempotency_key
         existing = storage.find_by_idempotency_key(idempotency_key, root)
         if existing is not None:
             return {"action": "ignored", "record": existing, "duplicate_id": existing.id, "reason": "idempotent_replay"}
@@ -419,6 +420,7 @@ def add_record_if_useful(
             decision.related_id,
             root,
             source_session=str(metadata.get("turn_id") or metadata.get("source_session") or "") or None,
+            idempotency_key=idempotency_key or None,
         )
         return {
             "action": "updated_existing",
@@ -556,8 +558,11 @@ def repair(root: str | Path | None = None, restore_backup: bool = False) -> dict
 
 
 @storage.atomic_write
-def confirm_record(record_id: int, root: str | Path | None = None, source_session: str | None = None) -> MemoryRecord:
-    return memory_lifecycle.confirm(record_id, root, source_session)
+def confirm_record(
+    record_id: int, root: str | Path | None = None, source_session: str | None = None,
+    idempotency_key: str | None = None,
+) -> MemoryRecord:
+    return memory_lifecycle.confirm(record_id, root, source_session, idempotency_key)
 
 
 def resolve_record(record_id: int, root: str | Path | None = None, note: str | None = None) -> MemoryRecord:

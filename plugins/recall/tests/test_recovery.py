@@ -19,6 +19,27 @@ from services import recovery_service  # noqa: E402
 
 
 class RecoveryTests(unittest.TestCase):
+    def test_confirmation_and_retry_identity_share_one_jsonl_replacement(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = config.load_config(tmp)
+            cfg["backend"] = "jsonl"
+            config.save_config(cfg, tmp)
+            saved = memory_manager.add_record_if_useful("architecture", "Preserve this unkeyed card.", root=tmp)["record"]
+            with mock.patch.object(storage.os, "replace", side_effect=OSError("Injected replacement failure")):
+                with self.assertRaisesRegex(OSError, "Injected replacement failure"):
+                    memory_manager.add_record_if_useful(
+                        "architecture", saved.content, {"idempotency_key": "confirm-once"}, tmp,
+                    )
+            self.assertEqual(storage.get_record(saved.id, tmp), saved)
+            self.assertIsNone(storage.find_by_idempotency_key("confirm-once", tmp))
+            with mock.patch.object(storage.os, "replace", wraps=storage.os.replace) as replace:
+                first = memory_manager.add_record_if_useful("architecture", saved.content, {"idempotency_key": "confirm-once"}, tmp)
+                self.assertEqual(replace.call_count, 1)
+            replay = memory_manager.add_record_if_useful("architecture", saved.content, {"idempotency_key": "confirm-once"}, tmp)
+            self.assertEqual(replay["reason"], "idempotent_replay")
+            self.assertEqual(replay["record"], first["record"])
+            self.assertEqual(replay["record"].metadata["confirmed_count"], 1)
+
     def test_index_fault_cannot_hide_committed_save(self) -> None:
         for backend in ("sqlite", "jsonl"):
             with tempfile.TemporaryDirectory() as tmp:

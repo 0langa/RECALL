@@ -66,11 +66,12 @@ def worker(folder: Path, number: int, mode: str) -> None:
     wait_for(folder / "go")
     started = time.monotonic()
     try:
-        if mode == "idempotency":
+        if mode in {"idempotency", "confirm_idempotency"}:
+            retry_key = f"confirm-retry-{number % 2}" if mode == "confirm_idempotency" else "retry-one"
             outcome = memory_manager.add_record_if_useful(
-                "facts", submitted["content"], {"idempotency_key": "retry-one"}, root,
+                "facts", submitted["content"], {"idempotency_key": retry_key}, root,
             )
-            response = {"result": outcome["action"], "id": outcome["record"].id}
+            response = {"result": outcome["action"], "id": outcome["record"].id, "reason": outcome.get("reason")}
         else:
             response = kimi_mcp_server.call_save_insight({**submitted, "root": str(root)})
         response["seconds"] = time.monotonic() - started
@@ -124,6 +125,8 @@ class WriteConcurrencyTests(unittest.TestCase):
                 else "The project keeps the canonical memory store on local disk."
             )} for number in range(count)
         ]
+        if mode == "confirm_idempotency":
+            memory_manager.add_record_if_useful("facts", submissions[0]["content"], root=root)
         (folder / "submissions.json").write_text(json.dumps(submissions, indent=2), encoding="utf-8")
         (folder / "before.json").write_text(json.dumps([baseline.__dict__], indent=2), encoding="utf-8")
         processes = [self.start(folder, number, mode) for number in range(count)]
@@ -156,6 +159,13 @@ class WriteConcurrencyTests(unittest.TestCase):
             self.assertEqual(saved.metadata["confirmed_count"], count - 1)
             self.assertEqual(sum(response["result"] == "saved" for response in responses), 1)
             self.assertEqual(sum(response["result"] == "updated_existing" for response in responses), count - 1)
+        if mode == "confirm_idempotency":
+            saved = next(record for record in records if record.category == "facts")
+            self.assertEqual(saved.metadata["confirmed_count"], 2)
+            self.assertEqual(sum(response["result"] == "updated_existing" for response in responses), 2)
+            self.assertEqual(sum(response.get("reason") == "idempotent_replay" for response in responses), count - 2)
+            for key in ("confirm-retry-0", "confirm-retry-1"):
+                self.assertEqual(storage.find_by_idempotency_key(key, root).id, saved.id)
         rebuilt = memory_manager.rebuild_index(root)
         self.assertEqual(rebuilt["indexed_records"], len(records))
         self.assertEqual(set(index_store.load_index(root)), set(by_id))
@@ -179,6 +189,11 @@ class WriteConcurrencyTests(unittest.TestCase):
         for backend in ("sqlite", "jsonl"):
             with self.subTest(backend=backend):
                 self.cohort(backend, 8, "idempotency", 0)
+
+    def test_concurrent_keyed_confirmation_is_applied_once_per_key(self) -> None:
+        for backend in ("sqlite", "jsonl"):
+            with self.subTest(backend=backend):
+                self.cohort(backend, 8, "confirm_idempotency", 0)
 
     def test_concurrent_custom_categories_survive(self) -> None:
         for backend in ("sqlite", "jsonl"):

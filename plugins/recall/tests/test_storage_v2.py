@@ -5,7 +5,9 @@ import json
 import sqlite3
 import sys
 import tempfile
+import threading
 import unittest
+from unittest import mock
 from contextlib import closing
 from pathlib import Path
 
@@ -19,6 +21,49 @@ import storage  # noqa: E402
 
 
 class StorageV2Tests(unittest.TestCase):
+    def test_legacy_config_upgrade_cannot_erase_an_acknowledged_category(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.root_config_path(tmp).write_text(json.dumps({"backend": "jsonl"}), encoding="utf-8")
+            recall_config.ensure_config(tmp)
+            waiting = threading.Event()
+            release = threading.Event()
+            errors = []
+            original_load = json.load
+
+            def held_legacy_read(handle, *args, **kwargs):
+                loaded = original_load(handle, *args, **kwargs)
+                if threading.current_thread().name == "legacy-reader" and not waiting.is_set():
+                    # Pause after the snapshot is complete. An open Windows
+                    # read handle would prevent any replacement at all.
+                    handle.close()
+                    waiting.set()
+                    if not release.wait(5):
+                        raise TimeoutError("Test did not release the legacy reader")
+                return loaded
+
+            def reader():
+                try:
+                    recall_config.load_config(tmp)
+                except BaseException as exc:
+                    errors.append(repr(exc))
+
+            with mock.patch.object(recall_config.json, "load", side_effect=held_legacy_read):
+                worker = threading.Thread(target=reader, name="legacy-reader")
+                worker.start()
+                try:
+                    self.assertTrue(waiting.wait(5))
+                    acknowledged = recall_config.add_category("review_custom", "Keep this category.", raw_root=tmp)
+                    self.assertEqual(acknowledged["description"], "Keep this category.")
+                    self.assertIn("review_custom", recall_config.load_config(tmp)["categories"])
+                finally:
+                    release.set()
+                    worker.join(5)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(errors, [])
+            final = recall_config.load_config(tmp)
+            self.assertIn("review_custom", final["categories"])
+            self.assertTrue(final["activation"]["enabled"])
+
     def test_parallel_category_definitions_keep_all_updates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:

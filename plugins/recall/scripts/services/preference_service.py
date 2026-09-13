@@ -58,6 +58,7 @@ def evaluate(
         merged["supporting_event_ids"] = sorted(set(evidence_ids))
         if len(set(evidence_ids)) >= 2:
             merged.update({"status": "active", "trust": max(0.75, float(merged.get("trust", 0.0)))})
+        merged = storage.metadata_with_idempotency_key(merged, str(metadata.get("idempotency_key") or "") or None)
         return PreferenceDecision(
             "update",
             "preference_evidence_accumulated",

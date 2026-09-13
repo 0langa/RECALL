@@ -73,7 +73,10 @@ def invalidate_verification(
     return metadata
 
 
-def confirm(record_id: int, root: str | Path | None = None, source_session: str | None = None) -> storage.MemoryRecord:
+def confirm(
+    record_id: int, root: str | Path | None = None, source_session: str | None = None,
+    idempotency_key: str | None = None,
+) -> storage.MemoryRecord:
     record = get_required(record_id, root)
     metadata = dict(record.metadata or {})
     metadata["last_confirmed"] = utc_now()
@@ -102,6 +105,7 @@ def confirm(record_id: int, root: str | Path | None = None, source_session: str 
 
     metadata["recall_fingerprint"] = content_fingerprint(record.category, record.content, metadata)
     metadata["updated_at"] = utc_now()
+    metadata = storage.metadata_with_idempotency_key(metadata, idempotency_key)
     return storage.update_record_metadata(record.id, metadata, root)
 
 

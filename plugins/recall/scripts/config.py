@@ -348,6 +348,18 @@ def load_config(raw_root: str | Path | None = None) -> dict[str, Any]:
     path = ensure_config(raw_root)
     with path.open(encoding="utf-8") as handle:
         loaded = json.load(handle)
+    if "activation" not in loaded:
+        with exclusive_lock(memory_dir(raw_root) / ".config.lock"):
+            # Another writer may have upgraded or changed this config since
+            # the first read. Never publish that earlier snapshot.
+            return _load_config_unlocked(raw_root)
+    return validate_config(loaded)
+
+
+def _load_config_unlocked(raw_root: str | Path | None = None) -> dict[str, Any]:
+    """Read and upgrade while the caller owns the config lock."""
+    with config_path(raw_root).open(encoding="utf-8") as handle:
+        loaded = json.load(handle)
     validated = validate_config(loaded)
     if "activation" not in loaded:
         validated["activation"].update(
@@ -357,12 +369,13 @@ def load_config(raw_root: str | Path | None = None) -> dict[str, Any]:
                 "activated_by": "legacy_memory_store",
             }
         )
-        save_config(validated, raw_root)
+        _write_config_payload(validated, raw_root)
     return validated
 
 
 def save_config(config: dict[str, Any], raw_root: str | Path | None = None) -> None:
-    _write_config_payload(validate_config(config), raw_root)
+    with exclusive_lock(memory_dir(raw_root) / ".config.lock"):
+        _write_config_payload(validate_config(config), raw_root)
 
 
 def _write_config_payload(payload: dict[str, Any], raw_root: str | Path | None = None) -> None:
@@ -496,7 +509,7 @@ def add_category(
 ) -> dict[str, Any]:
     ensure_config(raw_root)
     with exclusive_lock(memory_dir(raw_root) / ".config.lock"):
-        config = load_config(raw_root)
+        config = _load_config_unlocked(raw_root)
         normalized = normalize_category(name)
         existing = dict(config["categories"].get(normalized, {}))
         existing["description"] = description or existing.get("description") or f"Custom category `{normalized}`."
@@ -508,7 +521,7 @@ def add_category(
         if update_rule and update_rule.strip():
             existing["update_rule"] = update_rule.strip()
         config["categories"][normalized] = existing
-        save_config(config, raw_root)
+        _write_config_payload(validate_config(config), raw_root)
         return config["categories"][normalized]
 
 

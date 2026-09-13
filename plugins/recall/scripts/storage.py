@@ -442,6 +442,14 @@ def find_by_idempotency_key(idempotency_key: str, root: str | Path | None = None
                 "WHERE json_extract(metadata, '$.idempotency_key') = ? ORDER BY id DESC LIMIT 1",
                 (idempotency_key,),
             ).fetchone()
+            if row is None:
+                row = connection.execute(
+                    "SELECT id, category, timestamp, content, metadata, embedding FROM memories "
+                    "WHERE json_type(metadata, '$.idempotency_keys') = 'array' AND EXISTS ("
+                    "SELECT 1 FROM json_each(memories.metadata, '$.idempotency_keys') "
+                    "WHERE type = 'text' AND value = ?) ORDER BY id DESC LIMIT 1",
+                    (idempotency_key,),
+                ).fetchone()
         if row is None:
             return None
         return MemoryRecord(
@@ -449,9 +457,31 @@ def find_by_idempotency_key(idempotency_key: str, root: str | Path | None = None
             json.loads(row[4] or "{}"), embedding=json.loads(row[5] or "[]"),
         )
     for record in iter_jsonl_records(root):
-        if str((record.metadata or {}).get("idempotency_key") or "") == idempotency_key:
+        if idempotency_key in _record_idempotency_keys(record.metadata):
             return record
     return None
+
+
+def _record_idempotency_keys(metadata: dict[str, Any]) -> list[str]:
+    primary = str(metadata.get("idempotency_key") or "")
+    aliases = metadata.get("idempotency_keys", [])
+    if not isinstance(aliases, list):
+        aliases = []
+    return list(dict.fromkeys([key for key in [primary, *aliases] if isinstance(key, str) and key]))
+
+
+def metadata_with_idempotency_key(metadata: dict[str, Any], idempotency_key: str | None) -> dict[str, Any]:
+    """Keep every successful save key in the same write as its record effect."""
+    metadata = dict(metadata)
+    if not idempotency_key:
+        return metadata
+    keys = _record_idempotency_keys(metadata)
+    if idempotency_key not in keys:
+        keys.append(idempotency_key)
+    metadata["idempotency_key"] = keys[0]
+    if len(keys) > 1:
+        metadata["idempotency_keys"] = keys
+    return metadata
 
 
 @atomic_write
