@@ -68,8 +68,11 @@ class MemoryManagerTests(unittest.TestCase):
     def test_secret_like_content_is_redacted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory_manager.add_record("debug_history", "api_key=dummy-secret-value", root=tmp)
-            result = memory_manager.query("api key", root=tmp)
+            result = memory_manager.query("redacted", root=tmp)
             self.assertIn("[REDACTED]", result["results"][0]["content"])
+            unrelated = memory_manager.query("api key", root=tmp)
+            self.assertEqual(unrelated["results"], [])
+            self.assertEqual(unrelated["empty_reason"], "no_lexical_match")
 
     def test_secret_like_metadata_is_redacted_before_persistence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -15,8 +15,10 @@ SECRET_PATTERNS = [
     re.compile(r"sk-(?:proj-)?[A-Za-z0-9_-]{20,}"),
     # AWS access key ID
     re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"),
-    # AWS secret access key (40 chars base64-ish, at least one digit + one letter)
-    re.compile(r"\b(?=[A-Za-z0-9/+]*[A-Za-z])(?=[A-Za-z0-9/+]*[0-9])[A-Za-z0-9/+]{40}\b"),
+    # Unlabelled AWS-secret heuristic. Exactly 40 hex digits also describe
+    # ordinary Git object IDs. Exclude only that shape from this heuristic;
+    # keyword assignments and all provider-specific patterns still apply.
+    re.compile(r"\b(?![A-Fa-f0-9]{40}\b)(?=[A-Za-z0-9/+]*[A-Za-z])(?=[A-Za-z0-9/+]*[0-9])[A-Za-z0-9/+]{40}\b"),
     # JWT: three base64url segments joined by dots (min 4/4/4)
     re.compile(r"\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\b"),
     # GitHub / GitLab tokens

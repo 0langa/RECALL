@@ -96,12 +96,14 @@ def _find_hash(root: str | Path, expected_hash: str, missing_path: str) -> str |
 def _mark_invalid(record: storage.MemoryRecord, reason: str, root: str | Path, **details: Any) -> storage.MemoryRecord:
     metadata = dict(record.metadata or {})
     metadata.update(details)
-    metadata["status"] = "stale"
+    if metadata.get("status") not in {"superseded", "deprecated", "archived"}:
+        metadata["status"] = "stale"
     metadata["invalidation_reason"] = reason
     metadata["invalidated_at"] = utc_now()
     return storage.update_record_metadata(record.id, metadata, root)
 
 
+@storage.atomic_write
 def invalidate_by_file(path: str | Path, root: str | Path) -> dict[str, Any]:
     """Mark every memory linked to a project file as stale."""
 
@@ -114,8 +116,9 @@ def invalidate_by_file(path: str | Path, root: str | Path) -> dict[str, Any]:
     return {"source_path": relative, "invalidated_ids": changed, "count": len(changed)}
 
 
+@storage.atomic_write
 def refresh_source(record_id: int, root: str | Path) -> storage.MemoryRecord:
-    """Refresh one memory's file hash and restore active status."""
+    """Observe a file again without treating that observation as claim proof."""
 
     record = storage.get_record(record_id, root)
     if record is None:
@@ -125,14 +128,33 @@ def refresh_source(record_id: int, root: str | Path) -> storage.MemoryRecord:
     if not source_path:
         raise ValueError(f"RECALL memory #{record_id} has no file source.")
     descriptor = describe_file(root, str(source_path))
+    now = utc_now()
+    # Preserve earlier source observations and all factual evidence. A new
+    # hash or path says where the bytes are now, not whether the claim holds.
+    history = list(metadata.get("source_history") or [])
+    history.append({
+        key: metadata[key] for key in (
+            "source", "source_kind", "source_path", "source_hash", "source_revision",
+            "source_checked_at", "status", "invalidation_reason", "invalidated_at",
+        ) if key in metadata
+    })
+    changed = any(metadata.get(key) != descriptor.get(key) for key in ("source_path", "source_hash"))
+    metadata["source_history"] = history
     metadata.update(descriptor)
-    metadata["status"] = "active"
-    metadata["updated_at"] = utc_now()
-    for key in ("invalidation_reason", "invalidated_at", "replacement_source_path"):
-        metadata.pop(key, None)
+    metadata["source_refreshed_at"] = now
+    if changed:
+        if metadata.get("status") not in {"superseded", "deprecated", "archived"}:
+            metadata["status"] = "stale"
+        metadata.setdefault("invalidation_reason", "source_changed_on_refresh")
+        metadata.setdefault("invalidated_at", now)
+        metadata.setdefault("verification_invalidated_at", now)
+    # Deliberately do not update updated_at or last_confirmed: source access
+    # must not reset the age of a point-in-time factual claim.
+    metadata.pop("replacement_source_path", None)
     return storage.update_record_metadata(record.id, metadata, root)
 
 
+@storage.atomic_write
 def reconcile_sources(root: str | Path) -> dict[str, Any]:
     """Find modified, deleted, or moved file sources missed by hooks."""
 

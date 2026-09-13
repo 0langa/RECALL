@@ -7,6 +7,7 @@ from collections import Counter
 from typing import Any
 
 import memory_manager
+import retrieval
 from models import ContextPacketRequest, ContextPacketResponse
 
 
@@ -37,22 +38,36 @@ def build_context_packet(request: ContextPacketRequest) -> ContextPacketResponse
             continue
         title = str(metadata.get("summary") or item["content"][:120]).strip()
         content = " ".join(str(item["content"]).split())
+        truncated = len(content) > 320
         content = content[:320]
-        rendered = f"[{category}] {title}: {content}"
+        flags = item.get("flags", [item.get("flag", "current")])
+        label = f"[{category};{','.join(flags)}]"
+        rendered = f"{label} {title}: {content}" + (" [truncated]" if truncated else "")
         cost = estimate_tokens(rendered)
         if used + cost > request.token_budget:
-            title_rendered = f"[{category}] {title}"
+            title_rendered = f"{label} {title} [truncated]"
             title_cost = estimate_tokens(title_rendered)
             if used + title_cost > request.token_budget:
                 continue
             rendered = title_rendered
             cost = title_cost
+            truncated = True
         cards.append(
             {
                 "id": item["id"],
                 "category": category,
                 "source": source,
                 "text": rendered,
+                "flag": item.get("flag", "current"),
+                "flags": flags,
+                "flag_reason": item.get("flag_reason"),
+                "truncated": truncated,
+                "provenance": {
+                    key: metadata[key] for key in (
+                        "source_path", "source_hash", "source_revision", "source_checked_at",
+                        "invalidation_reason", "verification_invalidated_at",
+                    ) if key in metadata
+                },
                 "estimated_tokens": cost,
                 "score_components": {
                     "combined_score": item["score"],
@@ -71,7 +86,12 @@ def build_context_packet(request: ContextPacketRequest) -> ContextPacketResponse
             "token_budget": request.token_budget,
             "estimated_tokens": used,
             "cards": cards,
-            "candidate_count": len(result["results"]),
-            "omitted_count": len(result["results"]) - len(cards),
+            "candidate_count": result.get("candidate_count", len(result["results"])),
+            "omitted_count": result.get("omitted_count", 0) + len(result["results"]) - len(cards),
+            "filtered_count": result.get("filtered_count", 0),
+            "truncated": bool(result.get("truncated") or len(cards) < len(result["results"]) or any(card["truncated"] for card in cards)),
+            "health": retrieval.selection_health(result.get("health", {}), cards),
+            "root_decision": result.get("root_decision"),
+            "empty_reason": None if cards else result.get("empty_reason") or "token_budget",
         }
     )

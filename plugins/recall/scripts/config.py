@@ -231,14 +231,46 @@ MEMORY_DIR_NAME = ".recall"
 LEGACY_MEMORY_DIR_NAME = ".codex_memory"
 
 
+class RootResolutionError(ValueError):
+    """A scope decision that must be reported before any store initialization."""
+
+    def __init__(self, decision: dict[str, Any]) -> None:
+        self.decision = decision
+        super().__init__(f"RECALL project root is {decision['status']}: {decision['reason']}; supply one explicit project root.")
+
+
+def root_decision(raw_root: str | Path | None = None) -> dict[str, Any]:
+    """Resolve scope using path markers only; never open a canonical store."""
+    import project_context
+
+    candidates: list[dict[str, str]] = []
+    source = "explicit_root" if raw_root is not None else "environment_root"
+    raw = raw_root if raw_root is not None else os.environ.get("RECALL_PROJECT_ROOT")
+    if raw is not None:
+        if not str(raw).strip():
+            return {"status": "unresolved", "root": None, "reason": "blank_root", "candidates": candidates}
+        try:
+            root = Path(raw).expanduser().resolve()
+        except (OSError, ValueError, RuntimeError):
+            return {"status": "unresolved", "root": None, "reason": "invalid_root", "candidates": candidates}
+        if root.is_file():
+            return {"status": "unresolved", "root": None, "reason": "root_is_file", "candidates": candidates}
+        candidates.append({"root": str(root), "source": source})
+        if raw_root is None:
+            cwd_root = project_context.resolve_project_root(Path.cwd())
+            if cwd_root is not None and cwd_root != root and root in cwd_root.parents:
+                candidates.append({"root": str(cwd_root), "source": "cwd_project_boundary"})
+                return {"status": "ambiguous", "root": None, "reason": "ancestor_environment_root", "candidates": candidates}
+        return {"status": "resolved", "root": str(root), "reason": source, "candidates": candidates}
+    return project_context.project_root_decision(Path.cwd())
+
+
 def project_root(raw_root: str | Path | None = None) -> Path:
-    """Return the project root RECALL should use for local storage."""
-    if raw_root is not None:
-        return Path(raw_root).expanduser().resolve()
-    env_root = os.environ.get("RECALL_PROJECT_ROOT")
-    if env_root:
-        return Path(env_root).expanduser().resolve()
-    return Path.cwd().resolve()
+    """Return a clear project root, or fail before creating any store files."""
+    decision = root_decision(raw_root)
+    if decision["status"] != "resolved":
+        raise RootResolutionError(decision)
+    return Path(decision["root"])
 
 
 def neutral_memory_dir(raw_root: str | Path | None = None) -> Path:

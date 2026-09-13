@@ -16,6 +16,15 @@ import session_context  # noqa: E402
 
 
 class RetrievalQualityTests(unittest.TestCase):
+    def test_session_context_keeps_conflict_and_truncation_at_top_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for value in ("alpha", "beta"):
+                memory_manager.add_record("decisions", f"Storage uses {value}.",
+                    {"claim_key": "storage", "claim_value": value, "status": "active"}, tmp)
+            context = session_context.build_session_context(tmp, "storage", 1, token_budget=100)
+            self.assertIn("conflicting", context)
+            self.assertIn("omitted", context)
+
     def test_session_context_includes_validated_requirements(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory_manager.add_record(
