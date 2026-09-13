@@ -32,7 +32,7 @@ def store_overview(root: str) -> str:
     except Exception:  # noqa: BLE001 - a broken store must not break session start.
         return ""
     if not total:
-        return "The store is empty; save durable insights as this project produces them."
+        return "The store is empty. This is valid; RECALL does not require a save."
     top = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:5]
     summary = ", ".join(f"{name} ({count})" for name, count in top)
     return f"The store holds {total} memories; largest categories: {summary}."

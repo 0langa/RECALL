@@ -10,6 +10,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import contract as recall_contract  # noqa: E402
 
 
 class ClaudeCodeAdapterTests(unittest.TestCase):
@@ -86,6 +89,10 @@ class ClaudeCodeAdapterTests(unittest.TestCase):
             )
             responses = [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]
             self.assertEqual([response["id"] for response in responses], [1, 2, 3])
+            self.assertEqual(
+                responses[0]["result"]["instructions"],
+                recall_contract.compact_contract_text(),
+            )
 
             init_text = responses[1]["result"]["content"][0]["text"]
             init_payload = json.loads(init_text)
