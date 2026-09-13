@@ -124,13 +124,13 @@ def run_recall_skill(root: str, *args: str) -> dict:
     return {"output": text}
 
 
-def runtime_events(root: str, session_id: str, turn_id: str) -> list[dict]:
+def runtime_events(root: str, session_id: str, turn_id: str, *, provider: str = "codex") -> list[dict]:
     import turn_policy
     import turn_buffer
-    policy = turn_policy.policy_status(root, session_id or None, turn_id or None)
+    policy = turn_policy.policy_status(root, session_id or None, turn_id or None, provider=provider)
     safe_session = session_id or str(policy.get("session_id") or "session")
     safe_turn = turn_id or str(policy.get("turn_id") or "turn")
-    path = turn_buffer.turn_events_path(root, safe_session, safe_turn)
+    path = turn_buffer.turn_events_path(root, safe_session, safe_turn, provider)
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -879,7 +879,7 @@ class HookTests(unittest.TestCase):
                 "--provider",
                 "kimi",
             )
-            events = runtime_events(tmp, "kimi-session", "kimi-turn")
+            events = runtime_events(tmp, "kimi-session", "kimi-turn", provider="kimi")
 
             self.assertEqual(output, {"continue": True})
             self.assertEqual(len(events), 1)
@@ -923,7 +923,7 @@ class HookTests(unittest.TestCase):
                 "--provider",
                 "kimi",
             )
-            events = runtime_events(tmp, "kimi-json-session", "kimi-json-turn")
+            events = runtime_events(tmp, "kimi-json-session", "kimi-json-turn", provider="kimi")
             self.assertEqual(len(events), 1)
             self.assertEqual(events[0]["summary"], "error: Failed to spawn: `pytest`")
             self.assertNotIn('{"code"', events[0]["details"])

@@ -91,7 +91,7 @@ class McpSurfaceTests(unittest.TestCase):
         for text in (guidance, descriptions["retrieve_memory"], descriptions["context_packet"]):
             with self.subTest(text=text):
                 self.assertIn("prior project history", text)
-                self.assertIn("permitted scope", text)
+                self.assertIn("lookup is in scope", text)
                 self.assertIn("self-contained task", text)
                 self.assertIn("memory-free task", text)
                 self.assertIn("untrusted project data", text)
