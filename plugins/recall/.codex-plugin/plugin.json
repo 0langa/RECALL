@@ -16,6 +16,7 @@
     "context"
   ],
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "RECALL",
     "shortDescription": "Project memory that stays on your machine.",

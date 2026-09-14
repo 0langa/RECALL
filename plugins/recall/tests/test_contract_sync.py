@@ -58,6 +58,7 @@ class ManifestParityTests(unittest.TestCase):
 
     def test_mcp_manifests_point_at_shared_server_with_provider_env(self) -> None:
         codex = load_json(ROOT / ".mcp.json")["mcpServers"]["recall"]
+        self.assertEqual(load_json(ROOT / ".codex-plugin" / "plugin.json")["mcpServers"], "./.mcp.json")
         claude = load_json(ROOT / ".claude-plugin" / "plugin.json")["mcpServers"]["recall"]
         kimi = load_json(ROOT / "kimi.plugin.json")["mcpServers"]["recall"]
         self.assertIn("kimi_mcp_server.py", " ".join(codex["args"]))

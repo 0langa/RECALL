@@ -32,7 +32,7 @@ This entry does not claim that the tag or public release exists.
 - Recorded its candidate-to-v1.5.5 median ratio as `0.9974007` under high host load.
 - Made no speed claim from that check.
 - Updated architecture text from the old 64-D value to the actual 256-D local hash embedder.
-- Moved the Codex MCP server declaration to the root `.mcp.json` file that current Codex loads.
+- Moved the Codex MCP server declaration to root `.mcp.json` and made the Codex manifest point to it.
 - Made the shared lifecycle hook commands select `codex` or `claude-code` from the host plugin-root environment.
 - Set GitHub install pins to `v1.6.0`.
 

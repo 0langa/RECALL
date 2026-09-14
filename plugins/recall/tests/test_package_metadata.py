@@ -82,7 +82,7 @@ class PackageMetadataTests(unittest.TestCase):
     def test_codex_mcp_config_declares_shared_server(self) -> None:
         manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
         payload = json.loads((ROOT / ".mcp.json").read_text(encoding="utf-8"))
-        self.assertNotIn("mcpServers", manifest)
+        self.assertEqual(manifest["mcpServers"], "./.mcp.json")
         server = payload["mcpServers"]["recall"]
         self.assertEqual(server["command"], "python")
         self.assertEqual(server["cwd"], "./")
