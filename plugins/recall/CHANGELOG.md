@@ -33,6 +33,7 @@ This entry does not claim that the tag or public release exists.
 - Made no speed claim from that check.
 - Updated architecture text from the old 64-D value to the actual 256-D local hash embedder.
 - Moved the Codex MCP server declaration to the root `.mcp.json` file that current Codex loads.
+- Made the shared lifecycle hook commands select `codex` or `claude-code` from the host plugin-root environment.
 - Set GitHub install pins to `v1.6.0`.
 
 Evidence limits at candidate freeze:
