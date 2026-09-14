@@ -78,12 +78,12 @@ def main() -> None:
 
     categories = ["architecture", "requirements", "risks", "commands", "debug_history", "tasks", "decisions"]
     query_texts = [
-        "architecture hooks memory storage",
-        "requirements local first recall codex_memory",
-        "risks hook payload drift",
-        "commands unittest smoke recall",
-        "debug history failure assertion",
-        "decisions sqlite jsonl local backend",
+        "architecture RECALL local-first retrieval hooks storage",
+        "requirements RECALL local-first retrieval hooks storage",
+        "risks RECALL local-first retrieval hooks storage",
+        "commands RECALL local-first retrieval hooks storage",
+        "debug history RECALL local-first retrieval hooks storage",
+        "decisions RECALL local-first retrieval hooks storage",
     ]
 
     with tempfile.TemporaryDirectory(prefix="recall-perf-") as tmp:

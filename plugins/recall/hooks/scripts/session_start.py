@@ -17,6 +17,7 @@ import config as recall_config
 import contract as recall_contract
 from hook_io import additional_context, normalize_hook_event, read_hook_input
 import storage
+import turn_policy
 
 
 MAX_INJECTED_CHARS = 2000
@@ -32,7 +33,7 @@ def store_overview(root: str) -> str:
     except Exception:  # noqa: BLE001 - a broken store must not break session start.
         return ""
     if not total:
-        return "The store is empty; save durable insights as this project produces them."
+        return "The store is empty. This is valid; RECALL does not require a save."
     top = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:5]
     summary = ", ".join(f"{name} ({count})" for name, count in top)
     return f"The store holds {total} memories; largest categories: {summary}."
@@ -51,12 +52,20 @@ def main() -> None:
         provider=args.provider,
         fallback_root=args.root,
     )
-    root = event.root or event.cwd
+    root = event.root
+    # SessionStart has no task-owned turn identity. Generated fallback ids must
+    # not look like a late delivery from an unknown turn.
+    policy = turn_policy.policy_status(root, provider=event.provider)
+    if policy["disabled"]:
+        print(json.dumps(turn_policy.disabled_result(hook=True)))
+        return
     if not root or not recall_config.project_is_active(root):
         print(json.dumps({"continue": True}))
         return
     parts = [recall_contract.compact_contract_text()]
-    overview = store_overview(root)
+    # SessionStart precedes the task prompt. Policy/config contain no memory
+    # cards, but even inventory reads must wait until task scope is known.
+    overview = store_overview(root) if policy["scope_known"] and not policy.get("closed") else ""
     if overview:
         parts.append(overview)
     if recall_config.memory_dir(root).name == recall_config.LEGACY_MEMORY_DIR_NAME:

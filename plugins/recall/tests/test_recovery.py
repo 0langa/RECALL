@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from contextlib import closing
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -12,10 +14,69 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import memory_manager  # noqa: E402
 import storage  # noqa: E402
+import config  # noqa: E402
 from services import recovery_service  # noqa: E402
 
 
 class RecoveryTests(unittest.TestCase):
+    def test_confirmation_and_retry_identity_share_one_jsonl_replacement(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = config.load_config(tmp)
+            cfg["backend"] = "jsonl"
+            config.save_config(cfg, tmp)
+            saved = memory_manager.add_record_if_useful("architecture", "Preserve this unkeyed card.", root=tmp)["record"]
+            with mock.patch.object(storage.os, "replace", side_effect=OSError("Injected replacement failure")):
+                with self.assertRaisesRegex(OSError, "Injected replacement failure"):
+                    memory_manager.add_record_if_useful(
+                        "architecture", saved.content, {"idempotency_key": "confirm-once"}, tmp,
+                    )
+            self.assertEqual(storage.get_record(saved.id, tmp), saved)
+            self.assertIsNone(storage.find_by_idempotency_key("confirm-once", tmp))
+            with mock.patch.object(storage.os, "replace", wraps=storage.os.replace) as replace:
+                first = memory_manager.add_record_if_useful("architecture", saved.content, {"idempotency_key": "confirm-once"}, tmp)
+                self.assertEqual(replace.call_count, 1)
+            replay = memory_manager.add_record_if_useful("architecture", saved.content, {"idempotency_key": "confirm-once"}, tmp)
+            self.assertEqual(replay["reason"], "idempotent_replay")
+            self.assertEqual(replay["record"], first["record"])
+            self.assertEqual(replay["record"].metadata["confirmed_count"], 1)
+
+    def test_index_fault_cannot_hide_committed_save(self) -> None:
+        for backend in ("sqlite", "jsonl"):
+            with tempfile.TemporaryDirectory() as tmp:
+                cfg = config.load_config(tmp)
+                cfg["backend"] = backend
+                config.save_config(cfg, tmp)
+                committed_ids = []
+
+                def failed_append(record, root, observed=committed_ids):
+                    observed.extend(item.id for item in storage.iter_records(root))
+                    raise OSError("Injected index fault")
+
+                with mock.patch.object(memory_manager.index_store, "append_record", side_effect=failed_append):
+                    with self.assertLogs("memory_manager", level="WARNING"):
+                        result = memory_manager.add_record_if_useful(
+                            "architecture", "Canonical storage commits before its derived index.", root=tmp,
+                        )
+                self.assertEqual(result["action"], "saved")
+                self.assertEqual(committed_ids, [result["record"].id])
+                self.assertEqual(storage.get_record(result["record"].id, tmp), result["record"])
+                self.assertEqual(memory_manager.rebuild_index(tmp)["indexed_records"], 1)
+                self.assertTrue(memory_manager.doctor(tmp)["index_complete"])
+
+    def test_sqlite_nested_write_rolls_back_and_never_updates_index(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            storage.init_store(tmp)
+            with mock.patch.object(memory_manager.index_store, "append_record") as append:
+                with self.assertRaisesRegex(RuntimeError, "Abort outer transaction"):
+                    with storage.write_transaction(tmp):
+                        saved = memory_manager.add_record("architecture", "Uncommitted draft", root=tmp)
+                        self.assertEqual(storage.get_record(saved.id, tmp), saved)
+                        with closing(storage.connect_sqlite(tmp)) as separate:
+                            self.assertEqual(separate.execute("SELECT COUNT(*) FROM memories").fetchone()[0], 0)
+                        raise RuntimeError("Abort outer transaction")
+                append.assert_not_called()
+            self.assertEqual(list(storage.iter_records(tmp)), [])
+
     def test_export_restore_preserves_identity_and_relationships(self) -> None:
         with tempfile.TemporaryDirectory() as source, tempfile.TemporaryDirectory() as restored:
             record = memory_manager.add_record(

@@ -8,6 +8,7 @@ from typing import Any, NamedTuple
 
 from embedder import tokenize
 import memory_hygiene
+import storage
 
 
 SUPERSESSION_RE = re.compile(r"(?i)\b(?:supersedes|replaces|correction to)\s+memory\s+#?(\d+)\b")
@@ -52,6 +53,42 @@ def is_generic_checkpoint(content: str, metadata: dict[str, Any]) -> bool:
     return bool(tokens) and len(tokens - generic) <= 1
 
 
+def _identity_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    identity = dict(metadata)
+    # Confirmation promotes active to validated. It must not make the next
+    # identical save a new fact. Terminal and hypothesis states stay distinct.
+    if str(identity.get("status") or "active").lower() in {"active", "validated"}:
+        identity["status"] = "active"
+    return identity
+
+
+def same_applicability(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    for key, default in (("applies_to_provider", "all"), ("preference_scope", "project"), ("scope", None)):
+        if left.get(key, default) != right.get(key, default):
+            return False
+    return True
+
+
+def find_related_write(
+    category: str, content: str, metadata: dict[str, Any], root: str | None,
+) -> memory_hygiene.RelatedRecord | None:
+    """Apply live identity and scope checks inside the caller's store transaction."""
+    fingerprint = memory_hygiene.content_fingerprint(category, content, _identity_metadata(metadata))
+    best: memory_hygiene.RelatedRecord | None = None
+    for record in storage.iter_records(root):
+        if not memory_hygiene.same_memory_family(record, category, metadata):
+            continue
+        if not same_applicability(record.metadata, metadata):
+            continue
+        existing = memory_hygiene.content_fingerprint(record.category, record.content, _identity_metadata(record.metadata))
+        if existing == fingerprint and memory_hygiene._structured_claims_compatible(record.metadata, metadata):
+            return memory_hygiene.RelatedRecord("exact", record, 1.0)
+        similarity = memory_hygiene.token_jaccard(content, record.content)
+        if similarity >= memory_hygiene.NEAR_DUPLICATE_THRESHOLD and (best is None or similarity > best.similarity):
+            best = memory_hygiene.RelatedRecord("near", record, similarity)
+    return best
+
+
 def classify_write(
     category: str,
     content: str,
@@ -65,7 +102,7 @@ def classify_write(
     if is_generic_checkpoint(content, metadata):
         return WriteDecision("ignore", "generic_checkpoint")
 
-    related = memory_hygiene.find_related_record(category, content, metadata, root)
+    related = find_related_write(category, content, metadata, root)
     if related and related.kind == "exact":
         return WriteDecision("update_existing", "exact_duplicate", related.record.id, 1.0, supersedes_id)
     if related and related.kind == "near":

@@ -17,6 +17,8 @@ import observability
 import security
 import storage
 import turn_buffer
+import turn_policy
+import observed_evidence
 
 
 SCHEMA = "recall.finalizer_batch.v1"
@@ -77,17 +79,40 @@ def _confirm_metadata(metadata: dict[str, Any], session_id: str, *, explicit: bo
     updated["confirmation_sessions"] = sessions
     updated["confirmed_count"] = len(sessions)
     updated["last_confirmed"] = utc_now()
-    if explicit or len(sessions) >= 2:
-        updated["status"] = "validated"
-        updated["validated_at"] = utc_now()
-        updated["trust"] = max(0.85, float(updated.get("trust", updated.get("confidence", 0.5))))
-    elif updated.get("status") in (None, "", "stale", "hypothesis"):
+    if updated.get("status") in (None, "", "stale", "hypothesis"):
         updated["status"] = "active"
     updated["updated_at"] = utc_now()
     return updated
 
 
-def _prepare_card(card: dict[str, Any], session_id: str, turn_id: str) -> dict[str, Any]:
+def _confirm_record(connection, record_id: int, session_id: str, turn_id: str, root: str | Path | None,
+                    evidence_ids: Any = None, provider: str = "codex") -> None:
+    row = connection.execute("SELECT category, content, timestamp, metadata FROM memories WHERE id = ?", (record_id,)).fetchone()
+    if row is None:
+        raise KeyError(f"RECALL memory #{record_id} was not found.")
+    category, content, timestamp = str(row[0]), str(row[1]), str(row[2])
+    metadata = _confirm_metadata(json.loads(row[3] or "{}"), session_id)
+    receipt = observed_evidence.evidence_for_card(
+        root, category, content, metadata, evidence_ids, session_id, turn_id, provider
+    )
+    if receipt:
+        metadata["observed_evidence"] = receipt
+    if observed_evidence.has_observed_evidence(root, category, content, metadata):
+        metadata["status"] = "validated"
+        metadata["validated_at"] = metadata["observed_evidence"]["observed_at"]
+    elif metadata.get("status") == "validated":
+        metadata["status"] = "active"
+        metadata.pop("validated_at", None)
+    _update_metadata(connection, record_id, timestamp, metadata)
+
+
+def _prepare_card(
+    card: dict[str, Any],
+    session_id: str,
+    turn_id: str,
+    root: str | Path | None = None,
+    provider: str = "codex",
+) -> dict[str, Any]:
     category = recall_config.normalize_category(_required_string(card, "category"))
     content = _required_string(card, "content")
     summary = _required_string(card, "summary")
@@ -95,7 +120,7 @@ def _prepare_card(card: dict[str, Any], session_id: str, turn_id: str) -> dict[s
     if security.redact_text(content) != content or security.redact_text(summary) != summary or security.redact_text(details) != details:
         raise ValueError("finalizer batch contains secret-like text and was not stored.")
     explicit = bool(card.get("explicit_user_evidence"))
-    status = str(card.get("status") or ("validated" if explicit and category in EXPLICIT_CATEGORIES else "hypothesis"))
+    status = str(card.get("status") or ("active" if explicit else "hypothesis"))
     if status not in {"hypothesis", "active", "validated", "open", "resolved"}:
         raise ValueError(f"unsupported finalizer status: {status}")
     tags = card.get("tags", [])
@@ -141,6 +166,7 @@ def _prepare_card(card: dict[str, Any], session_id: str, turn_id: str) -> dict[s
         "confidence": float(card.get("confidence", 0.75)),
         "session_id": session_id,
         "turn_id": turn_id,
+        "origin_provider": provider,
         "confirmation_sessions": [session_id],
         "confirmed_count": 1,
         "capture_reason": str(card.get("capture_reason") or "semantic turn finalization"),
@@ -153,6 +179,15 @@ def _prepare_card(card: dict[str, Any], session_id: str, turn_id: str) -> dict[s
     for key in ("claim_key", "claim_value", "source_path", "source_hash", "source_revision", "merged_from"):
         if card.get(key) not in (None, "", []):
             metadata[key] = card[key]
+    receipt = observed_evidence.evidence_for_card(
+        root, category, content, metadata, card.get("evidence_ids"), session_id, turn_id, provider
+    )
+    if receipt:
+        metadata["observed_evidence"] = receipt
+        metadata["validated_at"] = receipt["observed_at"]
+        metadata["status"] = "validated"
+    elif metadata["status"] == "validated":
+        metadata["status"] = "active"
     metadata["recall_fingerprint"] = memory_hygiene.content_fingerprint(category, content, metadata)
     return {"category": category, "content": content, "metadata": security.redact_value(metadata), "embedding": embed(content)}
 
@@ -182,13 +217,13 @@ def _looks_like_raw_tool_wrapper_card(content: str, summary: str, details: str, 
     return tool_tagged and has_json_wrapper and has_tool_prefix
 
 
-def _supersede_conflicting_claims(connection, new_id: int, category: str, metadata: dict[str, Any]) -> list[int]:
-    claim_key = str(metadata.get("claim_key") or "").strip()
-    claim_value = str(metadata.get("claim_value") or "").strip()
-    if not claim_key or not claim_value:
+def _flag_conflicting_claims(connection, new_id: int, category: str, metadata: dict[str, Any]) -> list[int]:
+    claim_key = metadata.get("claim_key")
+    claim_value = metadata.get("claim_value")
+    if not isinstance(claim_key, str) or not claim_key.strip() or not isinstance(claim_value, str) or not claim_value.strip():
         return []
 
-    superseded: list[int] = []
+    conflicts: list[int] = []
     rows = connection.execute(
         "SELECT id, timestamp, metadata FROM memories WHERE category = ? AND id != ?",
         (category, new_id),
@@ -205,23 +240,24 @@ def _supersede_conflicting_claims(connection, new_id: int, category: str, metada
         if str(old_metadata.get("claim_value") or "") == claim_value:
             continue
 
-        old_metadata.update({"status": "superseded", "superseded_by": new_id, "superseded_at": utc_now(), "updated_at": utc_now()})
-        supersedes = metadata.get("supersedes", [])
-        if not isinstance(supersedes, list):
-            supersedes = []
-        if old_id not in supersedes:
-            supersedes.append(old_id)
-        metadata.update({"supersedes": supersedes, "updated_at": utc_now()})
+        # Claim values are opaque. New text is not authority to pick a winner.
+        old_metadata.update({"review_claim_conflict": True, "updated_at": utc_now()})
+        metadata.update({"review_claim_conflict": True, "updated_at": utc_now()})
         _update_metadata(connection, old_id, old_timestamp, old_metadata)
-        superseded.append(old_id)
-    if superseded:
+        conflicts.append(old_id)
+    if conflicts:
         new_timestamp, current = _load_metadata(connection, new_id)
         current.update(metadata)
         _update_metadata(connection, new_id, new_timestamp, current)
-    return superseded
+    return conflicts
 
 
 def apply_finalizer_batch(batch: dict[str, Any], root: str | Path | None) -> dict[str, Any]:
+    provider = str(batch.get("origin_provider") or batch.get("provider") or "codex").strip().lower()
+    if turn_policy.policy_status(
+        root, batch.get("session_id"), batch.get("turn_id"), provider=provider
+    )["disabled"]:
+        return turn_policy.disabled_result()
     if batch.get("schema") != SCHEMA:
         raise ValueError(f"finalizer batch schema must be {SCHEMA}.")
     session_id = _required_string(batch, "session_id")
@@ -238,11 +274,14 @@ def apply_finalizer_batch(batch: dict[str, Any], root: str | Path | None) -> dic
         if not isinstance(operation, dict) or operation.get("op") not in ALLOWED_OPERATIONS:
             raise ValueError("finalizer batch contains an unsupported operation.")
 
-    prepared_cards = [_prepare_card(dict(operation.get("card") or {}), session_id, turn_id) for operation in save_operations]
+    prepared_cards = [
+        _prepare_card(dict(operation.get("card") or {}), session_id, turn_id, root, provider)
+        for operation in save_operations
+    ]
     storage.init_store(root)
     if storage.backend(root) != "sqlite":
         raise ValueError("atomic finalizer batches require the SQLite backend.")
-    idempotency_key = f"finalizer:{session_id}:{turn_id}"
+    idempotency_key = f"finalizer:{provider}:{session_id}:{turn_id}"
     results: list[dict[str, Any]] = []
     card_index = 0
     changed = False
@@ -273,7 +312,15 @@ def apply_finalizer_batch(batch: dict[str, Any], root: str | Path | None) -> dic
                         duplicate_id = int(duplicate[0])
                         metadata = json.loads(duplicate[2] or "{}")
                         if str(metadata.get("session_id") or "") != session_id:
-                            _update_metadata(connection, duplicate_id, str(duplicate[1]), _confirm_metadata(metadata, session_id))
+                            _confirm_record(
+                                connection,
+                                duplicate_id,
+                                session_id,
+                                turn_id,
+                                root,
+                                prepared["metadata"].get("evidence_ids"),
+                                provider,
+                            )
                             changed = True
                             results.append({"op": "save", "action": "corroborated", "id": duplicate_id})
                         else:
@@ -292,16 +339,17 @@ def apply_finalizer_batch(batch: dict[str, Any], root: str | Path | None) -> dic
                          json.dumps(prepared["embedding"]), *normalized.values()),
                     )
                     new_id = int(cursor.lastrowid or 0)
-                    superseded = _supersede_conflicting_claims(connection, new_id, prepared["category"], prepared["metadata"])
+                    conflicts = _flag_conflicting_claims(connection, new_id, prepared["category"], prepared["metadata"])
                     changed = True
                     result = {"op": "save", "action": "saved", "id": new_id}
-                    if superseded:
-                        result["superseded_ids"] = superseded
+                    if conflicts:
+                        result["conflicting_ids"] = conflicts
                     results.append(result)
                 elif kind == "confirm":
                     record_id = int(operation["id"])
-                    timestamp, metadata = _load_metadata(connection, record_id)
-                    _update_metadata(connection, record_id, timestamp, _confirm_metadata(metadata, session_id, explicit=bool(operation.get("explicit_confirmation"))))
+                    _confirm_record(
+                        connection, record_id, session_id, turn_id, root, operation.get("evidence_ids"), provider
+                    )
                     changed = True
                     results.append({"op": kind, "id": record_id})
                 elif kind == "resolve":
@@ -315,6 +363,9 @@ def apply_finalizer_batch(batch: dict[str, Any], root: str | Path | None) -> dic
                     old_id, new_id = int(operation["old_id"]), int(operation["new_id"])
                     old_timestamp, old_metadata = _load_metadata(connection, old_id)
                     new_timestamp, new_metadata = _load_metadata(connection, new_id)
+                    new_record = connection.execute("SELECT category, content FROM memories WHERE id = ?", (new_id,)).fetchone()
+                    if not observed_evidence.has_observed_evidence(root, str(new_record[0]), str(new_record[1]), new_metadata):
+                        raise ValueError("Finalizer supersession requires observed evidence for the replacement revision.")
                     old_metadata.update({"status": "superseded", "superseded_by": new_id, "superseded_at": utc_now(), "updated_at": utc_now()})
                     supersedes = new_metadata.get("supersedes", [])
                     if not isinstance(supersedes, list):
@@ -334,8 +385,25 @@ def apply_finalizer_batch(batch: dict[str, Any], root: str | Path | None) -> dic
 
     if changed:
         index_store.rebuild(root)
-    turn_buffer.mark_finalized(root, session_id, turn_id)
-    observability.trace(root, "finalizer_applied", {"session_id": session_id, "turn_id": turn_id, "operations": results})
+    turn_buffer.mark_finalized(root, session_id, turn_id, provider=provider)
+    turn_policy.finish_turn(root, session_id, turn_id, provider=provider)
+    observability.trace(
+        root,
+        "finalizer_applied",
+        {"session_id": session_id, "turn_id": turn_id, "origin_provider": provider, "operations": results},
+    )
     cfg = recall_config.load_config_if_present(root)
-    turn_buffer.cleanup_success(root, session_id, turn_id, keep_request=cfg.get("observability_mode") == "debug")
-    return {"action": "applied", "session_id": session_id, "turn_id": turn_id, "operations": results}
+    turn_buffer.cleanup_success(
+        root,
+        session_id,
+        turn_id,
+        provider=provider,
+        keep_request=cfg.get("observability_mode") == "debug",
+    )
+    return {
+        "action": "applied",
+        "session_id": session_id,
+        "turn_id": turn_id,
+        "origin_provider": provider,
+        "operations": results,
+    }

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +20,8 @@ import retrieval
 import security
 import storage
 import write_policy
+import observed_evidence
+from runtime_guard import memory_action
 from services import preference_service
 
 
@@ -75,6 +78,7 @@ def vector_index_path(root: str | Path | None = None) -> Path:
     return storage.vector_index_path(root)
 
 
+@memory_action
 def init_store(root: str | Path | None = None) -> None:
     storage.init_store(root)
 
@@ -141,10 +145,12 @@ def build_card_metadata(
     return {key: value for key, value in metadata.items() if value not in ("", [], None)}
 
 
+@memory_action
 def get_record(record_id: int, root: str | Path | None = None) -> MemoryRecord | None:
     return storage.get_record(record_id, root)
 
 
+@memory_action
 def update_record_metadata(
     record_id: int,
     metadata: dict[str, Any],
@@ -153,6 +159,8 @@ def update_record_metadata(
     return storage.update_record_metadata(record_id, metadata, root)
 
 
+@memory_action
+@storage.atomic_write
 def edit_record(
     record_id: int,
     root: str | Path | None = None,
@@ -166,7 +174,17 @@ def edit_record(
     status: str | None = None,
     importance: float | None = None,
     confidence: float | None = None,
+    claim_key: str | None = None,
+    claim_value: str | None = None,
+    clear_claim: bool = False,
 ) -> MemoryRecord:
+    claim_fields_supplied = claim_key is not None or claim_value is not None
+    normalized_claim_key = str(claim_key) if claim_key is not None else ""
+    normalized_claim_value = str(claim_value) if claim_value is not None else ""
+    if claim_fields_supplied and (not normalized_claim_key.strip() or not normalized_claim_value.strip()):
+        raise ValueError("--claim-key and --claim-value must be non-empty and provided together for replacement.")
+    if clear_claim and (claim_key is not None or claim_value is not None):
+        raise ValueError("clear_claim cannot be used with claim_key/claim_value replacement fields.")
     record = storage.get_record(record_id, root)
     if record is None:
         raise KeyError(f"RECALL memory #{record_id} was not found.")
@@ -185,6 +203,28 @@ def edit_record(
     safe_content = redact_secrets((content if content is not None else record.content).strip())
     if not safe_content:
         raise ValueError("Cannot store an empty RECALL memory.")
+    metadata_base = dict(record.metadata or {})
+    content_changed = content is not None and safe_content != record.content
+    summary_changed = summary is not None and redact_secrets(summary.strip()) != str(metadata_base.get("summary", ""))
+    details_changed = details is not None and redact_secrets(details.strip()) != str(metadata_base.get("details", ""))
+    semantic_content_changed = content_changed or summary_changed or details_changed
+    edited_at = utc_now()
+    # Omitted display text derives from the old content. Let readers fall back
+    # to current content; do not guess a semantic rewrite of either field.
+    if content_changed:
+        if summary is None:
+            metadata_base.pop("summary", None)
+        if details is None:
+            metadata_base.pop("details", None)
+    if clear_claim:
+        metadata_base.pop("claim_key", None)
+        metadata_base.pop("claim_value", None)
+    elif claim_fields_supplied:
+        metadata_base["claim_key"] = normalized_claim_key
+        metadata_base["claim_value"] = normalized_claim_value
+    elif semantic_content_changed:
+        metadata_base.pop("claim_key", None)
+        metadata_base.pop("claim_value", None)
     metadata = redact_metadata(build_card_metadata(
         summary=summary,
         details=details,
@@ -193,9 +233,21 @@ def edit_record(
         status=status,
         importance=importance,
         confidence=confidence,
-        base=dict(record.metadata or {}),
+        base=metadata_base,
     ))
-    metadata["edited_at"] = utc_now()
+    claim_changed = any(
+        metadata.get(key) != (record.metadata or {}).get(key)
+        for key in ("claim_key", "claim_value")
+    )
+    if semantic_content_changed or claim_changed:
+        metadata = redact_metadata(memory_lifecycle.invalidate_verification(metadata, record.metadata or {}, edited_at))
+    # Assigning a label cannot verify an invalidated factual revision.
+    if metadata.get("verification_invalidated_at") and metadata.get("status") == "validated":
+        metadata["status"] = "active"
+    if status == "validated" and (record.metadata or {}).get("status") != "validated" and not observed_evidence.has_observed_evidence(root, normalized_category, safe_content, metadata):
+        metadata["status"] = "active"
+    metadata["edited_at"] = edited_at
+    metadata["recall_fingerprint"] = memory_hygiene.content_fingerprint(normalized_category, safe_content, metadata)
     edited = storage.update_record(
         record.id,
         category=normalized_category,
@@ -204,16 +256,37 @@ def edit_record(
         embedding=embed(safe_content),
         root=root,
     )
-    index_store.rebuild(root)
+    _maintain_index(root)
     return edited
 
 
+@memory_action
+@storage.atomic_write
 def delete_record(record_id: int, root: str | Path | None = None) -> MemoryRecord:
     deleted = storage.delete_record(record_id, root)
-    index_store.rebuild(root)
+    _maintain_index(root)
     return deleted
 
 
+def _maintain_index(root: str | Path | None, record: MemoryRecord | None = None) -> None:
+    """A derived index failure cannot turn a committed save into a failure."""
+    def update() -> None:
+        try:
+            if record is None:
+                index_store.rebuild(root)
+            else:
+                index_store.append_record(record, root)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "RECALL canonical write committed; vector index update failed. Run rebuild-index.",
+                exc_info=True,
+            )
+
+    storage.after_commit(update, root)
+
+
+@memory_action
+@storage.atomic_write
 def add_record(
     category: str,
     content: str,
@@ -243,10 +316,12 @@ def add_record(
         embed(safe_content),
         root,
     )
-    index_store.append_record(record, root)
+    _maintain_index(root, record)
     return record
 
 
+@memory_action
+@storage.atomic_write
 def add_record_if_new_idempotency(
     category: str,
     content: str,
@@ -284,10 +359,12 @@ def add_record_if_new_idempotency(
         root,
     )
     if inserted:
-        index_store.append_record(record, root)
+        _maintain_index(root, record)
     return record, inserted
 
 
+@memory_action
+@storage.atomic_write
 def add_records_batch(
     cards: list[dict[str, Any]],
     root: str | Path | None = None,
@@ -305,12 +382,36 @@ def add_records_batch(
         if not content:
             raise ValueError("Cannot store an empty RECALL memory.")
         metadata = redact_metadata(dict(card.get("metadata") or {}))
+        provider = str(metadata.get("origin_provider") or "codex").strip().lower()
+        session_id = str(metadata.get("session_id") or metadata.get("source_session") or "")
+        turn_id = str(metadata.get("turn_id") or metadata.get("source_turn") or "")
+        receipt = observed_evidence.evidence_for_card(
+            root,
+            category,
+            content,
+            metadata,
+            metadata.get("evidence_ids"),
+            session_id,
+            turn_id,
+            provider,
+        )
+        if receipt:
+            metadata["observed_evidence"] = receipt
+        if metadata.get("status") == "validated" and not observed_evidence.has_observed_evidence(
+            root, category, content, metadata
+        ):
+            metadata["status"] = "active"
+            metadata["verification_reason"] = "observed_evidence_required"
+            for key in ("validated_at", "last_confirmed", "verification_source"):
+                metadata.pop(key, None)
         prepared.append((category, utc_now(), content, metadata, embed(content)))
     records = storage.add_records_batch(prepared, root)
-    index_store.rebuild(root)
+    _maintain_index(root)
     return records
 
 
+@memory_action
+@storage.atomic_write
 def add_record_if_useful(
     category: str,
     content: str,
@@ -321,6 +422,19 @@ def add_record_if_useful(
     safe_content = redact_secrets(content.strip())
     if not safe_content:
         raise ValueError("Cannot store an empty RECALL memory.")
+    receipt = observed_evidence.evidence_for_card(
+        root, recall_config.normalize_category(category), safe_content, metadata, metadata.get("evidence_ids"),
+        str(metadata.get("session_id") or metadata.get("source_session") or ""),
+        str(metadata.get("turn_id") or metadata.get("source_turn") or ""),
+        str(metadata.get("origin_provider") or "codex").strip().lower(),
+    )
+    if receipt:
+        metadata["observed_evidence"] = receipt
+    if metadata.get("status") == "validated" and not observed_evidence.has_observed_evidence(root, recall_config.normalize_category(category), safe_content, metadata):
+        metadata["status"] = "active"
+        metadata["verification_reason"] = "observed_evidence_required"
+        for key in ("validated_at", "last_confirmed", "verification_source"):
+            metadata.pop(key, None)
     source = str(metadata.get("source", "")).strip().lower()
     if source in AUTO_WRITE_SOURCES and not metadata.get("auto_capture_policy"):
         return {
@@ -331,6 +445,7 @@ def add_record_if_useful(
         }
     idempotency_key = str(metadata.get("idempotency_key") or "").strip()
     if idempotency_key:
+        metadata["idempotency_key"] = idempotency_key
         existing = storage.find_by_idempotency_key(idempotency_key, root)
         if existing is not None:
             return {"action": "ignored", "record": existing, "duplicate_id": existing.id, "reason": "idempotent_replay"}
@@ -349,10 +464,17 @@ def add_record_if_useful(
             "reason": decision.reason,
         }
     if decision.action == "update_existing" and decision.related_id is not None:
+        if receipt:
+            prior = storage.get_record(decision.related_id, root)
+            if prior is not None:
+                proof_metadata = {**(prior.metadata or {}), "observed_evidence": receipt}
+                if observed_evidence.has_observed_evidence(root, prior.category, prior.content, proof_metadata):
+                    storage.update_record_metadata(prior.id, proof_metadata, root)
         confirmed = confirm_record(
             decision.related_id,
             root,
             source_session=str(metadata.get("turn_id") or metadata.get("source_session") or "") or None,
+            idempotency_key=idempotency_key or None,
         )
         return {
             "action": "updated_existing",
@@ -389,21 +511,24 @@ def append_vector_index(
     root: str | Path | None = None,
 ) -> None:
     record = MemoryRecord(record_id, category, timestamp, "", {}, embedding=vector)
-    index_store.append_record(record, root)
+    _maintain_index(root, record)
 
 
 def next_jsonl_id(root: str | Path | None = None) -> int:
     return storage.next_jsonl_id(root)
 
 
+@memory_action
 def iter_records(root: str | Path | None = None):
     yield from storage.iter_records(root)
 
 
+@memory_action
 def iter_jsonl_records(root: str | Path | None = None):
     yield from storage.iter_jsonl_records(root)
 
 
+@memory_action
 def query(
     query_text: str,
     categories: list[str] | None = None,
@@ -417,10 +542,12 @@ def query(
     return retrieval.query(query_text, categories, exclude_categories, limit, root, summarize, statuses, verbose)
 
 
+@memory_action
 def rebuild_index(root: str | Path | None = None) -> dict[str, Any]:
     return index_store.rebuild(root)
 
 
+@memory_action
 def doctor(root: str | Path | None = None) -> dict[str, Any]:
     integrity = storage.integrity_check(root)
     if not integrity["ok"]:
@@ -480,6 +607,7 @@ def doctor(root: str | Path | None = None) -> dict[str, Any]:
     }
 
 
+@memory_action
 def repair(root: str | Path | None = None, restore_backup: bool = False) -> dict[str, Any]:
     if restore_backup:
         restored_from = storage.restore_from_backup(root)
@@ -489,22 +617,31 @@ def repair(root: str | Path | None = None, restore_backup: bool = False) -> dict
     return {"repair": rebuild_report, "doctor": doctor(root)}
 
 
-def confirm_record(record_id: int, root: str | Path | None = None, source_session: str | None = None) -> MemoryRecord:
-    return memory_lifecycle.confirm(record_id, root, source_session)
+@memory_action
+@storage.atomic_write
+def confirm_record(
+    record_id: int, root: str | Path | None = None, source_session: str | None = None,
+    idempotency_key: str | None = None,
+) -> MemoryRecord:
+    return memory_lifecycle.confirm(record_id, root, source_session, idempotency_key)
 
 
+@memory_action
 def resolve_record(record_id: int, root: str | Path | None = None, note: str | None = None) -> MemoryRecord:
     return memory_lifecycle.resolve(record_id, root, note)
 
 
+@memory_action
 def mark_record_stale(record_id: int, root: str | Path | None = None, note: str | None = None) -> MemoryRecord:
     return memory_lifecycle.mark_stale(record_id, root, note)
 
 
+@memory_action
 def prune_record(record_id: int, root: str | Path | None = None, note: str | None = None) -> MemoryRecord:
     return memory_lifecycle.prune(record_id, root, note)
 
 
+@memory_action
 def supersede_record(
     old_record_id: int,
     new_record_id: int,
@@ -514,6 +651,7 @@ def supersede_record(
     return memory_lifecycle.supersede(old_record_id, new_record_id, root, note)
 
 
+@memory_action
 def merge_records(
     primary_id: int,
     secondary_ids: list[int | str],
@@ -523,6 +661,7 @@ def merge_records(
     return memory_lifecycle.merge(primary_id, secondary_ids, root, note)
 
 
+@memory_action
 def define_category(
     name: str,
     description: str | None = None,

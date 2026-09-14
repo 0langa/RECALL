@@ -18,6 +18,7 @@ Apply this checklist before any RECALL write. It supplements the contract loaded
 ## Always confirm
 
 - User says "don't remember this" → skip the write, even if the fact looks durable.
+- User says to do the task without memory → do not retrieve or save for that task.
 - User says "forget X" → hand off to `manage-memory delete-memory <id> --confirm DELETE-<id>` after verifying the ID.
 - Destructive lifecycle actions (delete, purge) require an explicit confirmation token.
 

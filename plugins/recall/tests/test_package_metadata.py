@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 from pathlib import Path
 
@@ -41,6 +42,10 @@ class PackageMetadataTests(unittest.TestCase):
                     self.assertIn("${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}", hook["command"])
                     self.assertIn("os.environ.get('CLAUDE_PLUGIN_ROOT')", hook["commandWindows"])
                     self.assertIn("os.environ['PLUGIN_ROOT']", hook["commandWindows"])
+                    self.assertIn("if [ -n \"${CLAUDE_PLUGIN_ROOT:-}\" ]", hook["command"])
+                    self.assertIn("then printf claude-code; else printf codex", hook["command"])
+                    self.assertIn("v='claude-code' if r else 'codex'", hook["commandWindows"])
+                    self.assertIn("sys.argv=[p,'--provider',v]", hook["commandWindows"])
                     self.assertNotIn("%PLUGIN_ROOT%", hook["commandWindows"])
 
     def test_no_unsupported_update_categories_hook_surface(self) -> None:
@@ -55,7 +60,7 @@ class PackageMetadataTests(unittest.TestCase):
     def test_manifest_public_surface_metadata_is_present(self) -> None:
         payload = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
         interface = payload["interface"]
-        self.assertEqual(payload["version"], "1.5.5")
+        self.assertEqual(payload["version"], "1.6.0")
         self.assertEqual(payload["homepage"], "https://github.com/0langa/RECALL")
         self.assertEqual(payload["repository"], "https://github.com/0langa/RECALL")
         self.assertEqual(interface["websiteURL"], "https://github.com/0langa/RECALL")
@@ -73,6 +78,30 @@ class PackageMetadataTests(unittest.TestCase):
         self.assertTrue((ROOT / "assets" / "logo.png").is_file())
         self.assertTrue((ROOT / "docs" / "PRIVACY.md").is_file())
         self.assertTrue((ROOT / "docs" / "TERMS.md").is_file())
+
+    def test_codex_mcp_config_declares_shared_server(self) -> None:
+        manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        payload = json.loads((ROOT / ".mcp.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["mcpServers"], "./.mcp.json")
+        server = payload["mcpServers"]["recall"]
+        self.assertEqual(server["command"], "python")
+        self.assertEqual(server["cwd"], "./")
+        self.assertEqual(server["args"], ["./scripts/kimi_mcp_server.py"])
+        self.assertEqual(server["env"]["RECALL_DEFAULT_PROVIDER"], "codex")
+
+    def test_release_version_matches_all_provider_manifests_and_mcp_server(self) -> None:
+        expected = "1.6.0"
+        manifests = (
+            ROOT / ".codex-plugin" / "plugin.json",
+            ROOT / ".claude-plugin" / "plugin.json",
+            ROOT / "kimi.plugin.json",
+        )
+        for path in manifests:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["version"], expected, path)
+
+        server_source = (ROOT / "scripts" / "kimi_mcp_server.py").read_text(encoding="utf-8")
+        self.assertIn(f'"serverInfo": {{"name": "recall", "version": "{expected}"}}', server_source)
 
     def test_kimi_manifest_declares_supported_runtime_surface(self) -> None:
         payload = json.loads((ROOT / "kimi.plugin.json").read_text(encoding="utf-8"))
@@ -132,6 +161,21 @@ class PackageMetadataTests(unittest.TestCase):
         self.assertTrue((REPO_ROOT / "build_plugin.py").is_file())
         self.assertTrue((ROOT / "scripts" / "build_plugin.py").is_file())
 
+    def test_zip_smoke_resolves_windows_command_shim(self) -> None:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import smoke_zip_marketplace
+
+        expected = str(Path("C:/tools/codex.cmd"))
+        with (
+            mock.patch.object(smoke_zip_marketplace.sys, "platform", "win32"),
+            mock.patch.object(
+                smoke_zip_marketplace.shutil,
+                "which",
+                side_effect=lambda name: expected if name == "codex.cmd" else None,
+            ),
+        ):
+            self.assertEqual(smoke_zip_marketplace.codex_executable(), expected)
+
     def test_skills_describe_local_only_storage_and_secret_safety(self) -> None:
         for path in sorted((ROOT / "skills").glob("*/SKILL.md")):
             text = path.read_text(encoding="utf-8").lower()
@@ -169,6 +213,7 @@ class PackageMetadataTests(unittest.TestCase):
             archive = Path(tmp) / "recall.zip"
             with zipfile.ZipFile(archive, "w") as package:
                 package.writestr(".codex-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
+                package.writestr(".mcp.json", json.dumps({"mcpServers": {"recall": {}}}))
                 package.writestr(".claude-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
                 package.writestr("kimi.plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
                 package.writestr("scripts/contract.py", "print('ok')\n")
@@ -180,7 +225,10 @@ class PackageMetadataTests(unittest.TestCase):
                 package.writestr("scripts/kimi_mcp_server.py", "print('ok')\n")
                 package.writestr("scripts/hook_events.py", "print('ok')\n")
                 package.writestr("scripts/recall_skill.py", "print('ok')\n")
-                package.writestr("scripts/memory_manager.py", "print('ok')\n")
+                package.writestr(
+                    "scripts/memory_manager.py",
+                    "token = marker.group(0)\nretry_token = context_var.set((context_var.get(), 1))\n",
+                )
             completed = subprocess.run(
                 [sys.executable, str(ROOT / "scripts" / "inspect_package.py"), str(archive)],
                 text=True,
@@ -195,6 +243,7 @@ class PackageMetadataTests(unittest.TestCase):
             archive = Path(tmp) / "recall.zip"
             with zipfile.ZipFile(archive, "w") as package:
                 package.writestr(".codex-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
+                package.writestr(".mcp.json", json.dumps({"mcpServers": {"recall": {}}}))
                 package.writestr(".claude-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
                 package.writestr("kimi.plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
                 package.writestr("scripts/contract.py", "print('ok')\n")
@@ -249,7 +298,9 @@ class PackageMetadataTests(unittest.TestCase):
             },
         }
         with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / ".git").mkdir()
             env = os.environ.copy()
+            env.pop("CLAUDE_PLUGIN_ROOT", None)
             env["PLUGIN_ROOT"] = str(ROOT)
             for event_name, matcher_groups in hooks.items():
                 command = matcher_groups[0]["hooks"][0]["commandWindows"]
@@ -272,6 +323,10 @@ class PackageMetadataTests(unittest.TestCase):
                 self.assertEqual(completed.returncode, 0, f"{event_name}: {completed.stderr}")
                 output = json.loads(completed.stdout)
                 self.assertTrue(output["continue"], event_name)
+                if event_name == "UserPromptSubmit":
+                    current_scope = Path(tmp) / ".recall" / "runtime" / "policy" / "current-scope.json"
+                    policy = json.loads(current_scope.read_text(encoding="utf-8"))
+                    self.assertEqual(policy["provider"], "codex")
 
     @unittest.skipUnless(os.name == "nt", "Windows hook command regression only runs on Windows.")
     def test_windows_hook_commands_run_with_claude_plugin_root_and_no_plugin_root(self) -> None:
@@ -306,6 +361,7 @@ class PackageMetadataTests(unittest.TestCase):
             },
         }
         with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / ".git").mkdir()
             env = os.environ.copy()
             env.pop("PLUGIN_ROOT", None)
             env["CLAUDE_PLUGIN_ROOT"] = str(ROOT)
@@ -330,6 +386,10 @@ class PackageMetadataTests(unittest.TestCase):
                 self.assertEqual(completed.returncode, 0, f"{event_name}: {completed.stderr}")
                 output = json.loads(completed.stdout)
                 self.assertTrue(output["continue"], event_name)
+                if event_name == "UserPromptSubmit":
+                    current_scope = Path(tmp) / ".recall" / "runtime" / "policy" / "current-scope.json"
+                    policy = json.loads(current_scope.read_text(encoding="utf-8"))
+                    self.assertEqual(policy["provider"], "claude-code")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+import shlex
 from typing import Any
 
 import config as recall_config
@@ -38,7 +39,7 @@ GIT_STATE_CHANGE_RE = re.compile(
 RELEASE_COMMAND_RE = re.compile(r"(?i)\b(codex\s+plugin|release|marketplace|dist/|recall\.zip)\b")
 FAILURE_RE = re.compile(r"(?i)\b(error|exception|traceback|failed|failure|assertionerror)\b")
 TEST_SUMMARY_RE = re.compile(r"(?im)^(Ran\s+\d+\s+tests?.*|.*\b\d+\s+passed\b.*|.*\b0 failures\b.*)$")
-BUILD_SUMMARY_RE = re.compile(r"(?im)^(.*\b(status|build|package|smoke)\b.*\b(pass|passed|success|succeeded|ok)\b.*)$")
+BUILD_SUMMARY_RE = re.compile(r"(?im)^(.*\b(status|build|package|smoke)\b.*\b(pass|passed|success|successfully|succeeded|ok)\b.*)$")
 EXIT_CODE_RE = re.compile(r"(?i)\bexit[_ ]code:\s*(-?\d+)\b")
 STOP_DURABLE_RE = re.compile(
     r"(?i)\b("
@@ -90,6 +91,55 @@ TRANSIENT_TASK_CONTROL_RE = re.compile(
     r"do\s+not\s+(?:call|use)\s+(?:recall\s+)?(?:mcp|tools?|skills?)|"
     r"reply\s+(?:only|with|in)\b"
     r")\b"
+)
+# Admission concerns the user's asserted project facts, not isolated keywords.
+# These deliberately conservative English rules are not a semantic classifier.
+PROJECT_SUBJECT_RE = re.compile(
+    r"(?i)\b(project|repo(?:sitory)?|release|notes|policy|requirement|constraint|"
+    r"api|app(?:lication)?|service|backend|storage|database|sqlite|jsonl|code|plugin|hook|"
+    r"finalizer|retry|build|schema|config(?:uration)?|memory|tests?|parser|"
+    r"network|credentials|dependencies|runtime)\b"
+)
+FACT_PREDICATE_RE = re.compile(
+    r"(?i)\b(is|are|was|were|uses?|lives?|stays?|belongs?|requires?|must|"
+    r"supports?|keeps?|runs?|moved|decided|approved|accepted|prefer|should\s+instead)\b"
+)
+UNRESOLVED_PROMPT_RE = re.compile(
+    r"(?i)\b(maybe|perhaps|possibly|probably|might|could|would|whether|"
+    r"unsure|uncertain|not\s+sure|no\s+idea|wonder|propos(?:e|al|ed)|"
+    r"consider(?:ing)?|hypothetical|pending\s+approval|not\s+(?:yet\s+)?(?:decided|approved|accepted)|"
+    r"haven['’]t\s+(?:decided|approved|accepted)|let['’]s|let\s+us|suggest(?:ion|ed)?|"
+    r"recommend(?:ation)?|we\s+should|if\s+we|if\s+the\s+project)\b"
+)
+PROMPT_FRAME_RE = re.compile(
+    r"(?i)^\s*(?:(?:here\s+(?:is|are)|this\s+is|these\s+are|the\s+following\s+(?:is|are))\s+)?(?:an?\s+)?"
+    r"(?:examples?(?:\s+(?:text|instructions?))?|quoted?(?:\s+(?:text|instructions?))?|proposals?|hypothetical)\b"
+)
+TRANSIENT_SCOPE_RE = re.compile(
+    r"(?i)\b(?:for\s+(?:this|the\s+next|one)\s+(?:task|turn|reply|response|session)|"
+    r"this\s+(?:task|turn|reply|response|session)|next\s+(?:turn|reply|response|session)\s+only|future\s+interview)\b"
+)
+# Conditional plans have no faithful current-truth state in the card schema.
+# Admit a small, explicit runtime-rule form; abstain on conditional choices.
+PROMPT_CONDITION_RE = re.compile(r"(?i)\b(?:if|unless|provided\s+that|subject\s+to)\b")
+CHOICE_CONDITION_RE = re.compile(r"(?i)\b(?:approv\w*|accept\w*|decid\w*|adopt\w*|benchmarks?)\b")
+RUNTIME_RULE_RE = re.compile(
+    r"(?i)\b(?:api|app(?:lication)?|service|parser|runtime|hook)\s+must\s+(?:not\s+)?"
+    r"(?:return|reject|raise|retry|emit|preserve)\b"
+)
+FRAME_END_RE = re.compile(r"(?i)^\s*end\s+(?:of\s+)?(?:the\s+)?(?:examples?|quotes?|proposals?)\s*[.:]?\s*$")
+DURABLE_CORRECTION_RE = re.compile(
+    r"(?i)\b(?:uses?|requires?|lives?|belongs?|stays?|stores?|supports?|"
+    r"targets?|defaults?\s+to|keeps?|moved|replace|supersede)\b"
+)
+QUESTION_START_RE = re.compile(
+    r"(?i)^\s*(?:(?:actually|correction|instead|so|but|and)\s*[:,]?\s*)*"
+    r"(?:what|which|how|why|where|when|who|is|are|was|were|do(?!\s+not\b)|does|did|"
+    r"can|could|should|would|will|have|has|explain|tell\s+me|find\s+out)\b"
+)
+TURN_OUTPUT_RE = re.compile(
+    r"(?i)\b(?:you\s+must\s+)?(?:answer|respond|reply|output|print)\b.*"
+    r"\b(?:only|json|sentence|bullet|format|question|response)\b"
 )
 
 
@@ -144,6 +194,50 @@ def exit_code(payload: dict[str, Any], output: str) -> int | None:
         return int(match.group(1))
     except ValueError:
         return None
+
+
+def material_command_kind(command: str) -> str | None:
+    """Accept a material executable/argument shape, never a keyword in echo text."""
+    try:
+        words = shlex.split(command, posix=False)
+    except ValueError:
+        return None
+    if not words:
+        return None
+    executable = words[0].strip("\"'").replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe")
+    arguments = [word.strip("\"'").lower() for word in words[1:]]
+    args = " ".join(arguments)
+    if executable in {"python", "python3", "py"}:
+        script = arguments[0].replace("\\", "/").rsplit("/", 1)[-1] if arguments else ""
+        if (len(arguments) >= 2 and arguments[0] == "-m" and arguments[1] in {"pytest", "unittest"}) or script == "run_tests.py":
+            return "test"
+        if script in {"build_plugin.py", "smoke_recall.py", "inspect_package.py", "validate_plugin.py"}:
+            return "build"
+    if executable in {"pytest", "unittest"}:
+        return "test"
+    if executable in {"npm", "pnpm", "yarn", "cargo", "go", "dotnet"}:
+        if re.match(r"(?:run\s+)?test\b", args):
+            return "test"
+        if re.match(r"(?:run\s+)?(?:build|pack|publish)\b", args):
+            return "build"
+    if executable == "gh" and re.match(r"release\s+(?:create|upload)\b", args):
+        return "release"
+    return None
+
+
+def observed_material_success(command: str, response: dict[str, Any]) -> bool:
+    kind = material_command_kind(command)
+    code = response.get("exit_code")
+    if kind is None or type(code) is not int or code != 0 or response.get("success") is False:
+        return False
+    output = "\n".join(str(response.get(key) or "") for key in ("stdout", "stderr", "output", "message"))
+    if not output.strip():
+        return False
+    if kind == "test":
+        return bool(re.search(r"(?im)(\b\d+\s+passed\b|^Ran\s+\d+\s+tests?\b|\b0 failures\b|\"passed\"\s*:\s*true)", output)) and not bool(re.search(r"(?i)\b(?:[1-9]\d*\s+failed|FAILED\s*\()", output))
+    if kind == "release":
+        return bool(re.search(r"(?i)(https://\S+/releases/|\brelease\b.*\b(?:created|uploaded|published|success)\b)", output))
+    return bool(BUILD_SUMMARY_RE.search(output) or re.search(r'(?i)"(?:passed|success)"\s*:\s*true', output))
 
 
 def cleaned_lines(output: str) -> list[str]:
@@ -241,7 +335,11 @@ def classify_tool_capture(
             auto_capture_policy="failure",
         )
 
-    is_test = bool(TEST_COMMAND_RE.search(command))
+    response = payload.get("tool_response")
+    if not isinstance(response, dict) or not observed_material_success(command, response):
+        return None
+
+    is_test = material_command_kind(command) == "test"
     if is_test:
         return CaptureDecision(
             category="commands",
@@ -255,11 +353,11 @@ def classify_tool_capture(
             auto_capture_policy="test_result",
         )
 
-    is_build = bool(BUILD_COMMAND_RE.search(command) or RELEASE_COMMAND_RE.search(command))
+    is_build = material_command_kind(command) in {"build", "release"}
     if is_build:
         return CaptureDecision(
             category="commands",
-            signal="build_pass",
+            signal="release_pass" if material_command_kind(command) == "release" else "build_pass",
             summary=success_summary(command, lines, build=True),
             details=content,
             tags=["tool-use", lower_tool or "tool", "build"],
@@ -267,32 +365,6 @@ def classify_tool_capture(
             confidence=0.86,
             record_kind="build_result",
             auto_capture_policy="build_result",
-        )
-
-    if GIT_STATE_CHANGE_RE.search(command):
-        return CaptureDecision(
-            category="project_state",
-            signal="git_state_change",
-            summary=success_summary(command, lines),
-            details=content,
-            tags=["tool-use", lower_tool or "tool", "git", "state-change"],
-            importance=0.72,
-            confidence=0.84,
-            record_kind="state_change",
-            auto_capture_policy="state_change",
-        )
-
-    if mode == "standard" and command:
-        return CaptureDecision(
-            category="commands",
-            signal="state_change",
-            summary=success_summary(command, lines),
-            details=content,
-            tags=["tool-use", lower_tool or "tool", "command"],
-            importance=0.55,
-            confidence=0.75,
-            record_kind="state_change",
-            auto_capture_policy="state_change",
         )
 
     return None
@@ -334,6 +406,15 @@ def suppress_auto_retrieval(prompt: str) -> bool:
     return bool(EXECUTION_ONLY_RE.search(clean))
 
 
+def no_memory_requested(prompt: str) -> bool:
+    """Match task controls outside quotes/examples; do this before any capture."""
+    text = unquoted_prompt_text(prompt)
+    return bool(re.search(
+        r"(?i)\b(?:no[- ]memory|memory[- ]free|without\s+(?:using\s+)?memory|(?:do\s+not|don['’]t|never)\s+"
+        r"(?:(?:read|write|use|save|store|capture|retrieve|access|consult|load|inject)\b[\w\s,/&-]{0,45})"
+        r"(?:memory|\.?recall)\b|(?:disable|skip|avoid)\s+(?:all\s+)?(?:memory|\.?recall)\b)", text))
+
+
 def normalize_prompt_memory_text(prompt: str) -> str:
     clean = " ".join(prompt.split())
     if not clean:
@@ -365,16 +446,130 @@ def claim_metadata(category: str, text: str) -> dict[str, str]:
     }
 
 
-def classify_prompt_event(prompt: str) -> dict[str, Any] | None:
-    clean = normalize_prompt_memory_text(prompt)
-    if not clean:
-        return None
-    if TRANSIENT_TASK_CONTROL_RE.search(clean):
-        return None
-    if CONDITIONAL_COMMAND_MEMORY_RE.search(clean):
+def unquoted_prompt_text(prompt: str) -> str:
+    """Keep prose boundaries; quoted examples and fenced blocks are not user assertions.
+
+    A line with prose quotation marks is omitted as a unit, avoiding accidental
+    adoption of a quoted instruction or joining text across an omitted span.
+    Inline code remains usable for factual paths and literal values.
+    """
+    lines: list[str] = []
+    fence = ""
+    quoted = False
+    for line in prompt.splitlines():
+        stripped = line.lstrip()
+        marker = re.match(r"(`{3,}|~{3,})", stripped)
+        if marker:
+            token = marker.group(0)
+            if not fence:
+                fence = token
+            elif token[0] == fence[0] and len(token) >= len(fence):
+                fence = ""
+            lines.append("")
+            continue
+        if fence:
+            continue
+        prose = re.sub(r"`[^`]*`", "", line)
+        marks = re.findall(r'''["“”]|(?<!\w)['‘]|['’](?!\w)''', prose)
+        if marks or quoted or stripped.startswith(">"):
+            if len(marks) % 2:
+                quoted = not quoted
+            lines.append("")
+            continue
+        lines.append(line)
+    return _unframed_prompt_text("\n".join(lines))
+
+
+def _unframed_prompt_text(prompt: str) -> str:
+    """Keep example headings attached to their bodies, including blank lines.
+
+    A plain frame lasts until an explicit end or a new Markdown section. A
+    Markdown frame also includes its nested sections. Ambiguous scope abstains.
+    This runs before explicit cue detection as well as automatic admission.
+    """
+    lines: list[str] = []
+    frame_level: int | None = None
+    for line in prompt.splitlines():
+        heading = re.match(r"^\s*(#{1,6})\s+(.+)", line)
+        if frame_level is not None:
+            if FRAME_END_RE.fullmatch(line):
+                frame_level = None
+                lines.append("")
+                continue
+            if heading and (frame_level == 0 or len(heading[1]) <= frame_level):
+                frame_level = None
+            else:
+                lines.append("")
+                continue
+        if PROMPT_FRAME_RE.search(heading[2] if heading else line):
+            frame_level = len(heading[1]) if heading else 0
+            lines.append("")
+        else:
+            # Headings delimit example scope above; labels are not assertions.
+            lines.append("" if heading else line)
+    return "\n".join(lines)
+
+
+def _uncommitted_prompt_condition(syntax: str) -> bool:
+    conditions = list(PROMPT_CONDITION_RE.finditer(syntax))
+    if not conditions:
+        return False
+    if not RUNTIME_RULE_RE.search(syntax):
+        return True
+    # Even a runtime-shaped consequent can depend on a future approval gate.
+    # For leading conditions the comma ends the condition, not the assertion.
+    return any(CHOICE_CONDITION_RE.search(syntax[m.end():].split(",", 1)[0]) for m in conditions)
+
+
+def accepted_prompt_statements(prompt: str, *, preserve_punctuation: bool = False) -> list[str]:
+    """Extract separable assertions without carrying questions or task controls.
+
+    Example scope survives paragraph boundaries. Conditional choices cannot
+    become current policy; explicit runtime rules retain their condition.
+    """
+    accepted: list[str] = []
+    for paragraph in re.split(r"\n\s*\n", unquoted_prompt_text(prompt)):
+        if PROMPT_FRAME_RE.search(paragraph) or re.match(
+            r"(?i)^\s*(?:(?:actually|correction)\s*[:,]?\s*)?"
+            r"(?:suppose|imagine|maybe|perhaps|let['’]s|let\s+us|we\s+could|i\s+suggest)\b", paragraph
+        ):
+            continue
+        # Preserve offsets instead of replacing user text with restorable tokens.
+        masked = re.sub(r"`[^`]*`", lambda match: "x" * len(match.group(0)), paragraph)
+        # Line-based statements cannot safely detach either side of a wrapped
+        # condition. Keep the paragraph uncommitted when its scope is unclear.
+        if "\n" in masked.strip() and PROMPT_CONDITION_RE.search(masked):
+            continue
+        start = 0
+        for boundary in re.finditer(r"(?<=[.!?])\s+|\n+", masked + "\n"):
+            sentence = paragraph[start:boundary.start()]
+            syntax = normalize_prompt_memory_text(masked[start:boundary.start()])
+            start = boundary.end()
+            if not syntax or re.search(r"\?(?:\s|$)", syntax) or QUESTION_START_RE.search(syntax):
+                continue
+            if (UNRESOLVED_PROMPT_RE.search(syntax) or TRANSIENT_TASK_CONTROL_RE.search(syntax)
+                    or TURN_OUTPUT_RE.search(syntax) or TRANSIENT_SCOPE_RE.search(syntax)
+                    or CONDITIONAL_COMMAND_MEMORY_RE.search(syntax)
+                    or _uncommitted_prompt_condition(syntax)):
+                continue
+            # A correction marker alone cannot make transient observations into decisions.
+            if not FACT_PREDICATE_RE.search(syntax) and not PROMPT_REQUIREMENT_RE.search(syntax):
+                continue
+            clean = normalize_prompt_memory_text(sentence)
+            if preserve_punctuation and sentence.rstrip().endswith((".", "!")):
+                clean += sentence.rstrip()[-1]
+            accepted.append(clean)
+    return accepted
+
+
+def _classify_prompt_statement(clean: str) -> dict[str, Any] | None:
+    if not PROJECT_SUBJECT_RE.search(clean):
         return None
     requirement_claim = claim_metadata("requirements", clean)
     if PROMPT_CORRECTION_RE.search(clean):
+        if not (requirement_claim or PROMPT_REQUIREMENT_RE.search(clean)
+                or PROMPT_DECISION_RE.search(clean) or DURABLE_CORRECTION_RE.search(clean)):
+            return None
         category = "requirements" if requirement_claim else "decisions"
         signal = "explicit_correction"
     elif PROMPT_REQUIREMENT_RE.search(clean):
@@ -395,4 +590,23 @@ def classify_prompt_event(prompt: str) -> dict[str, Any] | None:
         "explicit_user_evidence": True,
     }
     event.update(requirement_claim if category == "requirements" and requirement_claim else claim_metadata(category, clean))
+    return event
+
+
+def classify_prompt_event(prompt: str) -> dict[str, Any] | None:
+    # Keep a single coherent category in the existing one-event prompt contract.
+    # Ambiguous or differently categorized trailing clauses are not bundled into it.
+    event: dict[str, Any] | None = None
+    statements: list[str] = []
+    for statement in accepted_prompt_statements(prompt):
+        candidate = _classify_prompt_statement(statement)
+        if candidate is None:
+            continue
+        if event is None:
+            event = candidate
+        if candidate["category_hint"] == event["category_hint"]:
+            statements.append(statement)
+    if event is not None:
+        text = ". ".join(statements)
+        event.update(summary=text[:220], details=text[:1200])
     return event

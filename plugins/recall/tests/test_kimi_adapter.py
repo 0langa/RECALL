@@ -9,6 +9,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import contract as recall_contract  # noqa: E402
 
 
 class KimiAdapterTests(unittest.TestCase):
@@ -80,6 +83,10 @@ class KimiAdapterTests(unittest.TestCase):
             responses = [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]
 
             self.assertEqual([response["id"] for response in responses], [1, 2, 3, 4])
+            self.assertEqual(
+                responses[0]["result"]["instructions"],
+                recall_contract.compact_contract_text(),
+            )
             save_text = responses[2]["result"]["content"][0]["text"]
             save_payload = json.loads(save_text)
             self.assertEqual(save_payload["metadata"]["origin_provider"], "kimi")

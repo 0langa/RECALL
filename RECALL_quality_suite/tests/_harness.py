@@ -75,6 +75,23 @@ def memory_cmd(project: Path, *args: str) -> list[str]:
     return [sys.executable, str(root / "scripts" / "memory_manager.py"), "--root", str(project), *args]
 
 
+def seed_historical_verification(project: Path, record_id: str) -> None:
+    """Create trusted imported state for preservation tests, not new API proof."""
+    script = """import hashlib,json,sys
+from pathlib import Path
+sys.path.insert(0,str(Path(sys.argv[1])/'scripts'))
+import storage
+root=Path(sys.argv[2]); record=storage.get_record(int(sys.argv[3]),root)
+source=root/'historical-policy.txt'; source.write_text(record.content,encoding='utf-8')
+observed=source.read_bytes(); assert observed.decode('utf-8')==record.content
+metadata={**record.metadata,'status':'validated','validated_at':record.timestamp,'trust':0.9,
+          'historical_fixture_source_sha256':hashlib.sha256(observed).hexdigest()}
+storage.update_record_metadata(record.id,metadata,root)
+print(json.dumps({'seeded':record.id}))
+"""
+    run_json([sys.executable, "-c", script, str(plugin_root()), str(project), record_id])
+
+
 def hook_cmd(script_name: str) -> list[str]:
     root = plugin_root()
     return [sys.executable, str(root / "hooks" / "scripts" / script_name)]

@@ -27,6 +27,7 @@ def compact_packet(packet: dict[str, Any]) -> dict[str, Any]:
         "schema": packet.get("schema"),
         "session_id": packet.get("session_id"),
         "turn_id": packet.get("turn_id"),
+        "origin_provider": packet.get("origin_provider"),
         "packet_path": packet_path,
         "candidate_count": packet.get("candidate_count"),
         "signal_counts": signal_counts,
@@ -50,6 +51,7 @@ def build_finalizer_prompt(packet_path: str, packet: dict[str, Any] | None = Non
             "Store only future-useful decisions, requirements, risks, commands, architecture, lessons, or project state.",
             "Do not copy raw user prompts, requested implementation plans, or transcript text; store the distilled accepted fact/outcome only.",
             "If nothing durable changed, store nothing.",
+            "Validated requires a recorded successful tool observation bound to the exact command/result card and turn. User claims, confidence, command text alone, and repeated sessions do not validate a fact.",
             f"PACKET={inline_packet or json.dumps({'packet_path': packet_path}, sort_keys=True)}",
             "Steps: review-memory/retrieve-memory, decide, apply one atomic batch, short summary.",
         ]

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "recall": {
+      "command": "python",
+      "args": [
+        "./scripts/kimi_mcp_server.py"
+      ],
+      "cwd": "./",
+      "env": {
+        "RECALL_DEFAULT_PROVIDER": "codex"
+      }
+    }
+  }
+}

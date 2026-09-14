@@ -124,10 +124,13 @@ def run_recall_skill(root: str, *args: str) -> dict:
     return {"output": text}
 
 
-def runtime_events(root: str, session_id: str, turn_id: str) -> list[dict]:
-    safe_session = session_id or "session"
-    safe_turn = turn_id or "turn"
-    path = recall_config.memory_dir(root) / "runtime" / "turns" / safe_session / f"{safe_turn}.jsonl"
+def runtime_events(root: str, session_id: str, turn_id: str, *, provider: str = "codex") -> list[dict]:
+    import turn_policy
+    import turn_buffer
+    policy = turn_policy.policy_status(root, session_id or None, turn_id or None, provider=provider)
+    safe_session = session_id or str(policy.get("session_id") or "session")
+    safe_turn = turn_id or str(policy.get("turn_id") or "turn")
+    path = turn_buffer.turn_events_path(root, safe_session, safe_turn, provider)
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -230,7 +233,7 @@ class HookTests(unittest.TestCase):
             self.assertEqual(events[0]["category_hint"], "requirements")
             self.assertIn("generated release notes", events[0]["summary"])
 
-    def test_release_notes_correction_supersedes_previous_requirement(self) -> None:
+    def test_release_notes_correction_keeps_conflicting_requirements_current(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0.1.0'\n", encoding="utf-8")
             run_hook(
@@ -286,8 +289,10 @@ class HookTests(unittest.TestCase):
                 "--limit",
                 "20",
             )["review"]
-            self.assertEqual(active_review["matched"], 1)
-            self.assertIn("docs/release/manual-notes.md", active_review["memories"][0]["summary"])
+            self.assertEqual(active_review["matched"], 2)
+            summaries = {memory["summary"] for memory in active_review["memories"]}
+            self.assertTrue(any("docs/manual-release-notes.md" in summary for summary in summaries))
+            self.assertTrue(any("docs/release/manual-notes.md" in summary for summary in summaries))
 
             superseded_review = run_recall_skill(
                 tmp,
@@ -299,7 +304,7 @@ class HookTests(unittest.TestCase):
                 "--limit",
                 "20",
             )["review"]
-            self.assertGreaterEqual(superseded_review["matched"], 1)
+            self.assertEqual(superseded_review["matched"], 0)
 
     def test_prompt_inspector_ignores_incidental_remembered_word(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -700,7 +705,7 @@ class HookTests(unittest.TestCase):
             self.assertNotIn("reason", output)
             result = query_memory(tmp, "finalizer internals hidden", "requirements")
             self.assertEqual(len(result["results"]), 1)
-            self.assertEqual(result["results"][0]["metadata"]["status"], "validated")
+            self.assertEqual(result["results"][0]["metadata"]["status"], "active")  # F13: asserted intent is unverified.
 
     def test_explicit_recall_requirement_stores_clean_requirement_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -809,7 +814,7 @@ class HookTests(unittest.TestCase):
             self.assertEqual(len(events), 1)
             self.assertIn("AssertionError", events[0]["details"])
 
-    def test_post_tool_use_failure_uses_project_activation_when_turn_activation_is_missing(self) -> None:
+    def test_post_tool_use_failure_cannot_bypass_an_established_prompt_scope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             activate_recall(tmp, "session-project-active", "turn-setup")
             output = run_hook(
@@ -828,11 +833,9 @@ class HookTests(unittest.TestCase):
                     },
                 },
             )
-            self.assertTrue(output["continue"])
+            self.assertEqual(output.get("memory_action"), "disabled")
             events = runtime_events(tmp, "session-project-active", "turn-project-active")
-            self.assertEqual(len(events), 1)
-            self.assertEqual(events[0]["category_hint"], "debug_history")
-            self.assertEqual(events[0]["record_kind"], "failure")
+            self.assertEqual(events, [])
 
             stop = run_hook(
                 "stop.py",
@@ -844,9 +847,9 @@ class HookTests(unittest.TestCase):
                     "last_assistant_message": "The intentionally failing command failed as expected.",
                 },
             )
-            self.assertEqual(stop.get("systemMessage"), "RECALL saved 1 memory.")
+            self.assertEqual(stop.get("memory_action"), "disabled")
             result = query_memory(tmp, "does_not_exist", "debug_history")
-            self.assertEqual(len(result["results"]), 1)
+            self.assertEqual(result["results"], [])
 
     def test_kimi_post_tool_use_failure_payload_buffers_provider_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -876,7 +879,7 @@ class HookTests(unittest.TestCase):
                 "--provider",
                 "kimi",
             )
-            events = runtime_events(tmp, "kimi-session", "kimi-turn")
+            events = runtime_events(tmp, "kimi-session", "kimi-turn", provider="kimi")
 
             self.assertEqual(output, {"continue": True})
             self.assertEqual(len(events), 1)
@@ -920,7 +923,7 @@ class HookTests(unittest.TestCase):
                 "--provider",
                 "kimi",
             )
-            events = runtime_events(tmp, "kimi-json-session", "kimi-json-turn")
+            events = runtime_events(tmp, "kimi-json-session", "kimi-json-turn", provider="kimi")
             self.assertEqual(len(events), 1)
             self.assertEqual(events[0]["summary"], "error: Failed to spawn: `pytest`")
             self.assertNotIn('{"code"', events[0]["details"])
@@ -983,6 +986,293 @@ class HookTests(unittest.TestCase):
             events = runtime_events(tmp, "", "")
             self.assertEqual(len(events), 1)
             self.assertIn("[REDACTED]", events[0]["details"])
+
+
+class ConservativePromptAdmissionTests(unittest.TestCase):
+    """Hand-reviewed contrasts exercise admission, buffering, and durable Stop writes."""
+
+    def capture(self, root: str, prompt: str, *, explicit: bool = False) -> list:
+        import storage
+
+        recall_config.activate_project(root)
+        recall_config.set_capture_mode("standard", root)
+        payload = {"cwd": root, "session_id": "admission-session", "turn_id": "admission-turn"}
+        submitted = run_hook("prompt_inspector.py", {
+            **payload, "hook_event_name": "UserPromptSubmit", "prompt": prompt,
+        })
+        self.assertTrue(submitted["continue"])
+        stop = run_hook("stop.py", {
+            **payload, "hook_event_name": "Stop", "last_assistant_message": "I will investigate.",
+        })
+        self.assertNotIn("failed:", stop.get("systemMessage", ""))
+        records = list(storage.iter_records(root))
+        if records and not explicit:
+            self.assertEqual(records[0].metadata["session_id"], "admission-session")
+            self.assertEqual(records[0].metadata["turn_id"], "admission-turn")
+        # Redelivery cannot add records or confirmations.
+        replay = run_hook("stop.py", {**payload, "hook_event_name": "Stop"})
+        if submitted.get("memory_action") == "disabled":
+            self.assertEqual(replay["action"], "disabled")
+            self.assertEqual(replay["reason"], "task_no_memory")
+        else:
+            self.assertEqual(replay, {"continue": True})
+        self.assertEqual([(r.id, r.metadata) for r in storage.iter_records(root)],
+                         [(r.id, r.metadata) for r in records])
+        return records
+
+    def test_unresolved_and_transient_prompts_do_not_become_project_truth(self) -> None:
+        prompts = [
+            "Actually, I have no idea whether the integration tests are passing. What does that failure mean?",
+            "The local WSL dependency mount is no longer available. Why is that happening?",
+            "The project dependency mount is no longer available. Why is that happening?",
+            "Are the integration tests passing, and what does that failure mean?",
+            "I agree the importer is live, but the integration tests are failing. Is that failure still relevant or what does it mean?",
+            "Maybe we will use PostgreSQL instead of SQLite for this project.",
+            "Maybe we should migrate. We will use JSONL for this project.",
+            "Let's use PostgreSQL instead of SQLite for this project.",
+            "Proposal: We will use JSONL for this project. Release notes must live in docs/example.md.",
+            "Actually, should we replace SQLite with JSONL for the project",
+            'Example text: "We must keep release notes at docs/example.md."',
+            "'We must keep release notes at docs/example.md.\nThe project must use JSONL.'",
+            "> We accepted docs/example.md as the release notes path.",
+            "```text\nWe must use docs/example.md for release notes.\n```",
+            "For this task, you must output only JSON.",
+            "You must answer this question in one sentence.",
+            "Do not save memory this turn.",
+            "Actually, I must take my daughter to school tomorrow.",
+            "We will discuss my career in a future interview.",
+            "We have not decided to use JSONL for this project.",
+        ]
+        for prompt in prompts:
+            with self.subTest(prompt=prompt), tempfile.TemporaryDirectory() as tmp:
+                self.assertEqual(self.capture(tmp, prompt), [])
+
+    def test_multiline_condition_is_not_detached_from_runtime_rule(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(self.capture(tmp, "If credentials are missing,\nThe API must return HTTP 401."), [])
+
+    def test_wrapped_approval_cannot_become_unconditional_path(self) -> None:
+        text = "Release notes must live in docs/new-release.md\nif the migration is approved."
+        for explicit in (False, True):
+            with self.subTest(explicit=explicit), tempfile.TemporaryDirectory() as tmp:
+                prompt = "@recall remember this: requirements: " + text if explicit else text
+                self.assertEqual(self.capture(tmp, prompt, explicit=explicit), [])
+
+    def test_accepted_facts_survive_without_surrounding_uncertainty(self) -> None:
+        cases = [
+            ("We accepted docs/release-notes.md as the release notes path.",
+             "We accepted docs/release-notes.md as the release notes path", "decisions"),
+            ("Correction: the release notes file should instead live at docs/release/manual-notes.md.",
+             "Correction: the release notes file should instead live at docs/release/manual-notes.md", "requirements"),
+            ("Actually, this project no longer uses JSONL; it uses SQLite.",
+             "Actually, this project no longer uses JSONL; it uses SQLite", "decisions"),
+            ("The retry logic must never exceed three attempts; that is a hard requirement.",
+             "The retry logic must never exceed three attempts; that is a hard requirement", "requirements"),
+            ("We accepted docs/release-notes.md as the release notes path. Should we change the test command?",
+             "We accepted docs/release-notes.md as the release notes path", "decisions"),
+            ("We accepted docs/release-notes.md as the release notes path. What proposal should we discuss?",
+             "We accepted docs/release-notes.md as the release notes path", "decisions"),
+            ("Actually, should we use JSONL? The project must keep secrets out of memory.",
+             "The project must keep secrets out of memory", "requirements"),
+            ("The API must preserve the literal `why?` in error messages.",
+             "The API must preserve the literal `why?` in error messages", "requirements"),
+            ("Do not make network calls from this project.",
+             "Do not make network calls from this project", "requirements"),
+            ("The parser must preserve RECALL_LITERAL_0 and `why?` verbatim.",
+             "The parser must preserve RECALL_LITERAL_0 and `why?` verbatim", "requirements"),
+        ]
+        for prompt, content, category in cases:
+            with self.subTest(prompt=prompt), tempfile.TemporaryDirectory() as tmp:
+                records = self.capture(tmp, prompt)
+                self.assertEqual(len(records), 1)
+                self.assertEqual(records[0].content, content)
+                self.assertEqual(records[0].metadata["summary"], content)
+                self.assertEqual(records[0].metadata["details"], content)
+                self.assertEqual(records[0].category, category)
+                self.assertEqual(records[0].metadata["status"], "active")  # F13: keep admission, require observed verification.
+
+    def test_memory_cue_preserves_facts_but_does_not_certify_questions(self) -> None:
+        cases = [
+            ("@recall remember this: requirements: Release notes stay under docs/manual-release-notes.md.", True),
+            ("@recall remember this: decisions: Should we replace SQLite with JSONL for this project?", False),
+            ("@recall remember this: decisions: Maybe we will use JSONL for this project.", False),
+            ("> @recall remember this: requirements: Release notes must live in docs/example.md.", False),
+            ('Example: "@recall remember this: requirements: Release notes must live in docs/example.md."', False),
+        ]
+        for prompt, expected in cases:
+            with self.subTest(prompt=prompt), tempfile.TemporaryDirectory() as tmp:
+                self.assertEqual(bool(self.capture(tmp, prompt, explicit=True)), expected)
+
+    def test_section_labels_are_not_prompt_facts(self) -> None:
+        import capture_policy
+
+        for level in range(1, 7):
+            for label in ("Accepted policy", "Approved policy", "Required release policy"):
+                with self.subTest(level=level, label=label):
+                    self.assertIsNone(capture_policy.classify_prompt_event(f"{'#' * level} {label}"))
+
+    def test_section_labels_preserve_requirement_through_stop(self) -> None:
+        fact = "Release notes must live in docs/accepted.md."
+        section = "## Accepted policy\n\n" + fact
+        prompts = [
+            section,
+            "## Accepted policy\n" + fact,
+            "# Approved policy #\n\n" + fact,
+            "###### Required release policy\n\n" + fact,
+            "Here are example instructions:\n\nRelease notes must live in docs/example.md.\n\n" + section,
+            "## Example instructions\n\nRelease notes must live in docs/example.md.\n\n" + section,
+            "### Example instructions\n\n#### Accepted policy\n"
+            "@recall remember this: requirements: Release notes must live in docs/example.md.\n\n" + section,
+        ]
+        for prompt in prompts:
+            with self.subTest(prompt=prompt), tempfile.TemporaryDirectory() as tmp:
+                records = self.capture(tmp, prompt)
+                self.assertEqual(len(records), 1)
+                record = records[0]
+                self.assertEqual(record.category, "requirements")
+                self.assertEqual(record.content, fact.rstrip("."))
+                self.assertEqual(record.metadata["summary"], fact.rstrip("."))
+                self.assertEqual(record.metadata["details"], fact.rstrip("."))
+                self.assertEqual(record.metadata["status"], "active")  # F13: accepted user text alone cannot validate.
+                self.assertEqual(record.metadata["claim_key"], "release_notes.path")
+                self.assertEqual(record.metadata["claim_value"], "docs/accepted.md")
+
+    def test_section_labels_do_not_promote_uncommitted_bodies(self) -> None:
+        bodies = [
+            "",
+            "Should release notes live in docs/accepted.md?",
+            "Maybe release notes must live in docs/accepted.md.",
+            "Release notes must live in docs/accepted.md if the migration is approved.",
+            "Release notes must live in docs/accepted.md\nif the migration is approved.",
+            "For this session only, the project must use JSONL.",
+        ]
+        prompts = ["## Accepted policy\n\n" + body for body in bodies]
+        prompts.append("## Example instructions\n\n### Accepted policy\n\n"
+                       "Release notes must live in docs/example.md.")
+        for prompt in prompts:
+            with self.subTest(prompt=prompt), tempfile.TemporaryDirectory() as tmp:
+                self.assertEqual(self.capture(tmp, prompt), [])
+
+    def test_followup_conditional_choices_and_example_scope_through_stop(self) -> None:
+        # Fixed review set plus contrasts hand-reviewed before target execution.
+        cases = [
+            ('accepted_path', 'We accepted docs/release-notes.md as the release notes path.', True, None),
+            ('path_correction', 'Correction: the release notes file should instead live at docs/release/manual-notes.md.', True, None),
+            ('durable_requirement', 'The retry logic must never exceed 3 attempts; this is a hard requirement.', True, None),
+            ('question_correction', 'Actually, I have no idea whether the integration tests are passing. What does that failure mean?', False, None),
+            ('question_mount', 'The local WSL dependency mount is no longer available. Why is that happening?', False, None),
+            ('ordinary_question', 'Are the integration tests passing, and what does that failure mean?', False, None),
+            ('proposal', 'Maybe we will use PostgreSQL instead of SQLite for this project.', False, None),
+            ('quoted_example', 'Example text: "We must keep release notes at docs/example.md."', False, None),
+            ('turn_format', 'For this task, you must output only JSON.', False, None),
+            ('personal', 'Actually, I must take my daughter to school tomorrow.', False, None),
+            ('inline_literal', 'The API must preserve the literal `why?` in error messages.', True, None),
+            ('fact_then_question', 'We accepted docs/release-notes.md as the release notes path. Should we change the build command?', True, None),
+            ('explicit_fact', '@recall remember this: requirements: Release notes stay under docs/manual-release-notes.md.', True, None),
+            ('explicit_question', '@recall remember this: decisions: Should we use SQLite for this project?', False, None),
+            ('conditional_leading', 'If the benchmark passes, we will use SQLite for this project.', False, None),
+            ('conditional_trailing', 'We will use SQLite for this project if the benchmark passes.', False, None),
+            ('conditional_path', 'Release notes must live in docs/new-release.md if the migration is approved.', False, None),
+            ('conditional_explicit', '@recall remember this: decisions: We will use SQLite for this project if the benchmark passes.', False, None),
+            ('example_header', 'Here are example instructions:\nRelease notes must live in docs/example.md.', False, None),
+            ('example_blank_line', 'Example instructions:\n\nRelease notes must live in docs/example.md.', False, None),
+            ('fenced_example', 'Here are example instructions:\n```text\nRelease notes must live in docs/example.md.\n```', False, None),
+            ('session_control', 'For this session only, the project must use JSONL.', False, None),
+            ('accepted_database', 'We will use SQLite for this project.', True, None),
+            ('accepted_project_correction', 'Actually, this project no longer uses JSONL; it uses SQLite.', True, None),
+            ('explicit_verified_command', '@recall remember this: commands: The verified test command is `npm test`.', True, None),
+            ('quoted_explicit', '> @recall remember this: requirements: Release notes must live in docs/example.md.', False, None),
+            ('migration_leading', 'If the migration is approved, release notes must live in docs/new-release.md.', False, None),
+            ('migration_explicit', '@recall remember this: requirements: Release notes must live in docs/new-release.md if the migration is approved.', False, None),
+            ('runtime_trailing', 'The API must return HTTP 401 if credentials are missing.', True, None),
+            ('runtime_leading', 'If credentials are missing, the API must return HTTP 401.', True, None),
+            ('runtime_explicit', '@recall remember this: requirements: The API must return HTTP 401 if credentials are missing.', True, None),
+            ('runtime_pending_approval', 'The API must return HTTP 401 if the migration is approved.', False, None),
+            ('fact_before_example', 'Release notes must live in docs/accepted.md.\n\nHere are example instructions:\n\nRelease notes must live in docs/example.md.', True, 'Release notes must live in docs/accepted.md'),
+            ('fact_after_example', 'Example instructions:\n\nRelease notes must live in docs/example.md.\nEnd example.\n\nRelease notes must live in docs/accepted.md.', True, 'Release notes must live in docs/accepted.md'),
+            ('markdown_example_scope', '## Example instructions\n\nRelease notes must live in docs/example.md.\n\n## Accepted requirements\n\nRelease notes must live in docs/accepted.md.', True, 'Release notes must live in docs/accepted.md'),
+            ('nested_example_heading', '## Example instructions\n\n### Storage\n\nThe project must use JSONL.', False, None),
+            ('example_explicit_cue', 'Here are example instructions:\n\n@recall remember this: requirements: Release notes must live in docs/example.md.', False, None),
+            ('session_explicit', '@recall remember this: requirements: For this session only, the project must use JSONL.', False, None),
+            ('inline_if_literal', 'The parser must preserve the literal `if the benchmark passes` in error messages.', True, None),
+            ('quoted_then_fact', '> Release notes must live in docs/example.md.\n\nRelease notes must live in docs/accepted.md.', True, 'Release notes must live in docs/accepted.md'),
+            ('fenced_then_fact', '```text\nRelease notes must live in docs/example.md.\n```\n\nRelease notes must live in docs/accepted.md.', True, 'Release notes must live in docs/accepted.md'),
+            ('conditional_then_fact', 'We will use SQLite for this project if the benchmark passes.\n\nRelease notes must live in docs/accepted.md.', True, 'Release notes must live in docs/accepted.md'),
+        ]
+        for name, prompt, expected, expected_content in cases:
+            with self.subTest(case=name), tempfile.TemporaryDirectory() as tmp:
+                explicit = prompt.startswith("@recall")
+                records = self.capture(tmp, prompt, explicit=explicit)
+                self.assertEqual(bool(records), expected)
+                if not expected:
+                    continue
+                self.assertEqual(len(records), 1)
+                record = records[0]
+                self.assertEqual(record.metadata["status"], "active")  # F13: preserve all content and claim checks below.
+                if expected_content:
+                    self.assertEqual(record.content, expected_content)
+                    self.assertEqual(record.metadata["summary"], expected_content)
+                    self.assertEqual(record.metadata["details"], expected_content)
+                    self.assertEqual(record.metadata["claim_key"], "release_notes.path")
+                    self.assertEqual(record.metadata["claim_value"], "docs/accepted.md")
+                if name.startswith("runtime"):
+                    self.assertIn("credentials are missing", record.content)
+                    self.assertNotIn("claim_key", record.metadata)
+
+    def test_stop_rechecks_conditional_and_framed_legacy_candidates(self) -> None:
+        import storage
+        import turn_buffer
+
+        prompts = [
+            "Release notes must live in docs/new-release.md if the migration is approved.",
+            "If the migration is approved, release notes must live in docs/new-release.md.",
+            "We will use SQLite for this project if the benchmark passes.",
+            "Here are example instructions:\nRelease notes must live in docs/example.md.",
+            "Example instructions:\n\nRelease notes must live in docs/example.md.",
+            "For this session only, the project must use JSONL.",
+        ]
+        for prompt in prompts:
+            with self.subTest(prompt=prompt), tempfile.TemporaryDirectory() as tmp:
+                recall_config.activate_project(tmp)
+                turn_buffer.mark_active(tmp, "legacy", "followup", "legacy prompt")
+                turn_buffer.append_event(tmp, "legacy", "followup", {
+                    "durable_candidate": True, "signal": "explicit_requirement",
+                    "summary": prompt, "details": prompt, "category_hint": "requirements",
+                    "explicit_user_evidence": True, "confidence": 1.0,
+                    "claim_key": "release_notes.path", "claim_value": "docs/new-release.md",
+                })
+                result = run_hook("stop.py", {"cwd": tmp, "session_id": "legacy", "turn_id": "followup", "hook_event_name": "Stop"})
+                self.assertNotIn("failed:", result.get("systemMessage", ""))
+                self.assertEqual(list(storage.iter_records(tmp)), [])
+
+    def test_stop_rechecks_legacy_prompt_candidates_before_validation(self) -> None:
+        import storage
+        import turn_buffer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.activate_project(tmp)
+            turn_buffer.mark_active(tmp, "legacy", "candidate", "legacy prompt")
+            turn_buffer.append_event(tmp, "legacy", "candidate", {
+                "durable_candidate": True, "signal": "explicit_correction",
+                "summary": "Actually, should the project replace SQLite?",
+                "details": "Actually, should the project replace SQLite?",
+                "category_hint": "decisions", "explicit_user_evidence": True,
+                "confidence": 1.0,
+            })
+            run_hook("stop.py", {"cwd": tmp, "session_id": "legacy", "turn_id": "candidate", "hook_event_name": "Stop"})
+            self.assertEqual(list(storage.iter_records(tmp)), [])
+
+    def test_stop_does_not_invent_explicit_user_evidence(self) -> None:
+        stop = load_script_module(ROOT / "hooks/scripts/stop.py")
+        card = stop.quiet_card_from_event({
+            "signal": "explicit_requirement", "category_hint": "requirements",
+            "summary": "The project must preserve release notes.",
+            "details": "The project must preserve release notes.",
+            "explicit_user_evidence": False, "confidence": 1.0,
+        }, session_id="session", turn_id="turn")
+        self.assertIsNotNone(card)
+        self.assertEqual(card["status"], "active")
+        self.assertFalse(card["explicit_user_evidence"])
 
 
 if __name__ == "__main__":

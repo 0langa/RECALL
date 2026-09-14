@@ -9,8 +9,125 @@ from _harness import active_memory_dir, hook_cmd, memory_cmd, run_json, run_text
 
 
 class HookLifecycleContractTests(unittest.TestCase):
-    def runtime_events(self, project: Path, session_id: str, turn_id: str) -> list[dict]:
-        path = active_memory_dir(project) / "runtime" / "turns" / (session_id or "session") / f"{turn_id or 'turn'}.jsonl"
+    def test_conservative_prompt_admission_through_stop_for_provider_payloads(self) -> None:
+        cases = [
+            ("Actually, should the project replace SQLite with JSONL", False),
+            ("Proposal: We will keep project release notes in docs/proposal.md.", False),
+            ("> @recall remember this: requirements: Release notes must live in docs/example.md.", False),
+            ("The project must keep release notes in docs/releases.md. Should we change the test command?", True),
+        ]
+        for provider in ("codex", "claude", "kimi"):
+            for prompt, expected in cases:
+                with self.subTest(provider=provider, prompt=prompt), temp_project() as project:
+                    # An explicit project signal prevents fixture roots resolving to the host workspace.
+                    (project / "pyproject.toml").write_text("[project]\nname='admission-fixture'\n", encoding="utf-8")
+                    self.activate_recall(project, "contract", "setup")
+                    payload = {"cwd": str(project), "session_id": "contract", "turn_id": "admission"}
+                    prompt_value = [{"type": "text", "text": prompt}] if provider == "kimi" else prompt
+                    run_json([*hook_cmd("prompt_inspector.py"), "--provider", provider], input_payload={
+                        **payload, "hook_event_name": "UserPromptSubmit", "prompt": prompt_value,
+                    })
+                    output = run_json([*hook_cmd("stop.py"), "--provider", provider], input_payload={
+                        **payload, "hook_event_name": "Stop", "last_assistant_message": "I will investigate.",
+                    })
+                    self.assertNotIn("failed:", output.get("systemMessage", ""))
+                    result = run_json(memory_cmd(project, "query", "project release notes SQLite", "--limit", "20"))
+                    self.assertEqual(bool(result["results"]), expected)
+                    if expected:
+                        record = result["results"][0]
+                        self.assertEqual(record["content"], "The project must keep release notes in docs/releases.md")
+                        self.assertEqual(record["metadata"]["status"], "active")
+                        self.assertEqual(record["metadata"]["claim_value"], "docs/releases.md")
+                    replay = run_json([*hook_cmd("stop.py"), "--provider", provider], input_payload={
+                        **payload, "hook_event_name": "Stop",
+                    })
+                    self.assertEqual(replay, {"continue": True})
+
+    def test_followup_admission_through_provider_hooks(self) -> None:
+        cases = [
+            ("Release notes must live in docs/new-release.md if the migration is approved.", None),
+            ("If the benchmark passes, we will use SQLite for this project.", None),
+            ("@recall remember this: decisions: We will use SQLite for this project if the benchmark passes.", None),
+            ("Here are example instructions:\n\nRelease notes must live in docs/example.md.", None),
+            ("For this session only, the project must use JSONL.", None),
+            ("The API must return HTTP 401 if credentials are missing.", "active"),
+            ("@recall remember this: requirements: The API must return HTTP 401 if credentials are missing.", "active"),
+        ]
+        for provider in ("codex", "claude", "kimi"):
+            for prompt, status in cases:
+                with self.subTest(provider=provider, prompt=prompt), temp_project() as project:
+                    (project / "pyproject.toml").write_text("[project]\nname='followup-fixture'\n", encoding="utf-8")
+                    self.activate_recall(project, "contract", "setup")
+                    payload = {"cwd": str(project), "session_id": "contract", "turn_id": "followup"}
+                    value = [{"type": "text", "text": prompt}] if provider == "kimi" else prompt
+                    run_json([*hook_cmd("prompt_inspector.py"), "--provider", provider], input_payload={
+                        **payload, "hook_event_name": "UserPromptSubmit", "prompt": value,
+                    })
+                    output = run_json([*hook_cmd("stop.py"), "--provider", provider], input_payload={
+                        **payload, "hook_event_name": "Stop", "last_assistant_message": "I will investigate.",
+                    })
+                    self.assertNotIn("failed:", output.get("systemMessage", ""))
+                    command = memory_cmd(project, "query", "API credentials release notes SQLite", "--limit", "20")
+                    records = run_json(command)["results"]
+                    self.assertEqual(bool(records), status is not None)
+                    if status:
+                        self.assertEqual(len(records), 1)
+                        record = records[0]
+                        self.assertEqual(record["metadata"]["status"], status)
+                        self.assertEqual(record["content"].rstrip("."), "The API must return HTTP 401 if credentials are missing")
+                        self.assertNotIn("claim_key", record["metadata"])
+                    run_json([*hook_cmd("stop.py"), "--provider", provider], input_payload={**payload, "hook_event_name": "Stop"})
+                    self.assertEqual(run_json(command)["results"], records)
+
+    def test_section_labels_preserve_requirements_for_all_providers(self) -> None:
+        fact = "Release notes must live in docs/accepted.md"
+        section = "## Accepted policy\n\n" + fact + "."
+        cases = [
+            (section, True),
+            ("## Example instructions\n\nRelease notes must live in docs/example.md.\n\n" + section, True),
+            ("## Example instructions\n\n### Accepted policy\n\n" + fact + ".", False),
+        ]
+        for provider in ("codex", "claude", "kimi"):
+            for prompt, expected in cases:
+                with self.subTest(provider=provider, prompt=prompt), temp_project() as project:
+                    (project / "pyproject.toml").write_text("[project]\nname='section-fixture'\n", encoding="utf-8")
+                    self.activate_recall(project, "contract", "setup")
+                    payload = {"cwd": str(project), "session_id": "contract", "turn_id": "section-label"}
+                    value = [{"type": "text", "text": prompt}] if provider == "kimi" else prompt
+                    run_json([*hook_cmd("prompt_inspector.py"), "--provider", provider], input_payload={
+                        **payload, "hook_event_name": "UserPromptSubmit", "prompt": value,
+                    })
+                    output = run_json([*hook_cmd("stop.py"), "--provider", provider], input_payload={
+                        **payload, "hook_event_name": "Stop", "last_assistant_message": "I will investigate.",
+                    })
+                    self.assertNotIn("failed:", output.get("systemMessage", ""))
+                    command = memory_cmd(project, "query", "accepted policy release notes", "--limit", "20")
+                    records = run_json(command)["results"]
+                    self.assertEqual(len(records), 1 if expected else 0)
+                    if expected:
+                        record = records[0]
+                        self.assertEqual(record["category"], "requirements")
+                        self.assertEqual(record["content"], fact)
+                        self.assertEqual(record["metadata"]["summary"], fact)
+                        self.assertEqual(record["metadata"]["details"], fact)
+                        self.assertEqual(record["metadata"]["status"], "active")
+                        self.assertEqual(record["metadata"]["claim_key"], "release_notes.path")
+                        self.assertEqual(record["metadata"]["claim_value"], "docs/accepted.md")
+                    replay = run_json([*hook_cmd("stop.py"), "--provider", provider], input_payload={
+                        **payload, "hook_event_name": "Stop",
+                    })
+                    self.assertEqual(replay, {"continue": True})
+                    self.assertEqual(run_json(command)["results"], records)
+
+    def runtime_events(self, project: Path, session_id: str, turn_id: str, provider: str = "codex") -> list[dict]:
+        provider_dir = active_memory_dir(project) / "runtime" / "turns" / provider
+        if session_id:
+            paths = [provider_dir / session_id / f"{turn_id or 'turn'}.jsonl"]
+        else:
+            paths = list(provider_dir.glob(f"*/{turn_id or 'turn'}.jsonl"))
+        if len(paths) > 1:
+            self.fail(f"Multiple runtime event buffers matched {turn_id!r}: {paths}")
+        path = paths[0] if paths else provider_dir / "missing"
         if not path.exists():
             return []
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -52,7 +169,7 @@ class HookLifecycleContractTests(unittest.TestCase):
             })
             self.assertEqual(negative, {"continue": True})
 
-            review = run_json(memory_cmd(project, "query", "fake project actually remembered", "--category", "preferences"))
+            review = run_json(memory_cmd(project, "query", "local-only memory", "--category", "preferences"))
             self.assertEqual(len(review["results"]), 1)
             self.assertNotIn("fake project", review["results"][0]["content"])
 
@@ -180,7 +297,7 @@ class HookLifecycleContractTests(unittest.TestCase):
                 "requirements",
             ))
             self.assertEqual(len(direct["results"]), 1)
-            self.assertEqual(direct["results"][0]["metadata"]["status"], "validated")
+            self.assertEqual(direct["results"][0]["metadata"]["status"], "active")
 
 
 if __name__ == "__main__":

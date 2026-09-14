@@ -12,6 +12,7 @@ from hook_io import normalize_hook_event, read_hook_input
 import memory_manager
 from summarizer import summarize_texts
 import turn_buffer
+import turn_policy
 
 
 def main() -> None:
@@ -29,7 +30,10 @@ def main() -> None:
         fallback_root=args.root,
     )
     root = event.root
-    if not turn_buffer.is_active(root, event.session_id, event.turn_id):
+    if turn_policy.policy_status(root, event.session_id, event.turn_id, provider=event.provider)["disabled"]:
+        print(json.dumps(turn_policy.disabled_result(hook=True)))
+        return
+    if not turn_buffer.is_active(root, event.session_id, event.turn_id, provider=event.provider):
         print(json.dumps({"continue": True}))
         return
     if not capture_policy.should_store_precompact(root):

@@ -24,7 +24,7 @@ examples stay local-only; no secrets are stored or repeated.
 
 - Contract fields: retrieval, not mutation.
 - Handoff: `{"skill": "retrieve-memory", "reason": "query: release process"}`.
-- Follow-up: summarize returned records; if none, say so and offer to save.
+- Follow-up: summarize returned records; if none, accept the empty result and continue from current evidence when allowed. Save only a durable verified correction within the current scope.
 
 ## Scenario 4 — "Some memories look stale after we deleted the old docs"
 

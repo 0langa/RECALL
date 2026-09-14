@@ -13,6 +13,20 @@ from hook_events import HookEvent  # noqa: E402
 
 
 class HookEventTests(unittest.TestCase):
+    def test_prompt_content_parts_preserve_quote_boundaries_and_delivery_identity(self) -> None:
+        payload = {
+            "hook_event_name": "UserPromptSubmit", "session_id": "session", "turn_id": "turn",
+            "hook_event_id": "delivery", "prompt": [
+                {"type": "text", "text": "Example:"},
+                {"type": "text", "text": "> We must use JSONL for this project."},
+            ],
+        }
+        event = HookEvent.from_payload(payload, fallback_event="UserPromptSubmit", provider="kimi")
+        replay = HookEvent.from_payload(payload, fallback_event="UserPromptSubmit", provider="kimi")
+        self.assertEqual(event.prompt, "Example:\n> We must use JSONL for this project.")
+        self.assertEqual(event.idempotency_key("UserPromptSubmit"), replay.idempotency_key("UserPromptSubmit"))
+        self.assertEqual((event.session_id, event.turn_id), ("session", "turn"))
+
     def test_codex_tool_payload_normalizes_to_compatibility_shape(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             payload = {

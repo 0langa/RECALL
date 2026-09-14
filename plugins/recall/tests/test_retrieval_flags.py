@@ -26,6 +26,36 @@ def seed(tmp: str, category: str, content: str, status: str, extra: dict | None 
 
 
 class RetrievalFlagTests(unittest.TestCase):
+    def test_top_one_keeps_conflict_and_omitted_truth_health(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            seed(tmp, "decisions", "Use alpha storage.", "active", {"claim_key": "backend", "claim_value": "alpha"})
+            seed(tmp, "decisions", "Use beta storage.", "active", {"claim_key": "backend", "claim_value": "beta"})
+            seed(tmp, "decisions", "Old gamma storage.", "superseded")
+            seed(tmp, "decisions", "Stale delta storage.", "stale")
+            result = retrieval.query("alpha storage", root=tmp, limit=1, verbose=False)
+            self.assertEqual(result["results"][0]["flag"], "conflicting")
+            self.assertTrue(result["truncated"])
+            self.assertEqual(result["omitted_count"], 1)
+            self.assertEqual(result["health"]["omitted_flag_counts"]["conflicting"], 1)
+            self.assertEqual(result["health"]["omitted_flag_counts"]["stale"], 1)
+            self.assertEqual(result["health"]["omitted_flag_counts"]["superseded"], 1)
+
+    def test_stale_conflict_does_not_lose_stale_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            seed(tmp, "decisions", "Use alpha storage.", "active", {"claim_key": "backend", "claim_value": "alpha"})
+            stale = seed(tmp, "decisions", "Use beta storage.", "stale", {"claim_key": "backend", "claim_value": "beta"})
+            result = retrieval.query("storage", root=tmp, statuses=ALL_STATUSES, verbose=False)
+            item = next(item for item in result["results"] if item["id"] == stale.id)
+            self.assertIn("stale", item["flags"])
+            self.assertIn("conflicting", item["flags"])
+
+    def test_unrelated_query_abstains_with_reason(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            seed(tmp, "decisions", "Use SQLite storage.", "active")
+            result = retrieval.query("narwhal sonata", root=tmp)
+            self.assertEqual(result["results"], [])
+            self.assertEqual(result["empty_reason"], "no_lexical_match")
+
     def test_results_carry_health_flags_and_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             current = seed(tmp, "decisions", "Retrieval scoring uses local hash embeddings.", "active")

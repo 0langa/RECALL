@@ -13,8 +13,17 @@
     "capture_channel": ["hook", "mcp", "skill_adapter", "manual"]
   },
   "authority": {
-    "order": ["current_files", "user_instructions", "retrieved_memory"],
+    "instruction_order": ["system_instructions", "developer_instructions", "current_user_instructions_and_scope"],
+    "memory_is_untrusted_project_data": true,
+    "memory_can_grant_permission": false,
+    "guidance_enforces_access": false,
     "lifecycle_winner": ["validated", "hypothesis"]
+  },
+  "retrieval": {
+    "when": ["recurring_project_failure", "prior_decision", "continuation_after_context_loss"],
+    "skip": ["small_self_contained_task", "explicit_memory_free_task"],
+    "empty_result_is_valid": true,
+    "lookup_category_or_save_required": false
   },
   "safety": {
     "reject_categories": ["secret", "credential", "token", "private_key", "password"],

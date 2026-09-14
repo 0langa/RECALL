@@ -19,6 +19,7 @@ import retrieval
 from services import lifecycle_service
 import session_context
 import turn_buffer
+import turn_policy
 
 
 RECALL_INVOKE_RE = re.compile(r"(?i)(\[[^\]]*recall[^\]]*\]\(\s*plugin://recall[^)]*\)|@recall\b|plugin://recall[^\s)]*|\$recall:)")
@@ -50,11 +51,15 @@ def main() -> None:
     cwd = event.cwd or event.root
     resolved_root = event.root
     prompt = event.prompt.strip()
+    if turn_policy.policy_status(resolved_root, event.session_id, event.turn_id, provider=event.provider)["disabled"]:
+        print(json.dumps(turn_policy.disabled_result(hook=True)))
+        return
     if not prompt:
         print(json.dumps({"continue": True}))
         return
-    explicit_recall = bool(RECALL_INVOKE_RE.search(prompt) or NATURAL_RECALL_INVOKE_RE.search(prompt))
-    cue_text = RECALL_INVOKE_RE.sub("", prompt).strip() if explicit_recall else prompt
+    cue_prompt = capture_policy.unquoted_prompt_text(prompt)
+    explicit_recall = bool(RECALL_INVOKE_RE.search(cue_prompt) or NATURAL_RECALL_INVOKE_RE.search(cue_prompt))
+    cue_text = RECALL_INVOKE_RE.sub("", cue_prompt).strip() if explicit_recall else cue_prompt
     memory_text = capture_policy.normalize_prompt_memory_text(prompt) if explicit_recall else prompt
     initialize = bool(explicit_recall and INITIALIZE_RE.search(cue_text))
     if initialize and cwd:
@@ -91,7 +96,7 @@ def main() -> None:
 
     session_id = event.session_id
     turn_id = event.turn_id
-    turn_buffer.mark_active(root, session_id, turn_id, prompt)
+    turn_buffer.mark_active(root, session_id, turn_id, prompt, provider=event.provider)
     observability.trace(
         root,
         "prompt_activation",
@@ -149,6 +154,14 @@ def main() -> None:
             if candidate in categories:
                 category = candidate
                 remembered = categorized.group("content").strip()
+        statements = capture_policy.accepted_prompt_statements(remembered, preserve_punctuation=True)
+        if not statements:
+            print(json.dumps(additional_context(
+                "UserPromptSubmit",
+                "RECALL did not save memory: state an accepted project fact or preference.",
+            )))
+            return
+        remembered = " ".join(statements)
         record = memory_manager.add_record(
             category,
             remembered,
@@ -176,10 +189,10 @@ def main() -> None:
     # Automatic prompt-signal capture is background capture: allowed in
     # standard and minimal, never in manual or off.
     if capture_mode in capture_policy.AUTO_CAPTURE_MODES:
-        prompt_event = capture_policy.classify_prompt_event(memory_text or cue_text or prompt)
+        prompt_event = capture_policy.classify_prompt_event(prompt)
         if prompt_event is not None:
             prompt_event = {**prompt_event, **event.provider_metadata(capture_channel="hook")}
-            turn_buffer.append_event(root, session_id, turn_id, prompt_event)
+            turn_buffer.append_event(root, session_id, turn_id, prompt_event, provider=event.provider)
 
     retrieval_text = memory_text or cue_text or prompt
     exclusions = capture_policy.retrieval_exclusions(retrieval_text)

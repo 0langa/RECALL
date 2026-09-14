@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import config as recall_config
+import turn_buffer
 
 
 DEFAULT_RECORDS = [
@@ -111,6 +112,7 @@ def hook_command(plugin_root: Path, hook_name: str) -> list[str]:
 
 def assert_plugin_shape(plugin_root: Path) -> None:
     required_paths = [
+        plugin_root / ".mcp.json",
         plugin_root / ".codex-plugin" / "plugin.json",
         plugin_root / "hooks" / "hooks.json",
         plugin_root / "hooks" / "scripts" / "session_start.py",
@@ -253,7 +255,7 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
         cwd=plugin_root,
     )
     require(not tool_result["results"], "PostToolUse created a durable command before finalization")
-    event_path = recall_config.memory_dir(project_root) / "runtime" / "turns" / "smoke-session" / "smoke-turn.jsonl"
+    event_path = turn_buffer.turn_events_path(project_root, "smoke-session", "smoke-turn", "codex")
     require(event_path.exists(), "PostToolUse did not buffer runtime evidence")
     checks.append("PostToolUse buffers evidence without durable command spam")
 
@@ -308,7 +310,7 @@ def run_smoke(plugin_root: Path, project_root: Path) -> dict[str, Any]:
         (session_start.get("hookSpecificOutput") or {}).get("additionalContext") or ""
     )
     require(
-        "Authority order" in contract_context,
+        "Instruction order" in contract_context,
         "SessionStart should inject the lifecycle contract for activated projects",
     )
     checks.append("SessionStart injects the lifecycle contract for the activated project")

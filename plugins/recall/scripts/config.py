@@ -6,11 +6,13 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
+import tempfile
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from store_lock import exclusive_lock
 
 
 DEFAULT_CATEGORIES: dict[str, dict[str, Any]] = {
@@ -229,14 +231,46 @@ MEMORY_DIR_NAME = ".recall"
 LEGACY_MEMORY_DIR_NAME = ".codex_memory"
 
 
+class RootResolutionError(ValueError):
+    """A scope decision that must be reported before any store initialization."""
+
+    def __init__(self, decision: dict[str, Any]) -> None:
+        self.decision = decision
+        super().__init__(f"RECALL project root is {decision['status']}: {decision['reason']}; supply one explicit project root.")
+
+
+def root_decision(raw_root: str | Path | None = None) -> dict[str, Any]:
+    """Resolve scope using path markers only; never open a canonical store."""
+    import project_context
+
+    candidates: list[dict[str, str]] = []
+    source = "explicit_root" if raw_root is not None else "environment_root"
+    raw = raw_root if raw_root is not None else os.environ.get("RECALL_PROJECT_ROOT")
+    if raw is not None:
+        if not str(raw).strip():
+            return {"status": "unresolved", "root": None, "reason": "blank_root", "candidates": candidates}
+        try:
+            root = Path(raw).expanduser().resolve()
+        except (OSError, ValueError, RuntimeError):
+            return {"status": "unresolved", "root": None, "reason": "invalid_root", "candidates": candidates}
+        if root.is_file():
+            return {"status": "unresolved", "root": None, "reason": "root_is_file", "candidates": candidates}
+        candidates.append({"root": str(root), "source": source})
+        if raw_root is None:
+            cwd_root = project_context.resolve_project_root(Path.cwd())
+            if cwd_root is not None and cwd_root != root and root in cwd_root.parents:
+                candidates.append({"root": str(cwd_root), "source": "cwd_project_boundary"})
+                return {"status": "ambiguous", "root": None, "reason": "ancestor_environment_root", "candidates": candidates}
+        return {"status": "resolved", "root": str(root), "reason": source, "candidates": candidates}
+    return project_context.project_root_decision(Path.cwd())
+
+
 def project_root(raw_root: str | Path | None = None) -> Path:
-    """Return the project root RECALL should use for local storage."""
-    if raw_root is not None:
-        return Path(raw_root).expanduser().resolve()
-    env_root = os.environ.get("RECALL_PROJECT_ROOT")
-    if env_root:
-        return Path(env_root).expanduser().resolve()
-    return Path.cwd().resolve()
+    """Return a clear project root, or fail before creating any store files."""
+    decision = root_decision(raw_root)
+    if decision["status"] != "resolved":
+        raise RootResolutionError(decision)
+    return Path(decision["root"])
 
 
 def neutral_memory_dir(raw_root: str | Path | None = None) -> Path:
@@ -293,11 +327,16 @@ def ensure_config(raw_root: str | Path | None = None) -> Path:
     if target.exists():
         return target
 
-    root_config = root_config_path(root)
-    if root_config.exists():
-        shutil.copyfile(root_config, target)
-    else:
-        save_config(default_config(), root)
+    with exclusive_lock(target_dir / ".config.lock"):
+        if target.exists():
+            return target
+        root_config = root_config_path(root)
+        if root_config.exists():
+            with root_config.open(encoding="utf-8") as handle:
+                initial = json.load(handle)
+        else:
+            initial = default_config()
+        _write_config_payload(initial, root)
     return target
 
 
@@ -341,6 +380,18 @@ def load_config(raw_root: str | Path | None = None) -> dict[str, Any]:
     path = ensure_config(raw_root)
     with path.open(encoding="utf-8") as handle:
         loaded = json.load(handle)
+    if "activation" not in loaded:
+        with exclusive_lock(memory_dir(raw_root) / ".config.lock"):
+            # Another writer may have upgraded or changed this config since
+            # the first read. Never publish that earlier snapshot.
+            return _load_config_unlocked(raw_root)
+    return validate_config(loaded)
+
+
+def _load_config_unlocked(raw_root: str | Path | None = None) -> dict[str, Any]:
+    """Read and upgrade while the caller owns the config lock."""
+    with config_path(raw_root).open(encoding="utf-8") as handle:
+        loaded = json.load(handle)
     validated = validate_config(loaded)
     if "activation" not in loaded:
         validated["activation"].update(
@@ -350,18 +401,35 @@ def load_config(raw_root: str | Path | None = None) -> dict[str, Any]:
                 "activated_by": "legacy_memory_store",
             }
         )
-        save_config(validated, raw_root)
+        _write_config_payload(validated, raw_root)
     return validated
 
 
 def save_config(config: dict[str, Any], raw_root: str | Path | None = None) -> None:
+    with exclusive_lock(memory_dir(raw_root) / ".config.lock"):
+        _write_config_payload(validate_config(config), raw_root)
+
+
+def _write_config_payload(payload: dict[str, Any], raw_root: str | Path | None = None) -> None:
     root = project_root(raw_root)
     target_dir = memory_dir(root)
     target_dir.mkdir(parents=True, exist_ok=True)
-    validated = validate_config(config)
-    with config_path(root).open("w", encoding="utf-8") as handle:
-        json.dump(validated, handle, indent=2, sort_keys=True)
-        handle.write("\n")
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=target_dir,
+                                     prefix=".config-", suffix=".tmp", delete=False) as handle:
+        temporary = Path(handle.name)
+        try:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        except BaseException:
+            handle.close()
+            temporary.unlink(missing_ok=True)
+            raise
+    try:
+        os.replace(temporary, config_path(root))
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def validate_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -471,20 +539,22 @@ def add_category(
     non_examples: list[str] | None = None,
     update_rule: str | None = None,
 ) -> dict[str, Any]:
-    config = load_config(raw_root)
-    normalized = normalize_category(name)
-    existing = dict(config["categories"].get(normalized, {}))
-    existing["description"] = description or existing.get("description") or f"Custom category `{normalized}`."
-    existing["weight"] = float(weight)
-    if examples:
-        existing["examples"] = [str(item) for item in examples if str(item).strip()]
-    if non_examples:
-        existing["non_examples"] = [str(item) for item in non_examples if str(item).strip()]
-    if update_rule and update_rule.strip():
-        existing["update_rule"] = update_rule.strip()
-    config["categories"][normalized] = existing
-    save_config(config, raw_root)
-    return config["categories"][normalized]
+    ensure_config(raw_root)
+    with exclusive_lock(memory_dir(raw_root) / ".config.lock"):
+        config = _load_config_unlocked(raw_root)
+        normalized = normalize_category(name)
+        existing = dict(config["categories"].get(normalized, {}))
+        existing["description"] = description or existing.get("description") or f"Custom category `{normalized}`."
+        existing["weight"] = float(weight)
+        if examples:
+            existing["examples"] = [str(item) for item in examples if str(item).strip()]
+        if non_examples:
+            existing["non_examples"] = [str(item) for item in non_examples if str(item).strip()]
+        if update_rule and update_rule.strip():
+            existing["update_rule"] = update_rule.strip()
+        config["categories"][normalized] = existing
+        _write_config_payload(validate_config(config), raw_root)
+        return config["categories"][normalized]
 
 
 def category_weight(config: dict[str, Any], category: str) -> float:

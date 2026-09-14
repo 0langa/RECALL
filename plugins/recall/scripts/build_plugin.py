@@ -14,6 +14,7 @@ from pathlib import Path
 
 
 INCLUDE = [
+    ".mcp.json",
     ".codex-plugin",
     ".claude-plugin",
     "assets",

@@ -18,6 +18,8 @@ import contract as recall_contract
 import memory_hygiene
 import memory_manager
 import security
+import runtime_guard
+import turn_policy
 from models import ContextPacketRequest, ReviewRequest
 from services.context_service import build_context_packet
 from services.health_service import review_memory
@@ -26,9 +28,8 @@ from services.health_service import review_memory
 Json = dict[str, Any]
 
 
-def resolve_root(arguments: Json) -> Path | None:
-    raw = arguments.get("root") or os.environ.get("RECALL_PROJECT_ROOT")
-    return Path(str(raw)).expanduser().resolve() if raw else None
+def resolve_root(arguments: Json) -> Path:
+    return recall_config.project_root(arguments.get("root"))
 
 
 def resolve_provider() -> str:
@@ -75,9 +76,9 @@ TOOLS: list[Json] = [
     {
         "name": "retrieve_memory",
         "description": (
-            "Retrieve relevant RECALL memories from the project's local store. Call this BEFORE starting "
-            "work on bug fixes, unfamiliar code, repeated failures, provider/plugin tasks, security-sensitive "
-            "changes, or after context loss. Results carry a `flag` (current/stale/superseded/deprecated/"
+            "Retrieve relevant RECALL memories from the project's local store. "
+            + recall_contract.retrieval_tool_guidance()
+            + " Results carry a `flag` (current/stale/superseded/deprecated/"
             "needs_verification/conflicting); treat anything not `current` as unverified."
         ),
         "inputSchema": tool_schema(
@@ -98,8 +99,8 @@ TOOLS: list[Json] = [
     {
         "name": "context_packet",
         "description": (
-            "Build a compact, token-budgeted packet of the most relevant project memories. Best first call "
-            "when starting a new session or continuing after context loss."
+            "Build a compact, token-budgeted packet of relevant project memories. "
+            + recall_contract.retrieval_tool_guidance()
         ),
         "inputSchema": tool_schema(
             {
@@ -128,9 +129,15 @@ TOOLS: list[Json] = [
                 "status": {"type": "string"},
                 "importance": {"type": "number", "minimum": 0, "maximum": 1},
                 "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "evidence_ids": {"type": "array", "items": {"type": "string"},
+                                 "description": "IDs of actual observed hook results for this exact fact and turn."},
                 "origin_agent": {"type": "string"},
                 "source_session": {"type": "string"},
                 "source_turn": {"type": "string"},
+                "idempotency_key": {
+                    "type": "string",
+                    "description": "Stable retry key for one save; reuse only for the same logical operation.",
+                },
                 "cwd": {"type": "string"},
                 "branch": {"type": "string"},
                 "commit": {"type": "string"},
@@ -144,6 +151,7 @@ TOOLS: list[Json] = [
                     "type": "string",
                     "description": "Required for category=preferences: stable key naming the preference.",
                 },
+                "preference_scope": {"type": "string"},
                 "preference_evidence_type": {
                     "type": "string",
                     "description": (
@@ -178,7 +186,13 @@ TOOLS: list[Json] = [
             "op=confirm when a memory was re-verified, op=stale when its source changed, op=deprecate when "
             "it is wrong or retired, op=supersede (old id + new_id) when a new memory replaces an old one, "
             "op=merge (id + secondary_ids) to fold duplicates into one card, op=resolve to close an open "
-            "issue, op=prune to archive noise. Wrong memory must never stay silently authoritative."
+            "issue, op=prune to archive noise. For op=update, provide claim_key and claim_value together to "
+            "replace a claim, or clear_claim=true to clear it explicitly. Changing content, summary, or "
+            "details without either option clears stale claim authority. Content changes also clear omitted "
+            "summary/details so readers use current content. Any changed text or claim invalidates prior "
+            "verification, retaining its evidence as history; unchanged replacements preserve it. Assigning "
+            "status does not re-verify an edited fact. Use op=confirm only after independent verification. "
+            "Wrong memory must never stay silently authoritative."
         ),
         "inputSchema": tool_schema(
             {
@@ -194,9 +208,19 @@ TOOLS: list[Json] = [
                     "description": "Duplicate memory ids folded into `id` for op=merge.",
                 },
                 "content": {"type": "string", "description": "Corrected content for op=update."},
+                "details": {"type": "string", "description": "Corrected details for op=update."},
                 "summary": {"type": "string"},
                 "category": {"type": "string"},
                 "status": {"type": "string"},
+                "claim_key": {
+                    "type": "string",
+                    "description": "Structured claim key to assign after op=update. Omit for old claim auto-reconcile behavior.",
+                },
+                "claim_value": {"type": "string", "description": "Structured claim value to assign after op=update."},
+                "clear_claim": {
+                    "type": "boolean",
+                    "description": "Clear any existing claim_key/claim_value on op=update.",
+                },
                 "note": {"type": "string", "description": "Why this lifecycle change is happening."},
             },
             ["op", "id"],
@@ -208,14 +232,18 @@ TOOLS: list[Json] = [
             "Keep the memory store trustworthy. mode=route decides whether candidate text belongs in memory, "
             "repo docs, provider config, or nowhere (call before uncertain saves). mode=scan audits the store "
             "for duplicates, conflicts, stale/source-drifted cards, secret-shaped content, raw logs, and vague "
-            "memories. mode=plan lists concrete repair proposals. mode=apply_safe applies only safe, "
-            "non-destructive repairs; risky ones stay proposals for review."
+            "memories. mode=plan returns a plan for review. mode=apply_safe requires that exact plan in the plan "
+            "argument and applies only its safe, non-destructive repairs; risky ones stay proposals for review."
         ),
         "inputSchema": tool_schema(
             {
                 "mode": {"type": "string", "enum": ["route", "scan", "plan", "apply_safe"]},
                 "text": {"type": "string", "description": "Candidate text for mode=route."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 500},
+                "scan_limit": {"type": "integer", "minimum": 1},
+                "output_limit": {"type": "integer", "minimum": 1},
+                "action_limit": {"type": "integer", "minimum": 1},
+                "plan": {"type": "object", "description": "Exact reviewed plan from mode=plan; when claim_key is set, use response.plan. Apply never replans it."},
                 "claim_key": {"type": "string", "description": "Optional claim to reconcile in mode=plan."},
             },
             ["mode"],
@@ -224,9 +252,8 @@ TOOLS: list[Json] = [
     {
         "name": "memory_contract",
         "description": (
-            "Return RECALL's memory lifecycle contract: source authority order, when to retrieve, what to "
-            "save vs skip, status meanings, and category guidance. Call after context loss or when unsure "
-            "how to use memory correctly."
+            "Return RECALL's canonical instruction hierarchy, memory trust, retrieval relevance, "
+            "save/skip, status, and maintenance rules."
         ),
         "inputSchema": tool_schema({}),
     },
@@ -280,7 +307,7 @@ def call_save_insight(arguments: Json) -> Json:
                 "(for example where the credential is configured, never its value)."
             ),
         }
-    metadata = memory_manager.provider_metadata(
+    metadata: dict[str, Any] = memory_manager.provider_metadata(
         origin_provider=provider,
         origin_agent=arguments.get("origin_agent"),
         source_session=arguments.get("source_session"),
@@ -291,10 +318,14 @@ def call_save_insight(arguments: Json) -> Json:
         capture_channel="mcp",
         applies_to_provider=arguments.get("applies_to_provider") or "all",
     )
-    for extra_key in ("claim_key", "claim_value", "preference_key", "preference_evidence_type", "decision_id"):
+    for extra_key in (
+        "claim_key", "claim_value", "preference_key", "preference_scope",
+        "preference_evidence_type", "decision_id", "idempotency_key",
+    ):
         value = arguments.get(extra_key)
         if value is not None and str(value).strip():
-            metadata[extra_key] = str(value).strip()
+            metadata[extra_key] = str(value) if extra_key in {"claim_key", "claim_value"} else str(value).strip()
+    metadata["evidence_ids"] = list(arguments.get("evidence_ids") or [])
     outcome = memory_manager.add_record_if_useful(
         str(arguments["category"]),
         content,
@@ -353,7 +384,13 @@ def call_review_memory(arguments: Json) -> Json:
 
 
 def _record_summary(record: Any) -> Json:
-    return {"id": record.id, "category": record.category, "status": (record.metadata or {}).get("status"), "metadata": record.metadata}
+    return {
+        "id": record.id,
+        "category": record.category,
+        "content": record.content,
+        "status": (record.metadata or {}).get("status"),
+        "metadata": record.metadata,
+    }
 
 
 def call_update_memory(arguments: Json) -> Json:
@@ -366,7 +403,18 @@ def call_update_memory(arguments: Json) -> Json:
     if op == "update":
         content = arguments.get("content")
         summary = arguments.get("summary")
-        if security.contains_secret(content, summary):
+        details = arguments.get("details")
+        claim_key = arguments.get("claim_key")
+        claim_value = arguments.get("claim_value")
+        clear_claim = bool(arguments.get("clear_claim"))
+        claim_fields_supplied = claim_key is not None or claim_value is not None
+        if claim_fields_supplied and (
+            not str(claim_key or "").strip() or not str(claim_value or "").strip()
+        ):
+            raise ValueError("update requires non-empty claim_key and claim_value together, or neither.")
+        if clear_claim and (claim_key is not None or claim_value is not None):
+            raise ValueError("clear_claim cannot be used with claim_key or claim_value.")
+        if security.contains_secret(content, summary, details):
             return {
                 "action": "update-memory",
                 "op": op,
@@ -380,7 +428,11 @@ def call_update_memory(arguments: Json) -> Json:
             category=arguments.get("category"),
             content=content,
             summary=summary,
+            details=details,
             status=arguments.get("status"),
+            claim_key=claim_key,
+            claim_value=claim_value,
+            clear_claim=clear_claim,
         )
     elif op == "confirm":
         record = memory_manager.confirm_record(record_id, root)
@@ -425,18 +477,25 @@ def call_memory_hygiene(arguments: Json) -> Json:
             raise ValueError("mode=route requires text (the candidate fact to route).")
         return memory_hygiene.route_memory(text)
     if mode == "scan":
-        return memory_hygiene.hygiene_scan(root, limit=limit)
+        return memory_hygiene.hygiene_scan(root, limit=limit, scan_limit=arguments.get("scan_limit"),
+                                          output_limit=arguments.get("output_limit"), action_limit=arguments.get("action_limit"))
     if mode == "plan":
-        claim_key = arguments.get("claim_key")
-        if claim_key:
-            return memory_hygiene.reconcile_current_truth(root, claim_key=str(claim_key))
-        return memory_hygiene.hygiene_plan(root, limit=limit)
+        if arguments.get("claim_key"):
+            return memory_hygiene.reconcile_current_truth(root, claim_key=str(arguments["claim_key"]), limit=limit,
+                                                         scan_limit=arguments.get("scan_limit"), output_limit=arguments.get("output_limit"),
+                                                         action_limit=arguments.get("action_limit"))
+        return memory_hygiene.hygiene_plan(root, limit=limit, claim_key=arguments.get("claim_key"),
+                                          scan_limit=arguments.get("scan_limit"), output_limit=arguments.get("output_limit"),
+                                          action_limit=arguments.get("action_limit"))
     if mode == "apply_safe":
-        return memory_hygiene.hygiene_apply(root, safe=True, limit=limit)
+        return memory_hygiene.hygiene_apply(root, safe=True, limit=limit, plan=arguments.get("plan"),
+                                           action_limit=arguments.get("action_limit"))
     raise ValueError(f"Unknown memory_hygiene mode: {mode}")
 
 
 def call_memory_contract(arguments: Json) -> Json:
+    if turn_policy.policy_status(resolve_root(arguments))["disabled"]:
+        return {"contract": recall_contract.contract_dict(), **turn_policy.disabled_result()}
     cfg = recall_config.load_config_if_present(resolve_root(arguments))
     return {
         "action": "memory-contract",
@@ -446,6 +505,8 @@ def call_memory_contract(arguments: Json) -> Json:
 
 
 def call_initialize_project(arguments: Json) -> Json:
+    if not str(arguments.get("root") or "").strip():
+        raise ValueError("initialize_project requires root.")
     root = resolve_root(arguments)
     if root is None:
         raise ValueError("initialize_project requires root.")
@@ -458,11 +519,7 @@ def call_initialize_project(arguments: Json) -> Json:
         "gitignore": gitignore,
         "categories": sorted(cfg.get("categories", {})),
         "contract": recall_contract.compact_contract_text(),
-        "first_workflow": (
-            "1) retrieve_memory or context_packet before starting work; 2) work normally; "
-            "3) save_insight only for durable verified facts; 4) update_memory when stored facts change; "
-            "5) memory_hygiene mode=scan periodically."
-        ),
+        "first_workflow": recall_contract.first_workflow_text("mcp"),
     }
 
 
@@ -492,7 +549,7 @@ def handle(request: Json) -> Json | None:
             result = {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "recall", "version": "1.5.5"},
+                "serverInfo": {"name": "recall", "version": "1.6.0"},
                 "instructions": recall_contract.compact_contract_text(),
             }
         elif method == "tools/list":
@@ -505,7 +562,21 @@ def handle(request: Json) -> Json | None:
                 raise ValueError(f"Unknown RECALL tool: {name}")
             if not isinstance(arguments, dict):
                 raise ValueError("Tool arguments must be an object.")
-            result = content_response(TOOL_HANDLERS[name](arguments))
+            decision = recall_config.root_decision(arguments.get("root"))
+            try:
+                if name != "memory_contract":
+                    runtime_guard.require_memory(arguments.get("root"))
+                payload = TOOL_HANDLERS[name](arguments)
+            except runtime_guard.MemoryDisabledError as exc:
+                payload = exc.to_dict()
+            if payload.get("action") == "hygiene-plan" and "plan_id" in payload:
+                # Keep the reviewed artifact byte-for-byte hashable. Transport
+                # context belongs in a separate content item, outside its digest.
+                result = content_response(payload)
+                result["content"].append({"type": "text", "text": json.dumps({"root_decision": decision})})
+            else:
+                payload["root_decision"] = decision
+                result = content_response(payload)
         elif method and method.startswith("notifications/"):
             return None
         else:
@@ -515,7 +586,8 @@ def handle(request: Json) -> Json | None:
         return {
             "jsonrpc": "2.0",
             "id": request_id,
-            "error": {"code": -32000, "message": str(exc)},
+            "error": {"code": -32000, "message": str(exc),
+                      **({"data": {"root_decision": exc.decision}} if isinstance(exc, recall_config.RootResolutionError) else {})},
         }
 
 

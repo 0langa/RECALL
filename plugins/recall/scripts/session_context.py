@@ -63,10 +63,20 @@ def cap_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return capped
 
 
-def render_grouped(records: list[dict[str, Any]], token_budget: int, historical: bool = False) -> str:
+def render_grouped(
+    records: list[dict[str, Any]], token_budget: int, historical: bool = False,
+    known_health: dict[str, Any] | None = None,
+) -> str:
     if not records:
-        return ""
-    lines = ["Historical lower-confidence RECALL context:" if historical else "Curated RECALL project memory:"]
+        health = known_health or {}
+        known_counts = health.get("known_flag_counts", health.get("flag_counts", {}))
+        # Suppressing fresh healthy cards remains quiet. Suppressing a known
+        # truth warning must still disclose the warning and omitted counts.
+        if not any(flag != retrieval.FLAG_CURRENT and count for flag, count in known_counts.items()):
+            return ""
+    lines: list[tuple[str, dict[str, Any] | None]] = [] if not records else [
+        ("Historical lower-confidence RECALL context:" if historical else "Curated RECALL project memory:", None)
+    ]
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for record in records:
         grouped[str(record.get("category", "uncategorized"))].append(record)
@@ -74,18 +84,40 @@ def render_grouped(records: list[dict[str, Any]], token_budget: int, historical:
         category_records = grouped.get(category, [])
         if not category_records:
             continue
-        lines.append(f"{category}:")
+        lines.append((f"{category}:", None))
         for record in category_records:
-            lines.append(f"- #{record.get('id')} {record_text(record)}")
+            flags = record.get("flags", [record.get("flag", "current")])
+            warnings = [flag for flag in flags if flag != retrieval.FLAG_CURRENT]
+            warning_text = f" [{','.join(warnings)}]" if warnings else ""
+            lines.append((f"- #{record.get('id')}{warning_text} {record_text(record)}", record))
     output: list[str] = []
-    used = 0
-    for line in lines:
+    shown: list[dict[str, Any]] = []
+    # Reserve one whitespace token for health. This single-token header is
+    # the stable minimum warning under this renderer's whitespace-token cap,
+    # including a one-token budget. It never spends a card/result-limit slot.
+    used = 1
+    for line, line_record in lines:
         line_tokens = max(1, len(line.split()))
-        if output and used + line_tokens > token_budget:
+        if used + line_tokens > token_budget:
             break
         output.append(line)
+        if line_record is not None:
+            shown.append(line_record)
         used += line_tokens
-    return "\n".join(output)
+    health = retrieval.selection_health(known_health or retrieval.health_summary(records), shown)
+    omitted_flags = health["omitted_flag_counts"]
+    omitted = max(0, health.get("known_record_count", len(records)) - len(shown))
+    omitted_counts = ",".join(
+        f"{flag}={count}"
+        for flag, count in sorted(omitted_flags.items())
+        if flag != retrieval.FLAG_CURRENT
+    ) or "none"
+    truncated = omitted > 0 or any("[truncated]" in line for line in output)
+    empty_reason = ""
+    if not shown:
+        empty_reason = ";empty_reason=all_cards_omitted" if not records else ";empty_reason=token_budget"
+    header = f"RECALL[omitted={omitted};omitted_health:{omitted_counts};truncated={str(truncated).lower()}{empty_reason}]"
+    return "\n".join([header, *output])
 
 
 def written_this_session(record: dict[str, Any], session_id: str) -> bool:
@@ -158,7 +190,11 @@ def build_session_context(
     exclude_categories: list[str] | None = None,
     exclude_session_id: str | None = None,
 ) -> str:
-    cfg = recall_config.load_config(root)
+    decision = recall_config.root_decision(root)
+    if decision["status"] != "resolved":
+        return ""
+    root = Path(decision["root"])
+    cfg = recall_config.load_config_if_present(root)
     budget = min(int(token_budget or cfg.get("token_budget", 1200)), 900)
     active = memory_manager.query(
         query,
@@ -172,7 +208,7 @@ def build_session_context(
         drop_weak_matches(drop_session_records(active.get("results", []), exclude_session_id), query)
     )[:limit]
     if records:
-        return render_grouped(records, budget)
+        return render_grouped(records, budget, known_health=active.get("health"))
 
     historical = memory_manager.query(
         query,
@@ -183,4 +219,4 @@ def build_session_context(
         statuses=HISTORICAL_STATUSES,
     )
     historical_records = cap_records(drop_session_records(historical.get("results", []), exclude_session_id))[:limit]
-    return render_grouped(historical_records, budget, historical=True)
+    return render_grouped(historical_records, budget, historical=True, known_health=historical.get("health"))

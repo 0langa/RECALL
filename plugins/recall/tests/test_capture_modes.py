@@ -99,6 +99,9 @@ class SessionSummaryModeTests(unittest.TestCase):
 
 
 class ExplicitCueModeTests(unittest.TestCase):
+    def test_memory_free_task_disables_memory(self) -> None:
+        self.assertTrue(capture_policy.no_memory_requested("This is an explicit memory-free task."))
+
     def test_off_blocks_explicit_remember_and_explains_recovery(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             activate(tmp, "off")
@@ -139,6 +142,83 @@ class ExplicitCueModeTests(unittest.TestCase):
 
 
 class PromptSignalModeTests(unittest.TestCase):
+    def test_admission_and_explicit_cues_preserve_capture_mode_contract_through_stop(self) -> None:
+        import storage
+
+        for mode in ("standard", "minimal", "manual", "off"):
+            for explicit, factual in ((False, True), (False, False), (True, True), (True, False)):
+                with self.subTest(mode=mode, explicit=explicit, factual=factual), tempfile.TemporaryDirectory() as tmp:
+                    activate(tmp, mode)
+                    fact = "The project must keep release notes in docs/releases.md."
+                    question = "Actually, should the project keep release notes in docs/releases.md?"
+                    prompt = fact if factual else question
+                    if explicit:
+                        prompt = "@recall remember this: requirements: " + prompt
+                    payload = {"cwd": tmp, "session_id": "mode-session", "turn_id": "mode-turn"}
+                    run_hook("prompt_inspector.py", {**payload, "hook_event_name": "UserPromptSubmit", "prompt": prompt})
+                    result = run_hook("stop.py", {**payload, "hook_event_name": "Stop"})
+                    self.assertNotIn("failed:", result.get("systemMessage", ""))
+                    expected = factual and (mode in ("standard", "minimal") or (explicit and mode == "manual"))
+                    self.assertEqual(bool(list(storage.iter_records(tmp))), expected)
+
+    def test_followup_framing_and_runtime_requirements_across_modes(self) -> None:
+        import storage
+
+        cases = [
+            ("The API must return HTTP 401 if credentials are missing.", True),
+            ("Release notes must live in docs/new-release.md if the migration is approved.", False),
+            ("Here are example instructions:\n\nRelease notes must live in docs/example.md.", False),
+            ("For this session only, the project must use JSONL.", False),
+        ]
+        for mode in ("standard", "minimal", "manual", "off"):
+            for explicit in (False, True):
+                for text, factual in cases:
+                    with self.subTest(mode=mode, explicit=explicit, text=text), tempfile.TemporaryDirectory() as tmp:
+                        activate(tmp, mode)
+                        prompt = "@recall remember this: requirements: " + text if explicit else text
+                        payload = {"cwd": tmp, "session_id": "mode-session", "turn_id": "followup"}
+                        run_hook("prompt_inspector.py", {**payload, "hook_event_name": "UserPromptSubmit", "prompt": prompt})
+                        result = run_hook("stop.py", {**payload, "hook_event_name": "Stop"})
+                        self.assertNotIn("failed:", result.get("systemMessage", ""))
+                        records = list(storage.iter_records(tmp))
+                        expected = factual and (mode in ("standard", "minimal") or (explicit and mode == "manual"))
+                        self.assertEqual(bool(records), expected)
+                        if expected:
+                            self.assertEqual(records[0].content, text if explicit else text.rstrip("."))
+                            self.assertEqual(records[0].metadata["status"], "active")  # F13: a user claim is not verification.
+                        run_hook("stop.py", {**payload, "hook_event_name": "Stop"})
+                        self.assertEqual([(r.id, r.metadata) for r in records], [(r.id, r.metadata) for r in storage.iter_records(tmp)])
+
+    def test_accepted_policy_section_preserves_capture_modes(self) -> None:
+        import storage
+
+        fact = "Release notes must live in docs/accepted.md."
+        for mode in ("standard", "minimal", "manual", "off"):
+            for explicit in (False, True):
+                for after_example in (False, True):
+                    with self.subTest(mode=mode, explicit=explicit, after_example=after_example), tempfile.TemporaryDirectory() as tmp:
+                        activate(tmp, mode)
+                        body = "@recall remember this: requirements: " + fact if explicit else fact
+                        prompt = "## Accepted policy\n\n" + body
+                        if after_example:
+                            prompt = "## Example instructions\n\nRelease notes must live in docs/example.md.\n\n" + prompt
+                        payload = {"cwd": tmp, "session_id": "mode-session", "turn_id": "section-label"}
+                        run_hook("prompt_inspector.py", {**payload, "hook_event_name": "UserPromptSubmit", "prompt": prompt})
+                        result = run_hook("stop.py", {**payload, "hook_event_name": "Stop"})
+                        self.assertNotIn("failed:", result.get("systemMessage", ""))
+                        records = list(storage.iter_records(tmp))
+                        expected = mode in ("standard", "minimal") or (explicit and mode == "manual")
+                        self.assertEqual(len(records), 1 if expected else 0)
+                        if expected:
+                            self.assertEqual(records[0].category, "requirements")
+                            self.assertEqual(records[0].content, fact if explicit else fact.rstrip("."))
+                            self.assertEqual(records[0].metadata["status"], "active")  # F13: admission does not validate truth.
+                            self.assertEqual(records[0].metadata["claim_key"], "release_notes.path")
+                            self.assertEqual(records[0].metadata["claim_value"], "docs/accepted.md")
+                        run_hook("stop.py", {**payload, "hook_event_name": "Stop"})
+                        self.assertEqual([(r.id, r.metadata) for r in records],
+                                         [(r.id, r.metadata) for r in storage.iter_records(tmp)])
+
     def test_manual_mode_does_not_buffer_automatic_prompt_signals(self) -> None:
         prompt = "The retry logic must never exceed three attempts; that is a hard requirement."
         for mode, expects_events in {"standard": True, "manual": False}.items():

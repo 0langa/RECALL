@@ -104,7 +104,7 @@ class ProvenanceTests(unittest.TestCase):
             self.assertEqual(refreshed.metadata["invalidation_reason"], "source_moved")
             self.assertEqual(refreshed.metadata["replacement_source_path"], "new/design.md")
 
-    def test_refresh_source_restores_current_hash_and_active_status(self) -> None:
+    def test_refresh_source_keeps_stale_truth_and_old_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "truth.md"
             source.write_text("v1", encoding="utf-8")
@@ -117,9 +117,77 @@ class ProvenanceTests(unittest.TestCase):
             source.write_text("v2", encoding="utf-8")
             provenance_service.reconcile_sources(tmp)
             refreshed = provenance_service.refresh_source(record.id, tmp)
-            self.assertEqual(refreshed.metadata["status"], "active")
-            self.assertNotIn("invalidation_reason", refreshed.metadata)
+            self.assertEqual(refreshed.metadata["status"], "stale")
+            self.assertEqual(refreshed.metadata["invalidation_reason"], "source_modified")
+            self.assertEqual(refreshed.metadata["source_history"][0]["source_hash"], record.metadata["source_hash"])
             self.assertEqual(refreshed.metadata["source_hash"], provenance_service.hash_file(source))
+
+    def test_refresh_without_reconcile_invalidates_changed_validated_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "truth.md"
+            source.write_text("v1", encoding="utf-8")
+            metadata = provenance_service.describe_file(tmp, source)
+            metadata.update(status="validated", evidence=[{"note": "reviewed v1"}], last_confirmed="2020-01-01T00:00:00Z")
+            record = memory_manager.add_record("decisions", "Tracked decision.", metadata, tmp)
+            source.write_text("v2", encoding="utf-8")
+            refreshed = provenance_service.refresh_source(record.id, tmp)
+            self.assertEqual(refreshed.metadata["status"], "stale")
+            self.assertEqual(refreshed.metadata["evidence"], metadata["evidence"])
+            self.assertEqual(refreshed.metadata["last_confirmed"], metadata["last_confirmed"])
+            self.assertTrue(refreshed.metadata["verification_invalidated_at"])
+
+    def test_timestamp_refresh_does_not_promote_stale_or_hide_invalidated_revision(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "truth.md"
+            source.write_text("v1", encoding="utf-8")
+            metadata = provenance_service.describe_file(tmp, source)
+            metadata.update(status="stale", verification_invalidated_at="2020-01-01T00:00:00Z")
+            record = memory_manager.add_record("decisions", "Tracked decision.", metadata, tmp)
+            refreshed = provenance_service.refresh_source(record.id, tmp)
+            self.assertEqual(refreshed.metadata["status"], "stale")
+            self.assertEqual(refreshed.metadata["verification_invalidated_at"], metadata["verification_invalidated_at"])
+
+    def test_moved_source_refresh_keeps_old_path_and_stale_status(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            old = Path(tmp) / "old.md"
+            new = Path(tmp) / "new.md"
+            old.write_text("unchanged bytes", encoding="utf-8")
+            metadata = provenance_service.describe_file(tmp, old)
+            metadata["status"] = "validated"
+            record = memory_manager.add_record("decisions", "Tracked decision.", metadata, tmp)
+            old.replace(new)
+            provenance_service.reconcile_sources(tmp)
+            refreshed = provenance_service.refresh_source(record.id, tmp)
+            self.assertEqual(refreshed.metadata["source_path"], "new.md")
+            self.assertEqual(refreshed.metadata["source_history"][0]["source_path"], "old.md")
+            self.assertEqual(refreshed.metadata["status"], "stale")
+            self.assertEqual(refreshed.metadata["invalidation_reason"], "source_moved")
+
+    def test_refresh_preserves_retirement_and_confirmation_age(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "truth.md"
+            source.write_text("v1", encoding="utf-8")
+            metadata = provenance_service.describe_file(tmp, source)
+            metadata.update(status="superseded", updated_at="2020-01-01T00:00:00Z", superseded_by=99)
+            record = memory_manager.add_record("project_state", "Tracked snapshot.", metadata, tmp)
+            source.write_text("v2", encoding="utf-8")
+            refreshed = provenance_service.refresh_source(record.id, tmp)
+            self.assertEqual(refreshed.metadata["status"], "superseded")
+            self.assertEqual(refreshed.metadata["superseded_by"], 99)
+            self.assertEqual(refreshed.metadata["updated_at"], metadata["updated_at"])
+
+    def test_reconcile_then_refresh_preserves_retired_claim(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "truth.md"
+            source.write_text("v1", encoding="utf-8")
+            metadata = provenance_service.describe_file(tmp, source)
+            metadata.update(status="superseded", superseded_by=99)
+            record = memory_manager.add_record("decisions", "Retired decision.", metadata, tmp)
+            source.write_text("v2", encoding="utf-8")
+            provenance_service.reconcile_sources(tmp)
+            refreshed = provenance_service.refresh_source(record.id, tmp)
+            self.assertEqual(refreshed.metadata["status"], "superseded")
+            self.assertEqual(refreshed.metadata["superseded_by"], 99)
 
 
 if __name__ == "__main__":

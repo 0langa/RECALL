@@ -112,7 +112,7 @@ class ReleaseHardeningTests(unittest.TestCase):
             self.assertEqual(replay["reason"], "idempotent_replay")
             self.assertEqual(len(list(memory_manager.iter_records(tmp))), 1)
 
-    def test_independent_sessions_validate_automatic_memory(self) -> None:
+    def test_independent_session_assertions_remain_unvalidated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             recall_config.activate_project(tmp, activated_by="test")
             content = "The release requires source and installed smoke checks."
@@ -121,10 +121,10 @@ class ReleaseHardeningTests(unittest.TestCase):
             self.assertEqual(first.metadata["status"], "hypothesis")
             apply_finalizer_batch(batch("session-b", "turn-b", [{"op": "save", "card": card(content)}]), tmp)
             confirmed = memory_manager.get_record(first.id, tmp)
-            self.assertEqual(confirmed.metadata["status"], "validated")
+            self.assertEqual(confirmed.metadata["status"], "active")  # F13: repeated labels do not prove a fact.
             self.assertEqual(set(confirmed.metadata["confirmation_sessions"]), {"session-a", "session-b"})
 
-    def test_explicit_requirement_validates_immediately_and_secrets_are_rejected(self) -> None:
+    def test_explicit_requirement_stays_unvalidated_and_secrets_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             recall_config.activate_project(tmp, activated_by="test")
             result = apply_finalizer_batch(
@@ -132,7 +132,7 @@ class ReleaseHardeningTests(unittest.TestCase):
                 tmp,
             )
             record = memory_manager.get_record(result["operations"][0]["id"], tmp)
-            self.assertEqual(record.metadata["status"], "validated")
+            self.assertEqual(record.metadata["status"], "active")  # F13: user intent is not tool verification.
             with self.assertRaisesRegex(ValueError, "secret-like"):
                 apply_finalizer_batch(
                     batch("session-a", "turn-secret", [{"op": "save", "card": card("token=dummy-secret-value")}]),

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 import storage
+import write_policy
 
 
 DURABLE_DECISIONS = {"approved_plan", "rejected_plan", "accepted_edit", "rejected_edit", "adjusted_edit", "undone_edit"}
@@ -45,6 +46,8 @@ def evaluate(
         existing = record.metadata or {}
         if record.category != "preferences" or str(existing.get("preference_key", "")).lower() != key:
             continue
+        if not write_policy.same_applicability(existing, updated):
+            continue
         evidence_ids = [str(value) for value in existing.get("supporting_event_ids", [])]
         existing_decision = existing.get("decision_id")
         if existing_decision:
@@ -55,6 +58,7 @@ def evaluate(
         merged["supporting_event_ids"] = sorted(set(evidence_ids))
         if len(set(evidence_ids)) >= 2:
             merged.update({"status": "active", "trust": max(0.75, float(merged.get("trust", 0.0)))})
+        merged = storage.metadata_with_idempotency_key(merged, str(metadata.get("idempotency_key") or "") or None)
         return PreferenceDecision(
             "update",
             "preference_evidence_accumulated",

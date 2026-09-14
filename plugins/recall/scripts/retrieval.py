@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import math
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -402,6 +403,8 @@ def health_flag(record: storage.MemoryRecord, aging_days: float = SNAPSHOT_AGING
         return FLAG_SUPERSEDED, "replaced by a newer memory; follow superseded_by instead"
     if status in {"deprecated", "archived"}:
         return FLAG_DEPRECATED, "retired memory; do not act on it"
+    if (record.metadata or {}).get("verification_invalidated_at"):
+        return FLAG_NEEDS_VERIFICATION, "fact edited since verification; confirm the current revision"
     if status == "hypothesis":
         return FLAG_NEEDS_VERIFICATION, "unconfirmed hypothesis; verify before trusting"
     age_days = max(0.0, (datetime.now(timezone.utc) - recency_timestamp(record)).total_seconds() / 86400)
@@ -426,11 +429,12 @@ def compact_result(item: dict[str, Any]) -> dict[str, Any]:
         "timestamp": item["timestamp"],
         "score": item["score"],
         "flag": item.get("flag", FLAG_CURRENT),
+        "flags": item.get("flags", [item.get("flag", FLAG_CURRENT)]),
         "content": item["content"],
     }
     if item.get("flag_reason"):
         compact["flag_reason"] = item["flag_reason"]
-    for key in ("status", "summary", "source"):
+    for key in ("status", "summary", "source", "source_path", "source_revision", "invalidation_reason", "verification_invalidated_at"):
         value = metadata.get(key)
         if isinstance(value, str) and value:
             compact[key] = value
@@ -444,16 +448,22 @@ def mark_conflicts(results: list[dict[str, Any]]) -> None:
         metadata = item.get("metadata") or {}
         claim_key = metadata.get("claim_key")
         claim_value = metadata.get("claim_value")
-        if not claim_key or claim_value is None:
+        if str(metadata.get("status", "")).lower() in {"superseded", "deprecated", "archived", "resolved"}:
             continue
-        claims.setdefault((item["category"], str(claim_key)), set()).add(str(claim_value))
+        if not isinstance(claim_key, str) or not claim_key.strip() or not isinstance(claim_value, str) or not claim_value.strip():
+            continue
+        claims.setdefault((item["category"], claim_key), set()).add(claim_value)
     for item in results:
         metadata = item.get("metadata") or {}
         claim_key = metadata.get("claim_key")
-        if not claim_key:
+        if str(metadata.get("status", "")).lower() in {"superseded", "deprecated", "archived", "resolved"}:
+            continue
+        if not isinstance(claim_key, str) or not claim_key.strip():
             continue
         values = claims.get((item["category"], str(claim_key)), set())
         if len(values) > 1:
+            previous_flag = item.get("flag", FLAG_CURRENT)
+            item["flags"] = list(dict.fromkeys([previous_flag, FLAG_CONFLICTING])) if previous_flag != FLAG_CURRENT else [FLAG_CONFLICTING]
             item["flag"] = FLAG_CONFLICTING
             item["flag_reason"] = (
                 f"multiple memories disagree on claim `{claim_key}`; reconcile before trusting"
@@ -463,8 +473,8 @@ def mark_conflicts(results: list[dict[str, Any]]) -> None:
 def health_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
     counts: dict[str, int] = {}
     for item in results:
-        flag = item.get("flag", FLAG_CURRENT)
-        counts[flag] = counts.get(flag, 0) + 1
+        for flag in item.get("flags", [item.get("flag", FLAG_CURRENT)]):
+            counts[flag] = counts.get(flag, 0) + 1
     next_action = None
     if counts.get(FLAG_CONFLICTING):
         next_action = "conflicting memories returned; run memory-hygiene reconcile-current-truth before relying on them"
@@ -472,10 +482,37 @@ def health_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
         next_action = "some results need verification; check them against the repository before acting"
     elif counts.get(FLAG_SUPERSEDED) or counts.get(FLAG_DEPRECATED):
         next_action = "retired memories matched; prefer their replacements or current repository state"
-    summary: dict[str, Any] = {"flag_counts": counts}
+    summary: dict[str, Any] = {"flag_counts": counts, "known_record_count": len(results)}
     if next_action:
         summary["next_action"] = next_action
     return summary
+
+
+def selection_health(known_health: dict[str, Any], selected: list[dict[str, Any]]) -> dict[str, Any]:
+    """Keep warnings and exact health counts when a later surface cuts cards.
+
+    Counts describe the category/time scope, including status-filtered rows.
+    A row can carry multiple flags, so their sum need not equal row count.
+    """
+    selected_health = health_summary(selected)
+    known = known_health.get("known_flag_counts", known_health.get("flag_counts", {}))
+    omitted = Counter(known) - Counter(selected_health["flag_counts"])
+    return {
+        **known_health,
+        "flag_counts": selected_health["flag_counts"],
+        "known_flag_counts": dict(known),
+        "omitted_flag_counts": dict(omitted),
+        "scope": "category_and_recency_filters_before_status_and_limit",
+    }
+
+
+def empty_response(query_text: str, reason: str, decision: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "query": query_text, "results": [], "root_decision": decision,
+        "health": selection_health(health_summary([]), []),
+        "candidate_count": 0, "omitted_count": 0, "filtered_count": 0,
+        "truncated": False, "empty_reason": reason,
+    }
 
 
 def query(
@@ -488,7 +525,13 @@ def query(
     statuses: list[str] | None = None,
     verbose: bool = True,
 ) -> dict[str, Any]:
-    cfg = recall_config.load_config(root)
+    decision = recall_config.root_decision(root)
+    if decision["status"] != "resolved":
+        return empty_response(query_text, f"{decision['status']}_root", decision)
+    root = Path(decision["root"])
+    if not recall_config.persistent_memory_exists(root):
+        return empty_response(query_text, "no_store", decision)
+    cfg = recall_config.load_config_if_present(root)
     aging_days = float(cfg.get("staleness", {}).get("retrieval_aging_days", SNAPSHOT_AGING_DAYS))
     include_set = {recall_config.normalize_category(value) for value in categories} if categories else None
     exclude_set = (
@@ -502,6 +545,20 @@ def query(
         since = datetime.now(timezone.utc) - timedelta(days=int(cfg["recency_days"]))
 
     records = list(storage.iter_records(root))
+    scoped = [record for record in records if passes_filters(record, include_set, exclude_set, since)]
+    # Build trust state before either the status filter or the top-k cut.
+    # Keep this lightweight: large content/metadata redaction is needed only
+    # for the rows actually returned.
+    health_items: list[dict[str, Any]] = []
+    for record in scoped:
+        flag, reason = health_flag(record, aging_days)
+        health_items.append({
+            "id": record.id, "category": record.category, "metadata": record.metadata,
+            "flag": flag, "flags": [flag], "flag_reason": reason,
+        })
+    mark_conflicts(health_items)
+    health_by_id = {item["id"]: item for item in health_items}
+    known_health = health_summary(health_items)
     index = index_store.ensure_complete_for_records(records, root)
     query_vector = embed(query_text)
     doc_freq, total_docs = build_term_document_frequencies(records)
@@ -515,9 +572,14 @@ def query(
         ranked.append(record)
 
     ranked.sort(key=lambda item: (item.score, parse_timestamp(item.timestamp), item.id), reverse=True)
+    # The local vector hash can always produce a score for unrelated text.
+    # Abstain when the whole eligible set has no lexical or category evidence.
+    category_request = requested_categories(query_text) if source_blind_memory_request(query_text) else set()
+    has_match = any(gate_match_count(query_text, record) or record.category in category_request for record in ranked)
+    shown = ranked[:max(0, limit)] if has_match else []
     results = []
-    for record in ranked[:limit]:
-        flag, flag_reason = health_flag(record, aging_days)
+    for record in shown:
+        trust = health_by_id[record.id]
         # Defense in depth: writes redact, but legacy/imported stores can hold
         # raw secret-shaped content — never emit it through retrieval.
         item: dict[str, Any] = {
@@ -527,17 +589,26 @@ def query(
             "score": round(record.score, 4),
             "content": security.redact_text(record.content),
             "metadata": security.redact_value(record.metadata),
-            "flag": flag,
+            "flag": trust["flag"],
+            "flags": trust["flags"],
         }
-        if flag_reason:
-            item["flag_reason"] = flag_reason
+        if trust.get("flag_reason"):
+            item["flag_reason"] = security.redact_text(trust["flag_reason"])
         results.append(item)
-    mark_conflicts(results)
-    health = health_summary(results)
+    health = selection_health(known_health, results)
     summary_text = summarize_records(results, cfg["token_budget"]) if summarize else None
     if not verbose:
         results = [compact_result(item) for item in results]
-    response: dict[str, Any] = {"query": query_text, "results": results, "health": health}
+    omitted = len(ranked) - len(results) if has_match else 0
+    response: dict[str, Any] = {
+        "query": query_text, "results": results, "health": health, "root_decision": decision,
+        "candidate_count": len(ranked), "omitted_count": omitted, "filtered_count": len(scoped) - len(ranked),
+        "truncated": omitted > 0,
+        "empty_reason": None if results else (
+            "empty_store" if not records else "filters_excluded_all" if not ranked
+            else "no_lexical_match" if not has_match else "result_limit"
+        ),
+    }
     if summary_text is not None:
         response["summary"] = summary_text
     return response

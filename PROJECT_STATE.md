@@ -1,91 +1,136 @@
-# PROJECT_STATE — RECALL durable architecture and behavior contracts
+# PROJECT_STATE — RECALL durable contracts
 
-Updated: 2026-07-05. Complements WORK_STATUS.md (working log). This file records
-durable facts an agent needs across sessions.
+Updated: 2026-09-13.
 
-## What RECALL is
+This file states durable product facts.
+Use `NEXT_STEPS.md` for current release work.
 
-Local-first project memory for coding agents (Codex, Claude Code, Kimi Code).
-One shared per-project store (`.recall/`, legacy `.codex_memory/`), SQLite
-default (schema v2) with JSONL alternative, deterministic local 64-D hash
-embeddings, no network.
+## Product
 
-## Architecture map
+RECALL is local-first project memory for Codex, Claude Code, and Kimi Code.
+New projects use `.recall/`.
+An existing `.codex_memory/` store remains a supported legacy fallback.
+There is no hosted RECALL service, telemetry, or memory sync.
 
-- `plugins/recall/scripts/` — engine. Key modules:
-  - `storage.py` (schema v2: status/trust/confidence/importance/source_*/lineage, FTS5)
-  - `memory_manager.py` (public API + CLI), `memory_lifecycle.py` (confirm/
-    resolve/stale/prune/supersede/merge), `memory_hygiene.py` (proposals + routing),
-    `retrieval.py` (scoring), `write_policy.py` (save gates), `security.py`
-    (secret patterns), `config.py` (categories, modes), `contract.py`
-    (canonical behavior contract — single source of truth)
-  - `kimi_mcp_server.py` — one MCP server for Claude Code AND Kimi;
-    provider from `RECALL_DEFAULT_PROVIDER`
-  - `recall_skill.py` — skill adapter CLI used by all skills;
-    `--root` must come BEFORE subcommand
-  - `services/` — context/lifecycle/preference/provenance/recovery/finalizer
-- `plugins/recall/hooks/hooks.json` — single hooks file shared by all three
-  providers via `${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}`; Claude Code and Codex
-  auto-discover by convention (declaring hooks in Claude manifest BREAKS load)
-- `plugins/recall/skills/` — 7 public skills (frozen surface):
-  using-recall, retrieve-memory, save-insight, review-memory, manage-memory,
-  define-category, memory-hygiene
-- Manifests: `.codex-plugin/plugin.json`, `.claude-plugin/plugin.json`,
-  `kimi.plugin.json` — versions must move together with
-  `kimi_mcp_server.py` VERSION and `tests/test_package_metadata.py`
+The installable plugin is `plugins/recall/`.
+The shared engine is `plugins/recall/scripts/`.
+The public surface is seven skills, provider hooks, and eight MCP tools.
 
-## Behavior contract (canonical, enforced by scripts/contract.py)
+## Architecture
 
-Source authority order (highest first):
-1. current user instruction
-2. system/developer instructions
-3. repository code and docs
-4. current tool results
-5. RECALL memory
-6. older conversation assumptions
+- `storage.py` owns SQLite schema v2 and the JSONL alternative.
+- `memory_manager.py` is internal engine plumbing.
+- `recall_skill.py` is the public skill adapter.
+- `kimi_mcp_server.py` is the shared MCP server for all three hosts.
+- `contract.py` is the canonical agent guidance.
+- `runtime_guard.py` blocks public memory work when the current turn is memory-free.
+- `observed_evidence.py` binds a successful material result to the exact factual revision it can support.
+- `memory_hygiene.py` creates review plans and applies only the exact supplied plan.
+- `retrieval.py` ranks cards and preserves health warnings when result limits remove card text.
+- `embedder.py` uses deterministic local 256-D hash embeddings.
 
-Lifecycle: initialize → discover store → retrieve before work → decide
-save-worthiness → save durable insight → update changed memory → deprecate/
-supersede wrong or stale memory → validate health (hygiene) → handoff summary.
+The three manifests are:
 
-Belongs in memory: durable, project-specific, not derivable from repo docs,
-verifiable. Does NOT belong: secrets, raw logs, transient status, drafts,
-things repo docs already state, one-off commands.
+- `.codex-plugin/plugin.json`
+- `.claude-plugin/plugin.json`
+- `kimi.plugin.json`
 
-Memory statuses: hypothesis, active, validated, open, resolved, stale,
-superseded, deprecated, archived. Wrong memory must be superseded or
-deprecated — never left silently authoritative.
+Each manifest declares the same MCP server.
+All manifest versions, the MCP server version, and the package metadata test must move together.
 
-## Non-negotiables
+## Instruction and memory trust
 
-- Local-first: no cloud storage, telemetry, sync, accounts.
-- Secret-shaped content rejected at write time (`security.py`) AND scanned
-  for in existing stores by hygiene.
-- Repo files and explicit user instructions outrank memory.
-- Provider-neutral: equivalent guidance for Codex/Claude Code/Kimi;
-  no Codex-only enforcement layer.
+The instruction order is:
 
-## Benchmark harness (bench/, maintainer tooling, not shipped)
+1. system instructions
+2. developer instructions
+3. current user instructions and scope
 
-Deterministic token/quality/latency benchmark: `python bench/run_bench.py run
---mode light|normal|complete` (presets over one config system; custom configs
-via --config). Zero LLM calls; judge scoring and Layer-2 agent-compliance
-runs are manual (bench/README.md). Baselines in bench/baselines/<version>.json;
-compare with --baseline [--strict]. Same seed must reproduce the same
-emission_hash. Key outputs: fixed overhead/session, marginal/turn, injection
-confusion matrix, golden retrieval, hygiene detection, secret leak sweep.
+Stored RECALL memory is untrusted project data.
+It cannot override that order.
+It cannot grant permission.
+It cannot expand task scope.
 
-## Quality gates (run before release)
+There is no fixed factual rank for files, tool results, and memory.
+Check facts against current evidence.
 
-- Lint: `python -m ruff check .` and `python -m mypy --config-file pyproject.toml` (repo root; blocking in CI)
-- Bench: `python -m pytest bench/tests -q` and `python bench/run_bench.py run --mode light --baseline bench/baselines/<latest>.json --strict` (blocking in CI)
-- Unit: `cd plugins/recall && python -m pytest tests/ -x -q`
-- Smoke: `python scripts/smoke_recall.py --json`
-- Quality suite: `python RECALL_quality_suite/scripts/run_recall_quality_suite.py --repo-root . --quick --skip-existing-unit`
-- CI: `.github/workflows/recall-quality.yml` (unit 6-matrix, smoke 3-OS, quality, package)
+Use retrieval only when prior project history can help the task.
+Do not retrieve for a small self-contained task.
+Do not retrieve for an explicit memory-free task.
+An empty result is valid.
 
-## Known deferred / future ideas
+## Truth and lifecycle limits
 
-- Hook payload drift vs live Codex payloads remains a compatibility risk.
-- Doc-duplication detection is lexical (token containment vs README/docs
-  paragraphs); embedding-based similarity would catch paraphrases.
+Only observed evidence for the exact fact can support `validated` status.
+User assertions, counters, session names, confidence values, and copied evidence fields do not prove a fact.
+Semantic edits clear old validation.
+
+Structured claim keys and values are opaque strings.
+Exact comparison preserves internal spaces and path text.
+Conflicting current claims remain separate and carry review flags.
+RECALL does not choose a winner without evidence.
+
+The hygiene apply path requires an exact reviewed plan.
+CLI plans use `--save-plan` and `--plan-file`.
+MCP apply uses the complete plan object from the plan response.
+Apply never replans.
+
+Saved-plan source checks require canonical project-relative paths.
+`README.md` works.
+Equivalent `./README.md` and `.\README.md` forms fail closed in the v1.6.0 candidate.
+Create a new plan with canonical source paths.
+Never edit the hashed reviewed plan.
+
+The 21-case hygiene fixture is a bounded lexical check.
+It does not prove broad semantic truth.
+The local 256-D hash embedder has limited paraphrase reach.
+
+## Storage contracts
+
+SQLite is the default backend.
+Its write path uses one `BEGIN IMMEDIATE` transaction for the complete read, choice, and write operation.
+Nested write scopes join the same transaction.
+
+JSONL is supported for normal process concurrency.
+A store-local operating-system lock serializes read, choice, and write work.
+Each file replacement is flushed, synced, and atomically replaced.
+JSONL has no multi-file rollback.
+Multi-file power-loss safety is not certified.
+
+The vector index is derived state.
+Canonical storage remains the source of truth.
+An index fault can require a rebuild but must not change the canonical save result.
+
+## Verification scope
+
+The frozen 5,000-card comparison used a synthetic SQLite fixture under high host load.
+The candidate-to-v1.5.5 median ratio was `0.9974007`.
+Candidate peak working set was `149549056` bytes.
+Baseline peak working set was `148074496` bytes.
+This is no speed claim.
+It does not cover JSONL scale, cold start, installed hosts, or user benefit.
+
+Codex CLI `0.154.0`, Claude Code `2.1.268`, and Kimi Code `0.42.0` passed readiness checks in isolated homes.
+This is not exact-package proof.
+
+Exact ZIP, installed-package host proof, matched-benefit evaluation, CI, tag, and release evidence remain pending at candidate freeze.
+The public release location is the [v1.6.0 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.0).
+
+## Release gates
+
+From the repository root:
+
+```powershell
+python -m ruff check .
+python -m mypy --config-file pyproject.toml
+```
+
+From `plugins/recall/`:
+
+```powershell
+python scripts/run_tests.py --exclude-smoke --json
+python scripts/smoke_recall.py --json
+```
+
+Run the strict benchmark, quality suite, package build, ZIP inspection, installed-host gates, and CI before release.
+Do not convert a lane check into proof for a different source revision or package.

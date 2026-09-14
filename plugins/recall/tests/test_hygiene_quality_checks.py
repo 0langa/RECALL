@@ -31,7 +31,68 @@ def seed_raw(tmp: str, category: str, content: str, metadata: dict, days_ago: fl
     return storage.add_record(category, utc(days_ago), content, metadata, embed(content), tmp)
 
 
+F07_SYNTHETIC_CLEAR_NOISE_CASES = (
+    ("question", "decisions", "finalizer", "The capture option changed. What does that mean?"),
+    ("uncertainty", "decisions", "finalizer", "Actually no idea whether the CI configuration still works."),
+    ("attachment-wrapper", "decisions", "finalizer", "Files mentioned by the user: attachment.png. My request: audit this feature."),
+    ("idea-request", "decisions", "finalizer", "Give me some ideas for a sample project for an interview."),
+    ("job-request", "decisions", "finalizer", "Your job is to clean up a local workspace for this session."),
+    ("one-time-output", "decisions", "finalizer", "Write the release notes for version 0.1.0 and use the requested markers."),
+    ("speculation", "decisions", "finalizer", "I have a feeling that a recent package change caused this issue."),
+    ("research-request", "decisions", "finalizer", "Please find out whether these migration files still serve a purpose."),
+    ("task-request", "decisions", "finalizer", "Your task is to repair the paths in the migration tools."),
+    ("session-control", "decisions", "finalizer", "Pause when convenient so I can restart the PC."),
+    ("commit-permission", "decisions", "finalizer", "Actually commit only the files changed during this session."),
+    ("delegated-wrapper", "decisions", "finalizer", "You are a delegated worker. Read-only analyze job: read README.md."),
+    ("question-phrase", "decisions", "finalizer", "I would like to know what this actually means in this context."),
+    ("raw-exploration", "debug_history", "finalizer", "Tool: Bash\nCommand: which compiler\nexit_code: 1\nCommand failed."),
+    ("greeting", "project_state", "user_prompt", "Hello!"),
+    ("thanks", "project_state", "user_prompt", "Thanks"),
+    ("continue", "project_state", "user_prompt", "Continue"),
+    ("acknowledgement", "project_state", "user_prompt", "Okay."),
+    ("yes", "project_state", "user_prompt", "Yes"),
+    ("no", "project_state", "user_prompt", "No"),
+    ("go-on", "project_state", "user_prompt", "Go on"),
+)
+
+
 class HygieneQualityCheckTests(unittest.TestCase):
+    def test_secret_repair_is_visible_before_duplicate_flood(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for i in range(12):
+                seed_raw(tmp, "requirements", f"Release checks must pass before tagging variant {i}.",
+                         {"source": "fixture", "status": "active"})
+            bad = seed_raw(tmp, "decisions", "Legacy imported deployment credentials.",
+                           {"source": "fixture", "status": "active"})
+            import sqlite3
+            connection = sqlite3.connect(storage.db_path(tmp))
+            try:
+                connection.execute("UPDATE memories SET content = ? WHERE id = ?",
+                                   ("api_key=sk-proj-ABCDEFGHIJKLMNOPQRSTUVWX", bad.id))
+                connection.commit()
+            finally:
+                connection.close()
+            plan = memory_hygiene.hygiene_plan(tmp, output_limit=1, action_limit=1)
+            self.assertEqual(plan["proposals"][0]["proposed_action"], "redact_secret")
+            self.assertEqual(plan["operations"][0]["id"], bad.id)
+            result = memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
+            self.assertEqual(result["applied_count"], 1)
+            self.assertNotIn("sk-proj-", storage.get_record(bad.id, tmp).content)
+
+    def test_clear_conversation_noise_is_review_only_and_failure_history_stays_active(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            noise = [seed_raw(tmp, "project_state", content, {"source": "user_prompt", "status": "active"})
+                     for content in ("Hello!", "Thanks", "Continue", "What is SQLite?")]
+            failure = seed_raw(tmp, "debug_history", "Traceback (most recent call last)\n" +
+                               "\n".join(f"line {i}: assertion failed in module_{i}" for i in range(60)),
+                               {"source": "post_tool_use", "status": "active"})
+            plan = memory_hygiene.hygiene_plan(tmp)
+            review = {p["id"] for p in plan["proposals"] if p["proposed_action"] == "review_noise"}
+            self.assertEqual(review, {record.id for record in noise})
+            memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
+            for record in [*noise, failure]:
+                self.assertEqual(storage.get_record(record.id, tmp).metadata["status"], "active")
+
     def test_secret_shaped_memory_is_flagged_and_safe_apply_redacts_it(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             bad = seed_raw(
@@ -63,7 +124,7 @@ class HygieneQualityCheckTests(unittest.TestCase):
             scan = memory_hygiene.hygiene_scan(tmp)
             self.assertIn("secret-shaped", scan["next_action"])
 
-            memory_hygiene.hygiene_apply(tmp, safe=True)
+            memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
             repaired = storage.get_record(bad.id, tmp)
             self.assertNotIn("sk-proj-", repaired.content)
             self.assertIn("[REDACTED]", repaired.content)
@@ -73,7 +134,7 @@ class HygieneQualityCheckTests(unittest.TestCase):
             follow_up = memory_hygiene.hygiene_plan(tmp)
             self.assertFalse([p for p in follow_up["proposals"] if p["proposed_action"] == "redact_secret"])
 
-    def test_raw_log_dump_is_proposed_for_prune(self) -> None:
+    def test_raw_failure_log_dump_requires_review_and_keeps_history(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             log_lines = "\n".join(f"line {i}: assertion failed in module_{i}" for i in range(60))
             dump = seed_raw(
@@ -84,7 +145,41 @@ class HygieneQualityCheckTests(unittest.TestCase):
             )
             plan = memory_hygiene.hygiene_plan(tmp)
             actions = {p["id"]: p["proposed_action"] for p in plan["proposals"]}
-            self.assertEqual(actions.get(dump.id), "prune")
+            self.assertEqual(actions.get(dump.id), "review_failure_history")
+            memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
+            self.assertEqual(storage.get_record(dump.id, tmp).metadata["status"], "active")
+
+    def test_non_failure_output_dump_is_still_proposed_for_prune(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dump = seed_raw(tmp, "commands", "\n".join(f"row {i}: ordinary output entry repeated" for i in range(60)),
+                            {"source": "fixture", "status": "active"})
+            plan = memory_hygiene.hygiene_plan(tmp)
+            self.assertIn(dump.id, [op["id"] for op in plan["operations"] if op["proposed_action"] == "prune"])
+
+    def test_f07_synthetic_noise_cases_return_21_review_only_proposals(self) -> None:
+        self.assertEqual(len(F07_SYNTHETIC_CLEAR_NOISE_CASES), 21)
+        for case_id, category, source, text in F07_SYNTHETIC_CLEAR_NOISE_CASES:
+            with self.subTest(case_id=case_id):
+                record = storage.MemoryRecord(1, category, utc(), text, {"source": source, "status": "active"})
+                proposal = memory_hygiene._review_noise_proposal(record)
+                self.assertIsNotNone(proposal)
+                self.assertFalse(proposal.safe_to_apply)
+
+    def test_interpreted_exploration_failure_is_not_noise(self) -> None:
+        record = storage.MemoryRecord(1, "debug_history", utc(),
+            "Tool: Bash\nCommand: which compiler\nCommand failed. Root cause: the SDK bin path was missing. "
+            "Fixed by repairing the tool configuration.", {"source": "finalizer", "status": "active"})
+        self.assertIsNone(memory_hygiene._review_noise_proposal(record))
+
+    def test_unclassified_command_failure_does_not_become_stale(self) -> None:
+        record = storage.MemoryRecord(
+            1,
+            "commands",
+            utc(),
+            "Tool: Bash\nCommand: rg release path\nCommand failed.",
+            {"source": "fixture", "status": "active"},
+        )
+        self.assertIsNone(memory_hygiene._command_stale_proposal(record))
 
     def test_vague_memory_requires_review_not_auto_delete(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -114,7 +209,7 @@ class HygieneQualityCheckTests(unittest.TestCase):
             self.assertIn(snapshot.id, stale_ids)
             self.assertNotIn(fresh.id, stale_ids)
 
-            memory_hygiene.hygiene_apply(tmp, safe=True)
+            memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
             self.assertEqual(storage.get_record(snapshot.id, tmp).metadata.get("status"), "stale")
             self.assertEqual(storage.get_record(fresh.id, tmp).metadata.get("status"), "active")
 
@@ -163,7 +258,7 @@ class HygieneQualityCheckTests(unittest.TestCase):
             self.assertIn("README.md", proposal["reason"])
 
             # Review-only: safe apply must not archive the flagged memory.
-            memory_hygiene.hygiene_apply(tmp, safe=True)
+            memory_hygiene.hygiene_apply(tmp, safe=True, plan=plan)
             self.assertEqual(storage.get_record(duplicate.id, tmp).metadata.get("status"), "active")
 
     def test_docs_corpus_covers_docs_directory_and_missing_docs_is_quiet(self) -> None:

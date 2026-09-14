@@ -30,8 +30,8 @@ Run these examples from the installed/source plugin root so `./scripts/recall_sk
 ```bash
 python ./scripts/recall_skill.py route-memory "<candidate fact>"
 python ./scripts/recall_skill.py hygiene-scan --limit 80
-python ./scripts/recall_skill.py hygiene-plan --scope project
-python ./scripts/recall_skill.py hygiene-apply --safe
+python ./scripts/recall_skill.py hygiene-plan --scope project --save-plan hygiene-plan.json
+python ./scripts/recall_skill.py hygiene-apply --safe --plan-file hygiene-plan.json
 python ./scripts/recall_skill.py reconcile-current-truth --claim-key recall.kimi.standard_average
 python ./scripts/recall_skill.py refresh-source-backed
 ```
@@ -49,18 +49,23 @@ Read `references/hygiene-policy.md` when a routing or cleanup decision is ambigu
 | Field | Required | Meaning |
 |---|---:|---|
 | `candidate_fact` | for `route-memory` | free text of a candidate durable fact |
-| `claim_key` | for `reconcile-current-truth` | mutually exclusive claim slot to resolve |
+| `claim_key` | for `reconcile-current-truth` | mutually exclusive claim slot to inspect |
 | `scope` | for `hygiene-plan` | `project` (only value currently supported) |
 | `--safe` | for `hygiene-apply` | required flag; refuses destructive changes |
-| `--limit` | optional | cap the number of records inspected per pass |
+| `--scan-limit` | optional | cap records checked by hygiene rules; remaining records are reported as unscanned |
+| `--output-limit` | optional | cap visible proposals; hidden proposals cannot be applied from that plan |
+| `--action-limit` | optional | cap safe operations selected in the plan or reduce the saved selection at apply |
+| `--limit` | optional | legacy alias: scan limit for scan/plan; action limit for apply |
+| `--save-plan` | optional | write the full versioned plan to a JSON file for review |
+| `--plan-file` | for `hygiene-apply` | required; read the exact reviewed plan and never replan during apply |
 | `result` | yes | JSON summary of proposals, inspected count, safe/apply status |
 
 ## Workflow
 
 1. For a candidate fact, run `route-memory` before saving it.
 2. For store quality work, run `hygiene-scan` or `hygiene-plan`.
-3. Review proposals. Each proposal includes target IDs, action, confidence, reason, `safe_to_apply`, and follow-up.
-4. Use `hygiene-apply --safe` only for high-confidence non-destructive changes.
+3. Save and review the full plan. Each proposal has a stable operation ID and record-state preconditions. The plan has a version, store identity, snapshot identity, and explicit omissions.
+4. Use `hygiene-apply --safe --plan-file hygiene-plan.json` to apply only that reviewed selection. Changed records or source files are skipped with a reason. Apply never replaces a skipped operation with a new one.
 5. Leave risky conflicts, near-duplicates, deletions, and ambiguous scope decisions for user confirmation.
 6. Use `manage-memory` for explicit ID-based edits, deletion, or user-approved lifecycle work.
 
@@ -70,18 +75,42 @@ Safe automatic changes are non-destructive:
 
 - `redact_secret`: secret-shaped content in an existing card is redacted in place (highest priority; policy says secrets must never be stored).
 - `stale`: current repo evidence invalidates a memory, or a point-in-time snapshot (`project_state`, `session_summaries`, `integrations`, `tooling_quirks`) aged past the staleness window.
-- `supersede`: validated current-truth claim clearly wins.
 - `merge`: exact duplicate joins an older primary record.
-- `prune`: low-value noise or a raw log/output dump is archived.
+- `prune`: known automatic command noise or a non-failure output dump is archived.
 - `refresh_source`: source-backed memory still matches its file.
 - `needs_confirmation`: weak preference or ambiguous memory is kept but demoted.
 
-Review-only findings (never auto-applied): `review_near_duplicate`, `review_vague`
+Review-only findings (never auto-applied): `review_claim_conflict`, `review_near_duplicate`, `review_vague`
 (memory too vague to act on), `review_metadata` (missing source/status provenance), and
 `review_doc_duplicate` (memory restates README/docs content — repo docs win; prune the
 memory or rewrite it to add non-doc insight). Doc-duplication detection is fully local
 deterministic token comparison against `README.md` and `docs/**/*.md`; it makes no
 model or network calls. Scan output includes a `next_action` telling you the correct follow-up.
+
+`review_noise` surfaces bounded cues for questions, uncertainty, task requests, one-time
+permissions, session controls, and raw exploration failures. `review_failure_history`
+keeps raw failure logs for review. These findings never authorize deletion or automatic
+archival. Useful failure history stays active. The rules do not determine broad semantic truth.
+
+Scan, output, and action limits are separate. The snapshot reads stored record state;
+the scan limit bounds rule checks. Omissions identify unscanned records, scanned records
+without proposals, hidden proposals, action-limit exclusions, and conflicting operations.
+Secret repair comes first among scanned candidates. Secret status outside the scan is
+unknown. A card participates in at most one selected lifecycle operation, including merge
+primaries. Further duplicate merges may need a new review after the first apply.
+
+`hygiene-apply` requires `--plan-file`. It rejects a missing plan before it scans or
+changes the store. An apply-time action limit can only reduce saved operations; it
+cannot add operations or change their order.
+
+A refresh plan captures one source observation. Its action, source precondition, and
+source descriptor use that same hash. If the source changes after planning, apply
+skips the saved operation.
+
+`review_claim_conflict` reports one deterministic cluster with every record ID and value.
+It never names a winner. Status, confidence, age, and record ID are presentation metadata,
+not evidence that authorizes a truth-changing mutation. After checking current project evidence,
+use `manage-memory` to supersede the wrong record with an explicit reason.
 
 Never hard-delete from this skill. If deletion is explicit, use `manage-memory` and `delete-memory --confirm DELETE-<id>`.
 
@@ -97,10 +126,12 @@ Never hard-delete from this skill. If deletion is explicit, use `manage-memory` 
 | Source file missing/changed | propose `stale` |
 | Exact duplicate | propose safe `merge` |
 | Near duplicate | report, require confirmation |
-| Conflicting claim key | pick validated/high-trust winner only when clear |
+| Conflicting claim key | report `review_claim_conflict`; require current evidence and explicit supersession |
 | Weak preference without evidence | mark `needs_confirmation` |
 | Secret-shaped stored content | propose safe `redact_secret`, apply immediately |
-| Raw log or output dump stored as memory | propose safe `prune` |
+| Non-failure raw output dump stored as memory | propose safe `prune` |
+| Raw failure history | report `review_failure_history`; keep active until review |
+| Question, session control, or one-time task captured as a fact | report `review_noise` |
 | Vague unactionable memory | report `review_vague`, require rewrite or confirmation |
 | Aged point-in-time snapshot | propose safe `stale` for verification |
 | Missing source/status provenance | report `review_metadata` |
@@ -121,9 +152,9 @@ python ./scripts/recall_skill.py route-memory "Release notes must stay in docs/m
 Scan then plan then safe-apply:
 
 ```bash
-python ./scripts/recall_skill.py hygiene-scan --limit 80
-python ./scripts/recall_skill.py hygiene-plan --scope project --limit 80
-python ./scripts/recall_skill.py hygiene-apply --safe --limit 20
+python ./scripts/recall_skill.py hygiene-scan --scan-limit 80 --output-limit 20
+python ./scripts/recall_skill.py hygiene-plan --scope project --scan-limit 80 --output-limit 40 --action-limit 20 --save-plan hygiene-plan.json
+python ./scripts/recall_skill.py hygiene-apply --safe --plan-file hygiene-plan.json
 ```
 
 Reconcile a conflicting current-truth claim:
@@ -134,7 +165,7 @@ python ./scripts/recall_skill.py reconcile-current-truth --claim-key recall.kimi
 
 ## Inputs
 
-Required: candidate fact for `route-memory`; claim key for `reconcile-current-truth`; `--safe` flag for `hygiene-apply`. Optional: `--limit`, `--scope`. Reject requests to run destructive actions from this skill; reject secret-shaped candidate facts before routing.
+Required: candidate fact for `route-memory`; claim key for `reconcile-current-truth`; `--safe` and `--plan-file` for `hygiene-apply`. Optional: `--limit`, `--scope`. Reject requests to run destructive actions from this skill; reject secret-shaped candidate facts before routing.
 
 ## Output Format
 
@@ -186,7 +217,7 @@ Plans return JSON-like summaries:
 - Near-duplicates with different provenance: report both, require confirmation before merge.
 - Source-backed record whose file moved but still exists at the new path: refresh source, do not stale.
 - Weak preference with no evidence: mark `needs_confirmation`, keep the record.
-- Validated claim conflicting with a hypothesis claim: supersede hypothesis only when evidence lineage is clean.
+- Validated claim conflicting with a hypothesis claim: keep both review-only until current evidence justifies explicit supersession.
 - Secret-shaped candidate text: reject at `route-memory`, do not persist.
 
 ## Safety
@@ -199,7 +230,7 @@ Plans return JSON-like summaries:
 
 ## Troubleshooting
 
-- `hygiene-apply` refuses without `--safe`: this is intentional; do not remove the guard.
+- `hygiene-apply` refuses without `--safe` or `--plan-file`: this is intentional; do not remove either guard.
 - Adapter path errors: run from installed/source plugin root, or use absolute path plus `--root`.
 - Missing proposals for an obvious stale record: rerun `hygiene-scan --limit <higher>` to widen the window.
 - Persistent conflicts on the same claim key: hand to `manage-memory resolve-conflict`.

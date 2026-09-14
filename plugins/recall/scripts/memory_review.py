@@ -10,6 +10,7 @@ from typing import Any
 
 import config as recall_config
 import memory_noise
+import retrieval
 import security
 from services import lifecycle_service
 import storage
@@ -201,8 +202,9 @@ def quality_metrics(records: list[storage.MemoryRecord]) -> dict[str, Any]:
 
 
 def memory_card(record: storage.MemoryRecord) -> dict[str, Any]:
-    metadata = record.metadata or {}
+    metadata = security.redact_value(record.metadata or {})
     noise_reason = memory_noise.archive_reason(record)
+    flag, flag_reason = retrieval.health_flag(record)
     return {
         "id": record.id,
         "category": record.category,
@@ -214,6 +216,14 @@ def memory_card(record: storage.MemoryRecord) -> dict[str, Any]:
         "source_path": metadata.get("source_path"),
         "source_hash": metadata.get("source_hash"),
         "source_revision": metadata.get("source_revision"),
+        "source_checked_at": metadata.get("source_checked_at"),
+        "source_history": metadata.get("source_history", []),
+        "evidence": metadata.get("evidence", []),
+        "verification_invalidated_at": metadata.get("verification_invalidated_at"),
+        "flag": flag,
+        "flags": [flag],
+        "flag_reason": flag_reason,
+        "truncated": "[truncated]" in compact_text(record),
         "invalidation_reason": metadata.get("invalidation_reason"),
         "replacement_source_path": metadata.get("replacement_source_path"),
         "source_session": metadata.get("source_session") or metadata.get("turn_id"),
@@ -229,6 +239,12 @@ def memory_card(record: storage.MemoryRecord) -> dict[str, Any]:
     }
 
 
+def _trust_cards(records: list[storage.MemoryRecord]) -> list[dict[str, Any]]:
+    cards = [dict(memory_card(record), metadata=record.metadata) for record in records]
+    retrieval.mark_conflicts(cards)
+    return [security.redact_value({key: value for key, value in item.items() if key != "metadata"}) for item in cards]
+
+
 def review_memory(
     root: str | Path | None = None,
     *,
@@ -240,7 +256,10 @@ def review_memory(
     status_set = {status.strip().lower() for status in statuses or [] if status.strip()}
     category_set = {recall_config.normalize_category(category) for category in categories or [] if category.strip()}
     source_filter = source.strip().lower() if source else None
-    records = list(storage.iter_records(root))
+    decision = recall_config.root_decision(root)
+    resolved_root = Path(decision["root"]) if decision["status"] == "resolved" else None
+    has_store = resolved_root is not None and recall_config.persistent_memory_exists(resolved_root)
+    records = list(storage.iter_records(resolved_root)) if has_store else []
     filtered: list[storage.MemoryRecord] = []
     for record in records:
         metadata = record.metadata or {}
@@ -258,10 +277,25 @@ def review_memory(
     category_counts = Counter(record.category for record in records)
     source_counts = Counter(source_value(record) for record in records)
     filtered.sort(key=lambda record: (record.timestamp, record.id), reverse=True)
+    trust = _trust_cards(records)
+    by_id = {item["id"]: item for item in trust}
+    cards = []
+    for record in filtered[:max(0, limit)]:
+        item = by_id[record.id]
+        cards.append({key: value for key, value in item.items() if key != "metadata"})
+    empty_reason = None if cards else (
+        f"{decision['status']}_root" if resolved_root is None else "no_store" if not has_store
+        else "empty_store" if not records else "filters_excluded_all" if not filtered else "result_limit"
+    )
     return {
         "total": len(records),
         "matched": len(filtered),
-        "shown": min(len(filtered), limit),
+        "shown": len(cards),
+        "omitted_count": len(filtered) - len(cards),
+        "truncated": len(cards) < len(filtered) or any(item["truncated"] for item in cards),
+        "health": dict(retrieval.selection_health(retrieval.health_summary(trust), cards), scope="entire_store"),
+        "root_decision": decision,
+        "empty_reason": empty_reason,
         "filters": {
             "statuses": sorted(status_set),
             "categories": sorted(category_set),
@@ -274,7 +308,7 @@ def review_memory(
         "filtered_category_counts": filtered_counts(filtered, "category"),
         "filtered_source_counts": filtered_counts(filtered, "source"),
         "quality": quality_metrics(records),
-        "memories": [memory_card(record) for record in filtered[:limit]],
+        "memories": security.redact_value(cards),
     }
 
 
@@ -293,7 +327,10 @@ def audit_memory(
         source=source,
         limit=limit,
     )
-    records = list(storage.iter_records(root))
+    decision = review["root_decision"]
+    resolved_root = Path(decision["root"]) if decision["status"] == "resolved" else None
+    has_store = resolved_root is not None and recall_config.persistent_memory_exists(resolved_root)
+    records = list(storage.iter_records(resolved_root)) if has_store else []
     status_set = {status.strip().lower() for status in statuses or [] if status.strip()}
     category_set = {recall_config.normalize_category(category) for category in categories or [] if category.strip()}
     source_filter = source.strip().lower() if source else None
@@ -311,17 +348,24 @@ def audit_memory(
         if memory_noise.archive_reason(record) is not None:
             candidates.append(record)
     candidates.sort(key=lambda record: (record.timestamp, record.id), reverse=True)
-    conflict_clusters = lifecycle_service.find_conflicts(root)
+    conflict_clusters = lifecycle_service.find_conflicts(resolved_root) if has_store else []
+    trust_by_id = {card["id"]: card for card in _trust_cards(records)}
+    noise_cards = [trust_by_id[record.id] for record in candidates[:max(0, limit)]]
     return {
         "total": review["total"],
         "matched": review["matched"],
-        "shown": min(len(candidates), limit),
+        "shown": len(noise_cards),
+        "root_decision": decision,
+        "empty_reason": None if noise_cards else review["empty_reason"] or "no_noise_candidates",
+        "omitted_count": max(0, len(candidates) - limit),
+        "truncated": len(candidates) > limit or any(card["truncated"] for card in noise_cards),
+        "health": dict(retrieval.selection_health(review["health"], noise_cards), scope="entire_store"),
         "filters": review["filters"],
         "status_counts": review["status_counts"],
         "category_counts": review["category_counts"],
         "source_counts": review["source_counts"],
         "quality": review["quality"],
-        "noise_candidates": [memory_card(record) for record in candidates[:limit]],
+        "noise_candidates": noise_cards,
         "conflict_clusters": conflict_clusters,
         "health_recommendations": [
             "Resolve ambiguous conflict clusters before promoting claims to validated truth."

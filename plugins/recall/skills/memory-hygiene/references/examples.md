@@ -8,8 +8,8 @@ Candidate: memory 42 references `docs/legacy-arch.md` which was deleted last wee
 
 ```bash
 python ./scripts/recall_skill.py hygiene-scan --limit 100
-python ./scripts/recall_skill.py hygiene-plan --scope project
-python ./scripts/recall_skill.py hygiene-apply --safe --limit 10
+python ./scripts/recall_skill.py hygiene-plan --scope project --scan-limit 100 --output-limit 20 --action-limit 10 --save-plan hygiene-plan.json
+python ./scripts/recall_skill.py hygiene-apply --safe --plan-file hygiene-plan.json
 ```
 
 Expected plan:
@@ -30,7 +30,11 @@ Expected plan:
 }
 ```
 
-Apply outcome: lifecycle status updates to `stale`; memory content stays for history.
+The JSON above is a display excerpt. The saved file must contain the full returned
+versioned plan, including operation IDs, preconditions, selected operations, and plan
+identity. Apply uses that file. A changed record or restored source produces a clear
+skip; apply never replaces it with another action. On an unchanged record, lifecycle
+status updates to `stale` and memory content stays for history.
 
 ## Example 2 — Near-duplicate commands
 
@@ -64,12 +68,28 @@ Expected result:
 ```json
 {
   "action": "reconcile-current-truth",
-  "winner": {"id": 60, "lifecycle": "validated", "value": 90.12},
-  "loser": {"id": 55, "lifecycle": "hypothesis", "value": 88.4},
-  "proposed_action": "supersede",
-  "safe_to_apply": true
+  "claim_key": "recall.kimi.standard_average",
+  "proposals": [
+    {
+      "id": 55,
+      "proposed_action": "review_claim_conflict",
+      "confidence": 1.0,
+      "safe_to_apply": false,
+      "related_ids": [60],
+      "details": {
+        "claim_key": "recall.kimi.standard_average",
+        "record_ids": [55, 60],
+        "values": ["88.4", "90.12"],
+        "resolution": "review_required"
+      }
+    }
+  ],
+  "requires_confirmation": [55]
 }
 ```
+
+Validated status only confirms self-reported lifecycle state. It does not select a winner.
+Check current project evidence, then use `manage-memory` for an explicit, reasoned supersession.
 
 ## Example 4 — Weak preference
 

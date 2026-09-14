@@ -8,7 +8,10 @@ the Claude Code manifest actually shipped in built packages.
 from __future__ import annotations
 
 import json
+import re
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -22,6 +25,10 @@ import config as recall_config  # noqa: E402
 
 def load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def normalized_text(path: Path) -> str:
+    return " ".join(path.read_text(encoding="utf-8").split())
 
 
 class ManifestParityTests(unittest.TestCase):
@@ -50,17 +57,23 @@ class ManifestParityTests(unittest.TestCase):
         self.assertEqual({m["skills"] for m in manifests}, {"./skills/"})
 
     def test_mcp_manifests_point_at_shared_server_with_provider_env(self) -> None:
+        codex = load_json(ROOT / ".mcp.json")["mcpServers"]["recall"]
+        self.assertEqual(load_json(ROOT / ".codex-plugin" / "plugin.json")["mcpServers"], "./.mcp.json")
         claude = load_json(ROOT / ".claude-plugin" / "plugin.json")["mcpServers"]["recall"]
         kimi = load_json(ROOT / "kimi.plugin.json")["mcpServers"]["recall"]
+        self.assertIn("kimi_mcp_server.py", " ".join(codex["args"]))
         self.assertIn("kimi_mcp_server.py", " ".join(claude["args"]))
         self.assertIn("kimi_mcp_server.py", " ".join(kimi["args"]))
+        self.assertEqual(codex["env"]["RECALL_DEFAULT_PROVIDER"], "codex")
         self.assertEqual(claude["env"]["RECALL_DEFAULT_PROVIDER"], "claude-code")
         self.assertEqual(kimi["env"]["RECALL_DEFAULT_PROVIDER"], "kimi")
 
     def test_build_and_inspection_include_claude_manifest(self) -> None:
         build_source = (ROOT / "scripts" / "build_plugin.py").read_text(encoding="utf-8")
+        self.assertIn('".mcp.json"', build_source, "built zips must ship the Codex MCP config")
         self.assertIn('".claude-plugin"', build_source, "built zips must ship the Claude Code manifest")
         inspect_source = (ROOT / "scripts" / "inspect_package.py").read_text(encoding="utf-8")
+        self.assertIn(".mcp.json", inspect_source)
         self.assertIn(".claude-plugin/plugin.json", inspect_source)
         self.assertIn("scripts/contract.py", inspect_source)
 
@@ -71,7 +84,7 @@ class ContractConsistencyTests(unittest.TestCase):
         steps = [item["step"] for item in payload["lifecycle"]]
         for expected in (
             "initialize",
-            "retrieve before work",
+            "retrieve relevant history",
             "decide save-worthiness",
             "save durable insight",
             "update changed memory",
@@ -80,23 +93,170 @@ class ContractConsistencyTests(unittest.TestCase):
             "handoff summary",
         ):
             self.assertIn(expected, steps)
-        self.assertEqual(payload["authority_order"][0], "current user instruction")
-        self.assertEqual(payload["authority_order"][-1], "older conversation assumptions")
+        self.assertEqual(
+            payload["instruction_authority_order"],
+            [
+                "system instructions",
+                "developer instructions",
+                "current user instructions and scope",
+            ],
+        )
+        self.assertEqual(payload["authority_order"], payload["instruction_authority_order"])
         self.assertIn("local_first", payload)
 
-    def test_compact_contract_covers_authority_retrieval_and_secrets(self) -> None:
+    def test_compact_contract_covers_authority_relevance_and_maintenance(self) -> None:
         text = recall_contract.compact_contract_text()
-        self.assertIn("Authority order", text)
-        self.assertIn("retrieve_memory", text)
+        hierarchy = " > ".join(recall_contract.INSTRUCTION_AUTHORITY_ORDER)
+        self.assertIn(f"Instruction order: {hierarchy}", text)
+        for rule in (
+            recall_contract.MEMORY_TRUST_RULE,
+            recall_contract.RETRIEVAL_RELEVANCE_RULE,
+            recall_contract.RETRIEVAL_ENTRYPOINT_RULE,
+            recall_contract.RETRIEVAL_SKIP_RULE,
+            recall_contract.EMPTY_RESULT_RULE,
+            recall_contract.NO_USAGE_OBLIGATION_RULE,
+            recall_contract.MAINTENANCE_RULE,
+            recall_contract.GUIDANCE_SCOPE_RULE,
+        ):
+            self.assertIn(rule, text)
         self.assertIn("Never save secrets", text)
         self.assertIn("update_memory", text)
         self.assertIn("memory_hygiene", text)
         self.assertLess(len(text), 2000, "compact contract must stay injectable")
 
-    def test_skill_contract_reference_matches_canonical_authority_order(self) -> None:
-        reference = (ROOT / "skills" / "using-recall" / "references" / "contract.md").read_text(encoding="utf-8")
-        for item in recall_contract.AUTHORITY_ORDER:
-            self.assertIn(item, reference, f"contract.md drifted from contract.py: missing '{item}'")
+    def test_retrieval_policy_has_distinct_positive_and_skip_examples(self) -> None:
+        policy = recall_contract.contract_dict()["retrieval"]
+        self.assertEqual(policy["relevance_rule"], recall_contract.RETRIEVAL_RELEVANCE_RULE)
+        self.assertEqual(policy["entrypoint_rule"], recall_contract.RETRIEVAL_ENTRYPOINT_RULE)
+        self.assertEqual(policy["skip_rule"], recall_contract.RETRIEVAL_SKIP_RULE)
+        self.assertEqual(policy["empty_result_rule"], recall_contract.EMPTY_RESULT_RULE)
+        self.assertEqual(policy["usage_obligation"], recall_contract.NO_USAGE_OBLIGATION_RULE)
+        self.assertEqual(
+            set(policy["examples"]),
+            {
+                "recurring_project_failure",
+                "small_self_contained_task",
+                "explicit_memory_free_task",
+            },
+        )
+        self.assertIn("retrieve", policy["examples"]["recurring_project_failure"])
+        self.assertIn("do not retrieve", policy["examples"]["small_self_contained_task"])
+        self.assertIn("do not retrieve", policy["examples"]["explicit_memory_free_task"])
+
+    def test_retrieval_tool_guidance_is_not_stronger_than_full_contract(self) -> None:
+        text = recall_contract.retrieval_tool_guidance()
+        self.assertIn(" > ".join(recall_contract.INSTRUCTION_AUTHORITY_ORDER), text)
+        for rule in (
+            recall_contract.MEMORY_TRUST_RULE,
+            recall_contract.RETRIEVAL_RELEVANCE_RULE,
+            recall_contract.RETRIEVAL_ENTRYPOINT_RULE,
+            recall_contract.RETRIEVAL_SKIP_RULE,
+            recall_contract.EMPTY_RESULT_RULE,
+            recall_contract.NO_USAGE_OBLIGATION_RULE,
+        ):
+            self.assertIn(rule, text)
+            self.assertIn(rule, recall_contract.compact_contract_text())
+
+    def test_first_workflow_keeps_retrieval_optional_and_maintenance_visible(self) -> None:
+        for style in ("mcp", "cli"):
+            text = recall_contract.first_workflow_text(style)
+            self.assertIn("only when prior project history can help", text)
+            self.assertIn("an empty result is valid", text)
+            self.assertIn("A lookup, category, or save is not required", text)
+        self.assertIn("update_memory", recall_contract.first_workflow_text("mcp"))
+        self.assertIn("memory_hygiene", recall_contract.first_workflow_text("mcp"))
+        self.assertIn("edit-memory or supersede-memory", recall_contract.first_workflow_text("cli"))
+        self.assertIn("hygiene-scan", recall_contract.first_workflow_text("cli"))
+
+    def test_affected_skills_match_canonical_hierarchy_and_relevance_rules(self) -> None:
+        paths = [
+            ROOT / "skills" / "using-recall" / "SKILL.md",
+            ROOT / "skills" / "using-recall" / "references" / "contract.md",
+            ROOT / "skills" / "retrieve-memory" / "SKILL.md",
+        ]
+        expected = [
+            "system instructions > developer instructions > current user instructions and scope",
+            recall_contract.MEMORY_TRUST_RULE,
+            recall_contract.RETRIEVAL_RELEVANCE_RULE,
+            recall_contract.RETRIEVAL_ENTRYPOINT_RULE,
+            recall_contract.RETRIEVAL_SKIP_RULE,
+            recall_contract.EMPTY_RESULT_RULE,
+            recall_contract.NO_USAGE_OBLIGATION_RULE,
+            recall_contract.GUIDANCE_SCOPE_RULE,
+        ]
+        for path in paths:
+            text = normalized_text(path)
+            for rule in expected:
+                self.assertIn(rule, text, f"{path.name} drifted from the canonical rule: {rule}")
+
+    def test_contract_assets_pin_memory_trust_and_optional_retrieval(self) -> None:
+        assets = [
+            load_json(ROOT / "skills" / "using-recall" / "assets" / "handoff-contract.json"),
+            load_json(ROOT / "skills" / "retrieve-memory" / "assets" / "contract.json"),
+        ]
+        using, retrieve = assets
+        self.assertEqual(
+            using["authority"]["instruction_order"],
+            ["system_instructions", "developer_instructions", "current_user_instructions_and_scope"],
+        )
+        self.assertFalse(using["authority"]["memory_can_grant_permission"])
+        self.assertFalse(using["authority"]["guidance_enforces_access"])
+        self.assertFalse(using["retrieval"]["lookup_category_or_save_required"])
+        self.assertTrue(using["retrieval"]["empty_result_is_valid"])
+        self.assertFalse(retrieve["memory_can_grant_permission"])
+        self.assertFalse(retrieve["guidance_enforces_access"])
+        self.assertFalse(retrieve["lookup_category_or_save_required"])
+        self.assertTrue(retrieve["empty_result_is_valid"])
+
+    def test_session_start_emits_the_canonical_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.activate_project(tmp, activated_by="contract-test")
+            completed = subprocess.run(
+                [sys.executable, str(ROOT / "hooks" / "scripts" / "session_start.py")],
+                input=json.dumps({"cwd": tmp, "hook_event_name": "SessionStart"}),
+                text=True,
+                capture_output=True,
+                check=True,
+                cwd=ROOT,
+            )
+            context = json.loads(completed.stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertTrue(context.startswith(recall_contract.compact_contract_text()))
+            self.assertIn(recall_contract.EMPTY_RESULT_RULE, context)
+
+    def test_cli_contract_output_matches_canonical_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "recall_skill.py"),
+                    "--root",
+                    tmp,
+                    "contract",
+                ],
+                text=True,
+                capture_output=True,
+                check=True,
+                cwd=ROOT,
+            )
+            self.assertEqual(json.loads(completed.stdout)["contract"], recall_contract.contract_dict())
+
+    def test_changed_contract_surfaces_have_no_benchmark_identifiers_or_model_names(self) -> None:
+        paths = [
+            ROOT / "scripts" / "contract.py",
+            ROOT / "hooks" / "scripts" / "session_start.py",
+            ROOT / "skills" / "using-recall" / "SKILL.md",
+            ROOT / "skills" / "retrieve-memory" / "SKILL.md",
+        ]
+        for path in paths:
+            text = path.read_text(encoding="utf-8")
+            self.assertIsNone(
+                re.search(r"\b[A-Z]\d{2}\b", text),
+                f"{path.name} contains a benchmark case identifier",
+            )
+            self.assertIsNone(
+                re.search(r"\b[a-z]+-\d+(?:\.\d+)*\b", text, re.IGNORECASE),
+                f"{path.name} contains a versioned model name",
+            )
 
     def test_status_meanings_cover_all_card_statuses(self) -> None:
         import memory_manager
@@ -106,11 +266,11 @@ class ContractConsistencyTests(unittest.TestCase):
 
 
 class ProviderCapabilityParityTests(unittest.TestCase):
-    """Every MCP tool must stay reachable on Codex through the adapter CLI.
+    """Every MCP tool must stay reachable through the shared adapter CLI.
 
-    Codex's plugin manifest declares no MCP server (opt-in via config.toml,
-    docs/CODEX.md), so the adapter is its guaranteed path. This map failing
-    means a capability became MCP-only — a silent cross-provider gap.
+    The provider manifests declare the MCP server. The adapter remains the
+    direct CLI surface for every provider. This map failing means a capability
+    became MCP-only and introduced a silent cross-provider gap.
     """
 
     MCP_TO_ADAPTER = {
@@ -152,7 +312,11 @@ class ProviderCapabilityParityTests(unittest.TestCase):
         codex_doc = (ROOT / "docs" / "CODEX.md").read_text(encoding="utf-8")
         for tool in self.MCP_TO_ADAPTER:
             self.assertIn(f"`{tool}`", codex_doc, f"docs/CODEX.md missing MCP tool {tool}")
-        self.assertIn("mcp_servers.recall", codex_doc)
+        server = load_json(ROOT / ".mcp.json")["mcpServers"]["recall"]
+        self.assertEqual(server["env"]["RECALL_DEFAULT_PROVIDER"], "codex")
+        self.assertIn("already declares the MCP server", codex_doc)
+        self.assertIn("`.mcp.json`", codex_doc)
+        self.assertIn("[mcp_servers.recall]", codex_doc)
         self.assertIn('RECALL_DEFAULT_PROVIDER = "codex"', codex_doc)
 
 

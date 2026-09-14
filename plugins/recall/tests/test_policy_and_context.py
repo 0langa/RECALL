@@ -11,11 +11,34 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import memory_manager  # noqa: E402
 import capture_policy  # noqa: E402
+import memory_review  # noqa: E402
 from models import ContextPacketRequest  # noqa: E402
 from services.context_service import build_context_packet  # noqa: E402
 
 
 class PolicyAndContextTests(unittest.TestCase):
+    def test_audit_omissions_keep_conflict_flags_on_shown_noise_cards(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for value in ("alpha", "beta"):
+                memory_manager.add_record("commands", "Tool result captured.",
+                    {"claim_key": "storage", "claim_value": value, "status": "active", "source": "post_tool_use"}, tmp)
+            report = memory_review.audit_memory(tmp, limit=1)
+            self.assertEqual(report["shown"], 1)
+            self.assertEqual(report["noise_candidates"][0]["flag"], "conflicting")
+            self.assertEqual(report["health"]["omitted_flag_counts"]["conflicting"], 1)
+            self.assertEqual(report["health"]["scope"], "entire_store")
+
+    def test_small_context_packet_keeps_health_even_when_cards_cannot_fit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for value in ("alpha", "beta"):
+                memory_manager.add_record("decisions", f"Storage uses {value}.",
+                    {"claim_key": "storage", "claim_value": value, "status": "active"}, tmp)
+            packet = build_context_packet(ContextPacketRequest("storage", token_budget=1, root=tmp)).to_dict()
+            self.assertEqual(packet["cards"], [])
+            self.assertEqual(packet["health"]["omitted_flag_counts"]["conflicting"], 2)
+            self.assertTrue(packet["truncated"])
+            self.assertEqual(packet["empty_reason"], "token_budget")
+
     def test_prompt_memory_text_strips_plugin_mentions_and_activation_lead_in(self) -> None:
         prompt = (
             "Use [@recall](plugin://recall@recall-local) for this project. "
