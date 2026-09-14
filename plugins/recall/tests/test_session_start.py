@@ -86,6 +86,11 @@ class SessionStartTests(unittest.TestCase):
             self.assertEqual(len(text), session_start.MAX_INJECTED_CHARS)
             self.assertTrue(text.endswith("…"))
 
+            turn_policy.finish_turn(tmp, "normal", "turn")
+            with patch.object(session_start, "store_overview") as overview:
+                run_session_start({"cwd": tmp, "hook_event_name": "SessionStart"})
+            overview.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

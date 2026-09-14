@@ -99,6 +99,9 @@ class SessionSummaryModeTests(unittest.TestCase):
 
 
 class ExplicitCueModeTests(unittest.TestCase):
+    def test_memory_free_task_disables_memory(self) -> None:
+        self.assertTrue(capture_policy.no_memory_requested("This is an explicit memory-free task."))
+
     def test_off_blocks_explicit_remember_and_explains_recovery(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             activate(tmp, "off")

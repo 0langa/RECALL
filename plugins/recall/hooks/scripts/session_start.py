@@ -65,7 +65,7 @@ def main() -> None:
     parts = [recall_contract.compact_contract_text()]
     # SessionStart precedes the task prompt. Policy/config contain no memory
     # cards, but even inventory reads must wait until task scope is known.
-    overview = store_overview(root) if policy["scope_known"] else ""
+    overview = store_overview(root) if policy["scope_known"] and not policy.get("closed") else ""
     if overview:
         parts.append(overview)
     if recall_config.memory_dir(root).name == recall_config.LEGACY_MEMORY_DIR_NAME:

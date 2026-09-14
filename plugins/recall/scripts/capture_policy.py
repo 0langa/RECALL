@@ -410,7 +410,7 @@ def no_memory_requested(prompt: str) -> bool:
     """Match task controls outside quotes/examples; do this before any capture."""
     text = unquoted_prompt_text(prompt)
     return bool(re.search(
-        r"(?i)\b(?:no[- ]memory|without\s+(?:using\s+)?memory|(?:do\s+not|don['’]t|never)\s+"
+        r"(?i)\b(?:no[- ]memory|memory[- ]free|without\s+(?:using\s+)?memory|(?:do\s+not|don['’]t|never)\s+"
         r"(?:(?:read|write|use|save|store|capture|retrieve|access|consult|load|inject)\b[\w\s,/&-]{0,45})"
         r"(?:memory|\.?recall)\b|(?:disable|skip|avoid)\s+(?:all\s+)?(?:memory|\.?recall)\b)", text))
 
