@@ -27,7 +27,7 @@ For Claude Code and Kimi Code, see [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md) an
 
 ## Shared public surface
 
-All three manifests declare this MCP server and these tools:
+The Codex MCP config, Claude Code manifest, and Kimi Code manifest declare this shared MCP server and these tools:
 
 | MCP tool | Purpose |
 | --- | --- |

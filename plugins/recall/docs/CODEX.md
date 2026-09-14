@@ -1,10 +1,11 @@
 # RECALL for Codex
 
 Codex uses the shared RECALL skills, hooks, and MCP server.
-The Codex manifest declares the skills and MCP server.
+The Codex manifest declares the skills.
+The root `.mcp.json` declares the MCP server.
 Codex discovers the bundled hooks separately.
 
-The manifest starts `scripts/kimi_mcp_server.py` with the equivalent of `RECALL_DEFAULT_PROVIDER = "codex"`.
+The MCP config starts `scripts/kimi_mcp_server.py` with the equivalent of `RECALL_DEFAULT_PROVIDER = "codex"`.
 The file name is historical.
 The server is provider-neutral.
 
@@ -26,9 +27,11 @@ Review and trust the bundled hooks when Codex asks.
 
 ## MCP server
 
-The plugin manifest already declares the MCP server.
+The plugin `.mcp.json` already declares the MCP server.
 Do not add a manual `[mcp_servers.recall]` block.
 A second block can start a duplicate server.
+
+Use `@recall` when you want Codex to activate the plugin for a task.
 
 Codex gets these tools after plugin load:
 

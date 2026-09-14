@@ -57,17 +57,22 @@ class ManifestParityTests(unittest.TestCase):
         self.assertEqual({m["skills"] for m in manifests}, {"./skills/"})
 
     def test_mcp_manifests_point_at_shared_server_with_provider_env(self) -> None:
+        codex = load_json(ROOT / ".mcp.json")["mcpServers"]["recall"]
         claude = load_json(ROOT / ".claude-plugin" / "plugin.json")["mcpServers"]["recall"]
         kimi = load_json(ROOT / "kimi.plugin.json")["mcpServers"]["recall"]
+        self.assertIn("kimi_mcp_server.py", " ".join(codex["args"]))
         self.assertIn("kimi_mcp_server.py", " ".join(claude["args"]))
         self.assertIn("kimi_mcp_server.py", " ".join(kimi["args"]))
+        self.assertEqual(codex["env"]["RECALL_DEFAULT_PROVIDER"], "codex")
         self.assertEqual(claude["env"]["RECALL_DEFAULT_PROVIDER"], "claude-code")
         self.assertEqual(kimi["env"]["RECALL_DEFAULT_PROVIDER"], "kimi")
 
     def test_build_and_inspection_include_claude_manifest(self) -> None:
         build_source = (ROOT / "scripts" / "build_plugin.py").read_text(encoding="utf-8")
+        self.assertIn('".mcp.json"', build_source, "built zips must ship the Codex MCP config")
         self.assertIn('".claude-plugin"', build_source, "built zips must ship the Claude Code manifest")
         inspect_source = (ROOT / "scripts" / "inspect_package.py").read_text(encoding="utf-8")
+        self.assertIn(".mcp.json", inspect_source)
         self.assertIn(".claude-plugin/plugin.json", inspect_source)
         self.assertIn("scripts/contract.py", inspect_source)
 
@@ -306,10 +311,10 @@ class ProviderCapabilityParityTests(unittest.TestCase):
         codex_doc = (ROOT / "docs" / "CODEX.md").read_text(encoding="utf-8")
         for tool in self.MCP_TO_ADAPTER:
             self.assertIn(f"`{tool}`", codex_doc, f"docs/CODEX.md missing MCP tool {tool}")
-        codex_manifest = load_json(ROOT / ".codex-plugin" / "plugin.json")
-        server = codex_manifest["mcpServers"]["recall"]
+        server = load_json(ROOT / ".mcp.json")["mcpServers"]["recall"]
         self.assertEqual(server["env"]["RECALL_DEFAULT_PROVIDER"], "codex")
         self.assertIn("already declares the MCP server", codex_doc)
+        self.assertIn("`.mcp.json`", codex_doc)
         self.assertIn("[mcp_servers.recall]", codex_doc)
         self.assertIn('RECALL_DEFAULT_PROVIDER = "codex"', codex_doc)
 

@@ -112,6 +112,7 @@ def hook_command(plugin_root: Path, hook_name: str) -> list[str]:
 
 def assert_plugin_shape(plugin_root: Path) -> None:
     required_paths = [
+        plugin_root / ".mcp.json",
         plugin_root / ".codex-plugin" / "plugin.json",
         plugin_root / "hooks" / "hooks.json",
         plugin_root / "hooks" / "scripts" / "session_start.py",

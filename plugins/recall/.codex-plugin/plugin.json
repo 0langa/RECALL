@@ -16,18 +16,6 @@
     "context"
   ],
   "skills": "./skills/",
-  "mcpServers": {
-    "recall": {
-      "command": "python",
-      "args": [
-        "./scripts/kimi_mcp_server.py"
-      ],
-      "cwd": "./",
-      "env": {
-        "RECALL_DEFAULT_PROVIDER": "codex"
-      }
-    }
-  },
   "interface": {
     "displayName": "RECALL",
     "shortDescription": "Project memory that stays on your machine.",

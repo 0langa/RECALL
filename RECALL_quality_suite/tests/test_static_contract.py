@@ -24,6 +24,7 @@ class StaticPluginContractTests(unittest.TestCase):
     def test_required_files_exist(self) -> None:
         root = plugin_root()
         required = [
+            ".mcp.json",
             ".codex-plugin/plugin.json",
             "README.md",
             "docs/INSTALL.md",

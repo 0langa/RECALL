@@ -17,6 +17,7 @@ FORBIDDEN_SUFFIXES = {".pyc", ".pyo"}
 WINDOWS_USER_MARKER = "C:" + "\\" + "Users" + "\\"
 POSIX_USER_MARKER = "/" + "Users" + "/"
 REQUIRED_PATHS = {
+    ".mcp.json",
     ".codex-plugin/plugin.json",
     ".claude-plugin/plugin.json",
     "hooks/hooks.json",

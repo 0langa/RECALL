@@ -24,7 +24,7 @@ Then run:
 @recall initialize this project
 ```
 
-The Codex manifest declares the RECALL MCP server.
+The Codex plugin declares the RECALL MCP server in `.mcp.json`.
 A normal plugin install gives Codex the same eight MCP tools as Claude Code and Kimi Code.
 Do not add a second manual `mcp_servers.recall` entry.
 

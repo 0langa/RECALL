@@ -28,6 +28,7 @@ FORBIDDEN_PATH_PARTS = [
 ]
 
 REQUIRED_FILES = [
+    ".mcp.json",
     ".codex-plugin/plugin.json",
     "kimi.plugin.json",
     "README.md",

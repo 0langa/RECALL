@@ -27,7 +27,7 @@ Then run:
 
 Review the bundled hooks when Codex asks.
 
-The Codex manifest declares the RECALL MCP server.
+The Codex plugin `.mcp.json` declares the RECALL MCP server.
 Do not add a second manual `mcp_servers.recall` entry.
 
 ## Codex from a local checkout
@@ -86,7 +86,8 @@ Do not delete either store unless you intend to delete its data.
 
 ## Upgrade from a manual Codex MCP entry
 
-The Codex manifest has declared the MCP server since v1.5.5.
+The Codex plugin has declared the MCP server since v1.5.5.
+Version 1.6.0 moves the declaration from the manifest to the root `.mcp.json` file that current Codex loads.
 Remove a manual `[mcp_servers.recall]` entry before you use the plugin declaration.
 This avoids two server registrations.
 

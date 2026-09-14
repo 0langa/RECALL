@@ -77,6 +77,16 @@ class PackageMetadataTests(unittest.TestCase):
         self.assertTrue((ROOT / "docs" / "PRIVACY.md").is_file())
         self.assertTrue((ROOT / "docs" / "TERMS.md").is_file())
 
+    def test_codex_mcp_config_declares_shared_server(self) -> None:
+        manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        payload = json.loads((ROOT / ".mcp.json").read_text(encoding="utf-8"))
+        self.assertNotIn("mcpServers", manifest)
+        server = payload["mcpServers"]["recall"]
+        self.assertEqual(server["command"], "python")
+        self.assertEqual(server["cwd"], "./")
+        self.assertEqual(server["args"], ["./scripts/kimi_mcp_server.py"])
+        self.assertEqual(server["env"]["RECALL_DEFAULT_PROVIDER"], "codex")
+
     def test_release_version_matches_all_provider_manifests_and_mcp_server(self) -> None:
         expected = "1.6.0"
         manifests = (
@@ -201,6 +211,7 @@ class PackageMetadataTests(unittest.TestCase):
             archive = Path(tmp) / "recall.zip"
             with zipfile.ZipFile(archive, "w") as package:
                 package.writestr(".codex-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
+                package.writestr(".mcp.json", json.dumps({"mcpServers": {"recall": {}}}))
                 package.writestr(".claude-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
                 package.writestr("kimi.plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
                 package.writestr("scripts/contract.py", "print('ok')\n")
@@ -230,6 +241,7 @@ class PackageMetadataTests(unittest.TestCase):
             archive = Path(tmp) / "recall.zip"
             with zipfile.ZipFile(archive, "w") as package:
                 package.writestr(".codex-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
+                package.writestr(".mcp.json", json.dumps({"mcpServers": {"recall": {}}}))
                 package.writestr(".claude-plugin/plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
                 package.writestr("kimi.plugin.json", json.dumps({"name": "recall", "skills": "./skills/"}))
                 package.writestr("scripts/contract.py", "print('ok')\n")
