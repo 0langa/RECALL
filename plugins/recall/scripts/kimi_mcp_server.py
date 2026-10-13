@@ -592,7 +592,15 @@ def handle(request: Json) -> Json | None:
 
 
 def main() -> None:
-    for line in sys.stdin:
+    # MCP stdio messages are UTF-8. Decode them here: text-mode stdin uses the
+    # locale code page on Windows (often cp1252), which corrupts non-ASCII
+    # memory text and cannot decode some bytes at all.
+    for raw in getattr(sys.stdin, "buffer", sys.stdin):
+        try:
+            line = raw.decode("utf-8-sig") if isinstance(raw, bytes) else raw
+        except UnicodeDecodeError as exc:
+            send({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": f"Request is not valid UTF-8: {exc}"}})
+            continue
         if not line.strip():
             continue
         try:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -615,6 +616,37 @@ class RecallSkillAdapterTests(unittest.TestCase):
             )
             self.assertEqual(saved["action"], "save-insight")
             self.assertEqual(saved["category"], "decisions")
+
+    def test_stdin_json_is_utf8_under_legacy_code_page(self) -> None:
+        # Piped JSON is UTF-8 even where Python decodes text stdin with a
+        # legacy code page (the default on Windows). Pin one everywhere.
+        env = {**os.environ, "PYTHONIOENCODING": "cp1252"}
+        env.pop("PYTHONUTF8", None)
+        card_text = "Größenprüfung für Ärzte bleibt exakt: ÁRBOL, 日本語."
+        batch_text = "Die Übersetzung nutzt „deutsche“ Anführungszeichen."
+        with tempfile.TemporaryDirectory() as tmp:
+            for args, payload in (
+                (("save-turn-card", "--stdin"), {
+                    "category": "decisions", "content": card_text, "summary": card_text,
+                }),
+                (("batch-ingest", "--stdin"), {
+                    "schema": "recall.batch_ingest.v1",
+                    "cards": [{"category": "decisions", "content": batch_text}],
+                }),
+            ):
+                subprocess.run(
+                    [sys.executable, str(ADAPTER), "--root", tmp, *args],
+                    input=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                    capture_output=True,
+                    check=True,
+                    cwd=ROOT,
+                    env=env,
+                )
+            import storage
+
+            stored = [record.content for record in storage.iter_records(tmp)]
+            self.assertIn(card_text, stored)
+            self.assertIn(batch_text, stored)
 
     def test_route_memory_rejects_broader_secret_shapes(self) -> None:
         secrets = [
