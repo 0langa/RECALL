@@ -39,7 +39,6 @@ A Release Candidate or stronger claim must pass:
 - Package hygiene check for the built release ZIP.
 - Human source-blind agent evaluation using the hidden ground-truth rubric.
 
-See `docs/RELEASE_ROADMAP_GATES.md` for stage-by-stage expectations and `rubrics/production_release_criteria.md` for promotion blockers.
 
 ## Non-goals
 
