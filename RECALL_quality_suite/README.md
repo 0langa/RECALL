@@ -4,7 +4,7 @@ A source-aware and source-blind testing/evaluation suite for the active developm
 
 This package is designed to be unzipped into the root of the `0langa/RECALL` repository, but it can also run from outside the repo by passing `--repo-root` or `--plugin-root`.
 
-RECALL is not final yet. Treat it as alpha-stage unless the roadmap gates and production criteria prove otherwise.
+RECALL is not final yet. Treat it as alpha-stage unless the production criteria prove otherwise.
 
 ## What it adds
 
