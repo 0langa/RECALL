@@ -77,7 +77,7 @@ python ./scripts/recall_skill.py --root <project-root> hygiene-apply --safe --pl
 
 Apply does not make a new plan.
 Use canonical project-relative source paths such as `README.md`.
-Equivalent `./README.md` and `.\README.md` paths fail closed in the v1.6.0 candidate.
+Equivalent `./README.md` and `.\README.md` paths fail closed in v1.6.0.
 Create a new plan with canonical paths.
 Do not change the reviewed plan.
 
@@ -98,4 +98,5 @@ The runtime interlock must block memory work before it reads project memory data
 Codex CLI `0.154.0` passed an isolated-home readiness check.
 Codex did not expose an observed model name in standard output.
 This is not proof of the exact v1.6.0 ZIP.
-Exact installed-package proof is pending at candidate freeze.
+For the v1.6.0 release, Codex CLI `0.154.0` installed and listed the exact package.
+Its plugin MCP tools did not enter the native model registry, so native Codex MCP behavior proof is pending.

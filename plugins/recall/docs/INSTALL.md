@@ -95,6 +95,7 @@ This avoids two server registrations.
 
 Readiness checks used Codex CLI `0.154.0`, Claude Code `2.1.268`, and Kimi Code `0.42.0` in isolated homes.
 Those checks do not prove the exact v1.6.0 ZIP.
-Exact installed-package proof is pending at candidate freeze.
+The v1.6.0 release passed all 13 exact-package native behavior checks with Claude Code `2.1.268`.
+Native Codex MCP behavior and native Kimi Code behavior proof are pending.
 
-The public asset will be at the [v1.6.0 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.0) after publication.
+The release asset is at the [v1.6.0 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.0).
