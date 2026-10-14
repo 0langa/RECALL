@@ -69,6 +69,11 @@ RECALL needs local Python.
 It needs no API key or hosted RECALL service.
 All memory stays in the project store.
 
+The MCP server starts with `python`.
+Hooks start with `python3` on macOS and Linux.
+On Windows, Claude Code runs plugin hooks through Git Bash.
+There the hooks use the Python launcher (`py -3`) when it is installed, and `python3` otherwise.
+
 ## Tested host scope
 
 Claude Code `2.1.268` passed an isolated-home readiness check.

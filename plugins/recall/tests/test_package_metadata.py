@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parents[1]
+
+
+def git_bash() -> str | None:
+    git = shutil.which("git")
+    if git is None:
+        return None
+    for parent in Path(git).resolve().parents:
+        candidate = parent / "bin" / "bash.exe"
+        if candidate.is_file():
+            return str(candidate)
+    return None
 
 
 class PackageMetadataTests(unittest.TestCase):
@@ -390,6 +402,44 @@ class PackageMetadataTests(unittest.TestCase):
                     current_scope = Path(tmp) / ".recall" / "runtime" / "policy" / "current-scope.json"
                     policy = json.loads(current_scope.read_text(encoding="utf-8"))
                     self.assertEqual(policy["provider"], "claude-code")
+
+
+    @unittest.skipUnless(os.name == "nt", "Claude Code runs Windows hooks through Git Bash.")
+    def test_claude_code_git_bash_hooks_do_not_depend_on_python3(self) -> None:
+        # Claude Code has no commandWindows field: on Windows it runs `command`
+        # through Git Bash, where `python3` is often only the Microsoft Store
+        # stub that prints "Python was not found" and exits non-zero.
+        bash = git_bash()
+        if bash is None:
+            self.skipTest("Git Bash is not installed")
+        hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+        with tempfile.TemporaryDirectory() as tmp:
+            stub = Path(tmp) / "stub"
+            stub.mkdir()
+            (stub / "python3").write_text(
+                "#!/bin/sh\necho 'Python was not found' >&2\nexit 49\n", encoding="utf-8", newline="\n",
+            )
+            project = Path(tmp) / "project"
+            (project / ".git").mkdir(parents=True)
+            env = os.environ.copy()
+            env.pop("PLUGIN_ROOT", None)
+            env["CLAUDE_PLUGIN_ROOT"] = str(ROOT)
+            env["PATH"] = str(stub) + os.pathsep + env.get("PATH", "")
+            for event_name, matcher_groups in hooks.items():
+                payload = {"hook_event_name": event_name, "cwd": str(project), "session_id": "git-bash",
+                           "prompt": "Continue normal work."}
+                completed = subprocess.run(
+                    [bash, "-c", matcher_groups[0]["hooks"][0]["command"]],
+                    input=json.dumps(payload),
+                    text=True,
+                    capture_output=True,
+                    cwd=ROOT,
+                    env=env,
+                )
+                self.assertEqual(completed.returncode, 0, f"{event_name}: {completed.stderr}")
+                self.assertTrue(json.loads(completed.stdout)["continue"], event_name)
+            current_scope = project / ".recall" / "runtime" / "policy" / "current-scope.json"
+            self.assertEqual(json.loads(current_scope.read_text(encoding="utf-8"))["provider"], "claude-code")
 
 
 if __name__ == "__main__":
