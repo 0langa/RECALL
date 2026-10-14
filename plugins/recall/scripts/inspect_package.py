@@ -36,43 +36,57 @@ SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
     re.compile(r"(?i)(api[_-]?key|token|password|secret)\s*[:=]\s*['\"]?[^'\"\s]+"),
 ]
-# Values that make the second pattern's keyword=value match source code
-# (type annotations, slice reassignment) rather than a real secret literal.
+# Values that make the keyword=value pattern match source code (type
+# annotations) rather than a real secret literal.
 _NOT_A_SECRET_VALUE = {
     "str", "int", "float", "bool", "bytes", "list", "dict", "set", "tuple",
     "any", "none", "object", "optional", "callable",
 }
+# An unquoted right-hand side that is a Python name, attribute access, call or
+# subscript (``marker.group(0)``, ``event.session_id``, ``raw[:8]``) is code.
+_PYTHON_EXPRESSION = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?:\s*[(\[].*)?")
 
 
-def _is_plausible_secret(match: "re.Match[str]") -> bool:
-    """Filter keyword=value false positives from ordinary Python source.
+def _is_plausible_secret(match: "re.Match[str]", name: str = "") -> bool:
+    """Filter keyword=value false positives out of the keyword pattern.
 
-    The first pattern (an OpenAI-style key prefix) is structurally specific
-    enough to trust outright. The second pattern's bare keyword-then-
-    separator shape also matches a type-annotated parameter or a variable
-    reassigned from a slice of itself — neither is a secret literal. Reject
-    a match only when the captured value is a common type keyword or
-    restates the matched keyword itself; a real hardcoded credential does
-    neither.
+    Structural patterns (no capture group, e.g. the ``sk-`` key prefix) are
+    trusted outright. For the keyword pattern, a quoted literal assigned to a
+    secret-named key counts as a secret. In Python files an unquoted value that
+    is an ordinary expression, or that sits on a full-line comment, does not:
+    ``token = marker.group(0)`` and ``session_token = event.session_id`` are
+    code. An unquoted non-expression such as ``token=dummy-secret-value`` still
+    fails.
     """
     if match.lastindex is None:
         return True
     keyword = match.group(1)
-    value = match.group(0)[match.end(1) - match.start(0):].lstrip(" \t:=").strip("'\"")
-    value = re.split(r"[,);\s]", value, maxsplit=1)[0]
+    remainder = match.group(0)[match.end(1) - match.start(0):].lstrip(" \t:=")
+    quoted = remainder[:1] in {"'", '"'}
+    value = re.split(r"[,);\s]", remainder.strip("'\""), maxsplit=1)[0]
     if not value:
         return False
     if value.lower() in _NOT_A_SECRET_VALUE:
         return False
     if value.lower().startswith(keyword.lower()):
         return False
-    # Ordinary Python assignments such as ``token = marker.group(0)`` and
-    # ``token = context_var.set(...)`` are executable expressions, not
-    # embedded credential values. Keep the exception narrow: an unquoted
-    # identifier such as ``token=dummy-secret-value`` must still fail.
-    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\(.*", value):
+    if quoted or not name.lower().endswith(".py"):
+        return True
+    text = match.string
+    line_start = text.rfind("\n", 0, match.start()) + 1
+    if text[line_start:match.start()].lstrip().startswith("#"):
         return False
-    return True
+    return not _PYTHON_EXPRESSION.fullmatch(value)
+
+
+def find_secret_lines(name: str, text: str, patterns: "list[re.Pattern[str]]") -> list[int]:
+    """Return the 1-based line numbers of every plausible secret in ``text``."""
+    lines: set[int] = set()
+    for pattern in patterns:
+        for match in pattern.finditer(text):
+            if _is_plausible_secret(match, name):
+                lines.add(text.count("\n", 0, match.start()) + 1)
+    return sorted(lines)
 
 
 def normalize(path: str) -> str:
@@ -132,11 +146,9 @@ def inspect_package(path: Path) -> dict[str, object]:
         if text:
             if WINDOWS_USER_MARKER in text or POSIX_USER_MARKER in text:
                 errors.append(f"Personal absolute path found in: {name}")
-            for pattern in SECRET_PATTERNS:
-                match = pattern.search(text)
-                if match and _is_plausible_secret(match):
-                    errors.append(f"Secret-like string found in: {name}")
-                    break
+            secret_lines = find_secret_lines(name, text, SECRET_PATTERNS)
+            if secret_lines:
+                errors.append(f"Secret-like string found in: {name} (line {', '.join(map(str, secret_lines))})")
 
     manifest = ".codex-plugin/plugin.json"
     if manifest in names:
