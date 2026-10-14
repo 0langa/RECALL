@@ -146,6 +146,17 @@ def _validated(path: str | Path) -> dict[str, Any]:
     for record in records:
         if not isinstance(record, dict) or not required.issubset(record):
             raise ValueError("RECALL export contains an invalid record")
+        # JSONL restores use the category as a file name, so only canonical
+        # category names may pass (no path separators or "..").
+        category = record["category"]
+        try:
+            canonical = isinstance(category, str) and recall_config.normalize_category(category) == category
+        except ValueError:
+            canonical = False
+        if not canonical:
+            raise ValueError(f"RECALL export contains an invalid record category: {category!r}")
+        if isinstance(record["id"], bool) or not isinstance(record["id"], int) or record["id"] < 1:
+            raise ValueError(f"RECALL export contains an invalid record id: {record['id']!r}")
     return security.redact_value(payload)
 
 
