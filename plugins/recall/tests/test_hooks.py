@@ -11,12 +11,19 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import config as recall_config  # noqa: E402
+import run_tests  # noqa: E402
+
+# These hook tests write turn state for projects without a store into
+# per-user state. pytest gets a temp folder from conftest.py and
+# scripts/run_tests.py sets one; this covers plain `python -m unittest`.
+run_tests.isolate_user_state()
 
 
 SCRIPT_MODULES: dict[Path, object] = {}
@@ -151,6 +158,25 @@ def activate_recall(root: str, session_id: str = "", turn_id: str = "", prompt: 
 
 
 class HookTests(unittest.TestCase):
+    def test_suite_keeps_turn_state_out_of_the_real_per_user_folder(self) -> None:
+        # Hooks write turn state for a project without a store into per-user
+        # state. scripts/run_tests.py, pytest (through conftest.py) and plain
+        # unittest (through this module) must all point it at a temp folder.
+        with mock.patch.dict(os.environ):
+            os.environ.pop("RECALL_STATE_DIR", None)
+            real_folder = recall_config.user_state_dir()
+        self.assertNotEqual(recall_config.user_state_dir().resolve(), real_folder.resolve())
+
+    def test_state_isolation_replaces_a_blank_override(self) -> None:
+        # config.user_state_dir treats a blank RECALL_STATE_DIR as unset and
+        # falls back to the real folder, so the isolation must replace it.
+        with mock.patch.dict(os.environ, {"RECALL_STATE_DIR": " "}):
+            real_folder = recall_config.user_state_dir()
+            run_tests.isolate_user_state()
+            state = recall_config.user_state_dir()
+        self.assertNotEqual(state.resolve(), real_folder.resolve())
+        self.assertTrue(state.is_dir())
+
     def test_prompt_inspector_saves_remembered_preference(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0.1.0'\n", encoding="utf-8")
