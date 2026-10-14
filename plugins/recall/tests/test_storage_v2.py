@@ -456,5 +456,48 @@ class JsonlStoreConfinementTests(unittest.TestCase):
             self.assertEqual(sorted(record.id for record in storage.iter_records(link)), sorted(records))
 
 
+class JsonlUpdatePlacementTests(unittest.TestCase):
+    """An edit leaves the record exactly once, in jsonl/<category>.jsonl."""
+
+    @staticmethod
+    def _ids_by_file(project: Path) -> dict[str, list[int]]:
+        return {path.stem: [json.loads(line)["id"] for line in path.read_text(encoding="utf-8").splitlines()]
+                for path in storage.jsonl_files(project)}
+
+    def test_update_writes_the_record_once_into_its_category_file(self) -> None:
+        for stored_in, stored, new, expected in (
+            # Filed under another category: an edit that kept the category deleted the row.
+            ("decisions", "requirements", "requirements", {"decisions": [1], "requirements": [50]}),
+            # Moved into the file it already sat in: the edit wrote the row twice.
+            ("decisions", "requirements", "decisions", {"decisions": [1, 50]}),
+            # An ordinary move and an ordinary in-place edit.
+            ("requirements", "requirements", "decisions", {"decisions": [1, 50], "requirements": []}),
+            ("requirements", "requirements", "requirements", {"decisions": [1], "requirements": [50]}),
+        ):
+            with self.subTest(stored_in=stored_in, stored=stored, new=new), tempfile.TemporaryDirectory() as tmp:
+                project = _jsonl_project(Path(tmp) / "project")
+                memory_manager.add_record("decisions", "Legit decision stays put.", root=project)
+                _plant(project, f"{stored_in}.jsonl", id=50, category=stored)
+
+                storage.update_record(50, category=new, content="Edited.", metadata={"status": "stale"},
+                                      embedding=[], root=project)
+
+                self.assertEqual(self._ids_by_file(project), expected)
+                edited = storage.get_record(50, project)
+                self.assertEqual((edited.category, edited.content, edited.metadata), (new, "Edited.", {"status": "stale"}))
+
+    def test_update_keeps_one_of_the_copies_a_doubled_move_left(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = _jsonl_project(Path(tmp) / "project")
+            memory_manager.add_record("decisions", "Legit decision stays put.", root=project)
+            # Two lines for one record, as a move into the file a row already sat in wrote them.
+            for _ in range(2):
+                _plant(project, "decisions.jsonl", id=50, category="decisions")
+
+            storage.update_record(50, category="decisions", content="Edited.", metadata={}, embedding=[], root=project)
+
+            self.assertEqual(self._ids_by_file(project), {"decisions": [1, 50]})
+
+
 if __name__ == "__main__":
     unittest.main()
