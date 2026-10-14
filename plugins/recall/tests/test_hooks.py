@@ -495,6 +495,23 @@ class HookTests(unittest.TestCase):
             self.assertFalse((Path(tmp) / ".recall").exists())
             self.assertFalse((Path(tmp) / ".codex_memory").exists())
 
+    def test_prompt_activation_keeps_the_store_out_of_git(self) -> None:
+        # Hook activation must protect the store the same way the CLI and MCP
+        # initialize paths do, or `git add -A` commits project memory.
+        for prompt in ("@recall initialize this project", "@recall remember: the build uses CMake presets."):
+            with self.subTest(prompt=prompt), tempfile.TemporaryDirectory() as tmp:
+                (Path(tmp) / ".git").mkdir()
+                (Path(tmp) / ".gitignore").write_text("build/\n", encoding="utf-8")
+                run_hook(
+                    "prompt_inspector.py",
+                    {"cwd": tmp, "session_id": "s", "turn_id": "t", "hook_event_name": "UserPromptSubmit", "prompt": prompt},
+                )
+                self.assertTrue(recall_config.project_is_active(tmp))
+                lines = (Path(tmp) / ".gitignore").read_text(encoding="utf-8").splitlines()
+                self.assertEqual(lines[0], "build/")
+                self.assertIn(".recall/", lines)
+                self.assertIn(".codex_memory/", lines)
+
     def test_malformed_hook_json_is_noop(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             output = run_hook_raw("pre_compact.py", '{"cwd": "' + tmp.replace("\\", "\\\\"))

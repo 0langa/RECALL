@@ -34,6 +34,15 @@ CATEGORY_RE = re.compile(
 INITIALIZE_RE = re.compile(r"(?i)\binitialize\s+(?:this\s+)?project\b")
 
 
+def activate(root: str, activated_by: str) -> None:
+    """Activate like initialize-project does, including the .gitignore entries."""
+    recall_config.activate_project(root, activated_by=activated_by)
+    try:
+        recall_config.ensure_gitignore_entries(root)
+    except OSError:
+        pass  # A read-only or unusual .gitignore must not fail the user's prompt.
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root")
@@ -64,7 +73,7 @@ def main() -> None:
     initialize = bool(explicit_recall and INITIALIZE_RE.search(cue_text))
     if initialize and cwd:
         root = str(project_context.resolve_project_root(cwd) or Path(cwd).resolve())
-        cfg = recall_config.activate_project(root, activated_by="explicit_initialize")
+        activate(root, "explicit_initialize")
         observability.trace(root, "project_initialized", {"cwd": cwd, "root": root})
         print(json.dumps(additional_context("UserPromptSubmit", f"RECALL activated for project `{root}`.")))
         return
@@ -83,7 +92,7 @@ def main() -> None:
         return
 
     if explicit_recall and root is not None and not recall_config.project_is_active(root):
-        recall_config.activate_project(root, activated_by="explicit_recall")
+        activate(root, "explicit_recall")
 
     active = bool(root and recall_config.project_is_active(root))
     if not active:
