@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Kept JSONL rows with non-canonical categories readable. Edits of them now fail with an invalid-category error instead of reporting the record as missing.
+
 ## 1.6.1 - 2026-10-14
 
 Released as tag `v1.6.1`.
