@@ -305,6 +305,31 @@ class MemoryManagerTests(unittest.TestCase):
             second_report = memory_manager.repair(tmp)
             self.assertEqual(second_report["repair"]["migrated_embeddings"], 0)
 
+    def test_stale_embedding_migration_keeps_a_jsonl_row_filed_under_another_category(self) -> None:
+        """Retrieval runs the rebuild that rewrites rows with a stale vector.
+        A JSONL row stored outside jsonl/<category>.jsonl must move there,
+        not disappear."""
+        import index_store
+
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.ensure_config(tmp)
+            cfg = recall_config.load_config(tmp)
+            cfg["backend"] = "jsonl"
+            recall_config.save_config(cfg, tmp)
+            memory_manager.add_record("decisions", "Ledger migration keeps append-only history.", root=tmp)
+            jsonl = recall_config.memory_dir(tmp) / "jsonl"
+            with (jsonl / "decisions.jsonl").open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps({
+                    "id": 50, "category": "requirements", "timestamp": "2026-10-14T00:00:00+00:00",
+                    "content": "Exports keep the v1 payload shape.", "metadata": {}, "embedding": [0.0] * 64,
+                }) + "\n")
+
+            self.assertEqual(index_store.rebuild(tmp)["migrated_embeddings"], 1)
+            rows = {path.stem: [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+                    for path in jsonl.glob("*.jsonl")}
+            self.assertEqual([row["id"] for row in rows["decisions"]], [1])
+            self.assertEqual([(row["id"], len(row["embedding"])) for row in rows.get("requirements", [])], [(50, 256)])
+
     def test_structured_card_tags_beat_plain_keyword_note(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory_manager.add_record(

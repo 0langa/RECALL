@@ -697,6 +697,7 @@ def update_record(
     target_path = jsonl_path(category, root)
     payloads_by_path: dict[Path, list[dict[str, Any]]] = {}
     found = False
+    placed = False
     for path in jsonl_files(root):
         payloads: list[dict[str, Any]] = []
         with path.open(encoding="utf-8") as handle:
@@ -709,7 +710,11 @@ def update_record(
                     continue
                 if int(payload.get("id", -1)) == record_id:
                     found = True
-                    if path.stem == category:
+                    # The record ends up once, in <category>.jsonl: edited in
+                    # place if it already sits there, whatever category the
+                    # row names, and dropped from every other file and line.
+                    if path == target_path and not placed:
+                        placed = True
                         payload.update(
                             {
                                 "category": category,
@@ -724,7 +729,7 @@ def update_record(
         payloads_by_path[path] = payloads
     if not found:
         raise KeyError(f"RECALL memory #{record_id} was not found.")
-    if existing.category != category:
+    if not placed:
         payloads_by_path.setdefault(target_path, []).append(
             {
                 "id": existing.id,
