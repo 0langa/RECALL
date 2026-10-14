@@ -251,4 +251,7 @@ def cleanup_expired_if_due(root: str | Path | None) -> None:
         return
     import turn_buffer  # Deferred: turn_buffer imports this module.
 
-    turn_buffer.cleanup_expired(root)
+    try:
+        turn_buffer.cleanup_expired(root)
+    except OSError:
+        pass  # Best effort: a concurrent hook may change the tree; retry next interval.
