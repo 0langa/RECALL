@@ -314,6 +314,21 @@ def normalize_category(name: str) -> str:
     return normalized
 
 
+def is_canonical_category(name: object) -> bool:
+    """Return True only for a stored category name, which normalizes to itself.
+
+    JSONL stores name each file jsonl/<category>.jsonl. A canonical name only
+    has lowercase ASCII letters, digits and single inner underscores, so it
+    cannot carry a path separator, "..", a drive letter or a UNC prefix.
+    """
+    if not isinstance(name, str):
+        return False
+    try:
+        return normalize_category(name) == name
+    except ValueError:
+        return False
+
+
 def default_config() -> dict[str, Any]:
     return deepcopy(DEFAULT_CONFIG)
 

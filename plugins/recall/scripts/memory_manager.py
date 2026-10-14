@@ -567,6 +567,7 @@ def doctor(root: str | Path | None = None) -> dict[str, Any]:
     jsonl_report = storage.jsonl_diagnostics(root) if backend == "jsonl" else {
         "malformed_jsonl_rows": 0,
         "invalid_jsonl_rows": 0,
+        "unsafe_jsonl_files": 0,
     }
     sqlite_report = storage.sqlite_diagnostics(root) if backend == "sqlite" else {}
     warnings: list[str] = []
@@ -583,6 +584,10 @@ def doctor(root: str | Path | None = None) -> dict[str, Any]:
         warnings.append(f"Malformed JSONL row count: {jsonl_report['malformed_jsonl_rows']}.")
     if jsonl_report["invalid_jsonl_rows"]:
         warnings.append(f"Invalid JSONL row count: {jsonl_report['invalid_jsonl_rows']}.")
+    if jsonl_report["unsafe_jsonl_files"]:
+        warnings.append(
+            f"Ignored {jsonl_report['unsafe_jsonl_files']} JSONL file(s) that resolve outside the memory store."
+        )
     if recall_config.memory_dir(root).name == recall_config.LEGACY_MEMORY_DIR_NAME:
         warnings.append("Active store is the legacy .codex_memory directory; migrate to .recall with migrate-store.")
         repairs_available.append("migrate-store")
@@ -599,6 +604,7 @@ def doctor(root: str | Path | None = None) -> dict[str, Any]:
         "invalid_index_rows": index_report["invalid_index_rows"],
         "malformed_jsonl_rows": jsonl_report["malformed_jsonl_rows"],
         "invalid_jsonl_rows": jsonl_report["invalid_jsonl_rows"],
+        "unsafe_jsonl_files": jsonl_report["unsafe_jsonl_files"],
         "sqlite": sqlite_report,
         "warnings": warnings,
         "repairs_available": repairs_available,
