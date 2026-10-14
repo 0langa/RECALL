@@ -256,6 +256,45 @@ class MemoryManagerTests(unittest.TestCase):
                 self.assertEqual(memory_manager.get_record(good.id, tmp).content, good.content)
                 self.assertEqual(memory_manager.doctor(tmp, repair_text=True)["text_repaired"]["records"], 0)
 
+    def test_doctor_repair_never_costs_a_jsonl_row_it_cannot_read(self) -> None:
+        # A JSONL edit rewrites the files and keeps only rows it can parse, so
+        # a repair must wait while the store holds a malformed row. Rows with
+        # odd field types are reported by doctor and left alone, not a crash.
+        original = "Keep Grüße intact."
+        garbled = original.encode("utf-8").decode("cp1252")
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.ensure_config(tmp)
+            cfg = recall_config.load_config(tmp)
+            cfg["backend"] = "jsonl"
+            recall_config.save_config(cfg, tmp)
+            bad = memory_manager.add_record("requirements", garbled, root=tmp)
+            memory_manager.add_record("decisions", "Use SQLite by default.", root=tmp)
+            jsonl = Path(tmp) / ".recall" / "jsonl"
+            odd = {"category": "decisions", "timestamp": "2026-01-01T00:00:00+00:00", "content": garbled}
+            with (jsonl / "decisions.jsonl").open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps({**odd, "id": 50, "metadata": "not an object"}) + "\n")
+                handle.write(json.dumps({**odd, "id": 51, "metadata": 5}) + "\n")
+                handle.write('{"id": 52, "category": "decisions", "content": "half-written ro\n')
+            before = {path.name: path.read_bytes() for path in jsonl.glob("*.jsonl")}
+
+            report = memory_manager.doctor(tmp)
+            self.assertEqual(report["garbled_text"]["records"], 1)
+            self.assertNotIn("doctor --repair", report["repairs_available"])
+            repaired = memory_manager.doctor(tmp, repair_text=True)
+            self.assertEqual(repaired["text_repaired"]["records"], 0)
+            self.assertIn("malformed", repaired["text_repaired"]["skipped"])
+            self.assertEqual({path.name: path.read_bytes() for path in jsonl.glob("*.jsonl")}, before)
+
+            lines = (jsonl / "decisions.jsonl").read_text(encoding="utf-8").splitlines()
+            (jsonl / "decisions.jsonl").write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")
+            repaired = memory_manager.doctor(tmp, repair_text=True)
+            self.assertEqual(repaired["text_repaired"]["records"], 1)
+            self.assertNotIn("skipped", repaired["text_repaired"])
+            self.assertEqual(memory_manager.get_record(bad.id, tmp).content, original)
+            kept = (jsonl / "decisions.jsonl").read_text(encoding="utf-8")
+            self.assertIn('"not an object"', kept)
+            self.assertIn('"id": 51', kept)
+
     def test_sqlite_migration_preserves_old_schema_records(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             recall_config.ensure_config(tmp)

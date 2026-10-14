@@ -559,13 +559,25 @@ def rebuild_index(root: str | Path | None = None) -> dict[str, Any]:
 MAX_REPORTED_TEXT_REPAIRS = 50
 
 
+TEXT_REPAIR_BLOCKED_BY_MALFORMED_JSONL = (
+    "doctor --repair did not change anything: the JSONL store has {count} malformed row(s), and rewriting "
+    "a JSONL file drops rows it cannot parse. Fix or remove those rows, then run doctor --repair again."
+)
+
+
 @memory_action
 @storage.atomic_write
-def repair_garbled_text(root: str | Path | None = None) -> list[dict[str, Any]]:
+def repair_garbled_text(root: str | Path | None = None) -> dict[str, Any]:
     """Restore text garbled by the pre-1.6.1 Windows MCP bug, exact round-trips only.
 
     The facts are unchanged, so status, claims and verification stay as stored.
     """
+    if storage.backend(root) == "jsonl":
+        # A JSONL edit rewrites the files and keeps only the rows it can
+        # parse. A repair must never cost the user a row it cannot read.
+        malformed = storage.jsonl_diagnostics(root)["malformed_jsonl_rows"]
+        if malformed:
+            return {"records": 0, "changes": [], "skipped": TEXT_REPAIR_BLOCKED_BY_MALFORMED_JSONL.format(count=malformed)}
     repaired: list[dict[str, Any]] = []
     for record in list(storage.iter_records(root)):
         repair = encoding_repair.record_repair(record.content, record.metadata)
@@ -586,7 +598,7 @@ def repair_garbled_text(root: str | Path | None = None) -> list[dict[str, Any]]:
         repaired.append(encoding_repair.change_report(record.id, record.category, changes))
     if repaired:
         _maintain_index(root)
-    return repaired
+    return {"records": len(repaired), "changes": repaired[:MAX_REPORTED_TEXT_REPAIRS]}
 
 
 @memory_action
@@ -636,7 +648,12 @@ def doctor(root: str | Path | None = None, repair_text: bool = False) -> dict[st
         warnings.append("Active store is the legacy .codex_memory directory; migrate to .recall with migrate-store.")
         repairs_available.append("migrate-store")
     garbled = encoding_repair.find_garbled(storage.iter_records(root))
-    if garbled:
+    if garbled and jsonl_report["malformed_jsonl_rows"]:
+        warnings.append(
+            f"{len(garbled)} record(s) hold text garbled by the pre-1.6.1 Windows MCP bug "
+            "(UTF-8 read as cp1252); doctor --repair waits until the malformed JSONL rows are fixed or removed."
+        )
+    elif garbled:
         warnings.append(
             f"{len(garbled)} record(s) hold text garbled by the pre-1.6.1 Windows MCP bug "
             "(UTF-8 read as cp1252); review garbled_text, then run doctor --repair."
@@ -664,7 +681,7 @@ def doctor(root: str | Path | None = None, repair_text: bool = False) -> dict[st
         "garbled_text": {"records": len(garbled), "changes": garbled[:MAX_REPORTED_TEXT_REPAIRS]},
     }
     if text_repaired is not None:
-        report["text_repaired"] = {"records": len(text_repaired), "changes": text_repaired[:MAX_REPORTED_TEXT_REPAIRS]}
+        report["text_repaired"] = text_repaired
     return report
 
 

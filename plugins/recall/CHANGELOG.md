@@ -7,7 +7,7 @@
 - Made JSONL edits keep rows whose id is not an integer instead of failing for every record in the same file, and made reads skip an infinite id instead of failing.
 - Made `merge` look up every record before it writes one, so a missing record no longer leaves a partial merge on JSONL.
 - Stopped hooks from creating `.recall/runtime/` in projects where RECALL was never initialized. Their turn state for such a project now lives in a per-user folder: `%LOCALAPPDATA%\RECALL\state` on Windows, `$XDG_STATE_HOME/recall` (default `~/.local/state/recall`) elsewhere, or `RECALL_STATE_DIR` when set. The memory-free turn guard works there too. A project with a store keeps its turn state in `.recall/runtime/` as before.
-- Made `doctor` find text garbled by the pre-1.6.1 Windows MCP bug (UTF-8 read as cp1252) and list each change in `garbled_text`. `doctor --repair` restores that text. It changes only text that turns back into exactly the stored text, and it keeps each card's status and claims.
+- Made `doctor` find text garbled by the pre-1.6.1 Windows MCP bug (UTF-8 read as cp1252) and list each change in `garbled_text`. `doctor --repair` restores that text. It changes only text that turns back into exactly the stored text, and it keeps each card's status and claims. On a JSONL store with malformed rows it changes nothing, because rewriting a JSONL file drops the rows it cannot parse.
 
 Upgrade notes:
 

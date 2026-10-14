@@ -44,8 +44,10 @@ def _repair_value(value: Any, path: str, changes: list[Change]) -> Any:
     return value
 
 
-def record_repair(content: str, metadata: dict[str, Any] | None) -> tuple[str, dict[str, Any], list[Change]] | None:
+def record_repair(content: Any, metadata: Any) -> tuple[str, dict[str, Any], list[Change]] | None:
     """Return repaired content and metadata plus each change, or None."""
+    if not isinstance(content, str) or not isinstance(metadata, (dict, type(None))):
+        return None  # A malformed JSONL row; doctor reports it and a repair leaves it alone.
     changes: list[Change] = []
     fixed_content = _repair_value(content, "content", changes)
     fixed_metadata = _repair_value(dict(metadata or {}), "metadata", changes)
