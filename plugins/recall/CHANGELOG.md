@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.6.1 - 2026-10-14
+
+Released as tag `v1.6.1`.
+
+- Made Claude Code hooks start on Windows, where `python3` is often only the Microsoft Store alias: in Git Bash the hook command now uses `py -3` when the Python launcher exists.
+- Kept `python3` for hooks on macOS and Linux, and left the Codex `commandWindows` unchanged.
+- Made hook output for an explicit memory-free turn valid under the strict Codex hook output schema: hooks now return only `continue` and `systemMessage`.
+- Kept the machine-readable disabled result for CLI and MCP callers.
+- Made the MCP server and the `--stdin` CLI paths decode input as UTF-8, so non-ASCII memory text is no longer garbled on Windows.
+- Made an undecodable MCP line return a JSON-RPC parse error instead of stopping the MCP server.
+- Pruned expired turn state at most once a day, so hook time no longer grows without bound with the number of prompts in a project.
+- Retried Windows sharing denials on atomic file replace for up to 2 seconds, so concurrent hooks no longer fail with `PermissionError`.
+- Made `import-memory` and `restore-memory` reject categories that are not canonical store names and record ids that are not positive integers, which closes a path traversal.
+- Confined JSONL row categories to the memory store: the JSONL backend skips rows with non-canonical categories, refuses files that resolve outside the store, and `doctor` reports both.
+- Added secret detection for GitHub fine-grained tokens, Slack tokens, Google API keys, Stripe secret and restricted keys, npm tokens, and passwords in URLs.
+- Made `@recall initialize this project` and other prompt activations add `.recall/` and `.codex_memory/` to `.gitignore`, as the CLI and MCP initialize paths already did.
+- Made the `Stop` hook on a JSONL store say that automatic turn memory needs SQLite, instead of reporting a finalizer failure on every turn.
+- Made an index rebuild read the config once instead of once per card, and parsed a complete index once per query.
+- Added a test that runs the hook commands under `sh`, bash, and zsh on macOS and Linux.
+- Fixed the quality CI check that still required removed agent workflow docs.
+
+Upgrade notes:
+
+- Codex on macOS and Linux skips the five RECALL hooks until you trust them again in `/hooks`, because their command changed. Codex on Windows runs the unchanged `commandWindows` and needs no new trust.
+- Claude Code hooks now run on Windows. They run through Git Bash and need the Python launcher (`py`) or a working `python3`.
+- `@recall initialize this project` now adds `.recall/` to `.gitignore`. For a project that a prompt activated under 1.6.0, run it again and check that `.recall/` was not committed.
+- RECALL now refuses a `.recall/jsonl/` folder that links to a directory outside the store. To share a store, link the whole `.recall/` folder instead.
+- Non-ASCII text saved through MCP on Windows before 1.6.1 may be garbled. RECALL does not repair it, so correct those cards by hand.
+- With working hooks, Claude Code on Windows now writes turn state under `.recall/runtime/` in projects where RECALL was never initialized, as hooks already did on other platforms. Add `.recall/` to a global Git ignore file to keep it out of `git status`.
+
 ## 1.6.0 - 2026-09-14
 
 Released as tag `v1.6.0`.

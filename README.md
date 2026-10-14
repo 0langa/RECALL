@@ -13,7 +13,7 @@ One source tree provides seven skills, hooks, and one MCP server to all three ho
 You need Codex CLI, Python 3.11 or later, and Git.
 
 ```bash
-codex plugin marketplace add 0langa/RECALL --ref v1.6.0
+codex plugin marketplace add 0langa/RECALL --ref v1.6.1
 codex plugin add recall@recall-local
 ```
 
@@ -121,7 +121,7 @@ Do not edit a reviewed plan after review.
 Make a new plan if the source or store changed.
 
 Use canonical project-relative paths such as `README.md` in source metadata.
-RECALL 1.6.0 rejects equivalent forms such as `./README.md` and `.\README.md` during saved-plan validation.
+RECALL 1.6.1 still rejects equivalent forms such as `./README.md` and `.\README.md` during saved-plan validation.
 This is a fail-closed limit.
 It does not cause an unsafe apply.
 
@@ -159,6 +159,15 @@ python build_plugin.py
 
 The output is `dist/recall.zip`.
 Do not commit this ZIP.
+
+## v1.6.1 release
+
+RECALL 1.6.1 was released on 2026-10-14.
+It is a patch release for 1.6.0 with Windows, hook output, and security fixes.
+The [v1.6.1 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.1) holds `recall.zip` and its SHA-256.
+See the [changelog](plugins/recall/CHANGELOG.md) for the fixes and upgrade notes.
+After the upgrade, Codex on macOS and Linux skips the RECALL hooks until you trust them again in `/hooks`.
+The native host checks below were not repeated for 1.6.1.
 
 ## v1.6.0 release
 
