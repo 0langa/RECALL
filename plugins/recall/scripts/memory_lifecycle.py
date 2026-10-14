@@ -42,6 +42,10 @@ def get_required(record_id: int, root: str | Path | None = None) -> storage.Memo
     record = storage.get_record(int(record_id), root)
     if record is None:
         raise KeyError(f"RECALL memory #{record_id} was not found.")
+    if storage.backend(root) == "jsonl":
+        # Fail at lookup, not at the write: supersede and conflict
+        # resolution look up every record before they write any of them.
+        storage.jsonl_path(record.category, root)
     return record
 
 

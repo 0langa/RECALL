@@ -17,9 +17,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import config as recall_config  # noqa: E402
+import index_store  # noqa: E402
+import memory_hygiene  # noqa: E402
+import memory_lifecycle  # noqa: E402
 import memory_manager  # noqa: E402
+import retrieval  # noqa: E402
 import storage  # noqa: E402
-from services import recovery_service  # noqa: E402
+from services import lifecycle_service, recovery_service  # noqa: E402
 
 
 def _jsonl_project(project: Path) -> Path:
@@ -339,24 +343,36 @@ class StorageV2Tests(unittest.TestCase):
 class JsonlStoreConfinementTests(unittest.TestCase):
     """Rows and files in .recall/jsonl are untrusted: a cloned repository can commit them."""
 
-    def test_planted_row_category_cannot_reach_a_file_outside_the_store(self) -> None:
+    def test_planted_row_stays_readable_but_cannot_name_a_file_outside_the_store(self) -> None:
         # Review reproduction: one lifecycle edit of a planted row created or
-        # rewrote <category>.jsonl three levels above jsonl/.
-        for label in ("posix_relative", "windows_relative", "absolute"):
+        # rewrote <category>.jsonl three levels above jsonl/. Reads keep the
+        # row; every edit that would turn its category into a path fails closed.
+        for label in ("posix_relative", "windows_relative", "absolute", "windows_drive", "no_letters"):
             with self.subTest(label), tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp).resolve()
                 project = _jsonl_project(base / "a" / "project")
                 legit = memory_manager.add_record("decisions", "Legit decision survives.", root=project)
                 victim = base / "a" / "outside.jsonl"
                 victim.write_text("precious line\n", encoding="utf-8")
+                target = victim.with_suffix("")
                 category = {
                     "posix_relative": "../../../outside",
                     "windows_relative": "..\\..\\..\\outside",
-                    "absolute": str(victim.with_suffix("")),
+                    # Rooted without a drive, so Windows keeps the store's drive.
+                    "absolute": "/" + target.relative_to(target.anchor).as_posix(),
+                    # Only Windows reads this as a path; elsewhere it is an odd file name.
+                    "windows_drive": "\\".join([target.drive or "C:", *target.parts[1:]]),
+                    # normalize_category() itself raises for a name without a letter or digit.
+                    "no_letters": "..",
                 }[label]
+                # The planted vector is stale, so an index rebuild wants to rewrite the row.
                 _plant(project, "decisions.jsonl", id=99, category=category)
+                store = {path.name: path.read_bytes() for path in storage.jsonl_dir(project).iterdir()}
 
-                outcomes = {}
+                planted = storage.get_record(99, project)
+                self.assertIsNotNone(planted)
+                self.assertEqual(planted.category, category)
+                self.assertEqual(sorted(record.id for record in storage.iter_records(project)), [legit.id, 99])
                 for sink, attempt in (
                     ("update_record_metadata", partial(storage.update_record_metadata, 99, {"status": "stale"}, project)),
                     ("delete_record", partial(storage.delete_record, 99, project)),
@@ -364,26 +380,58 @@ class JsonlStoreConfinementTests(unittest.TestCase):
                     ("update_record", partial(storage.update_record, legit.id, category=category, content=legit.content,
                                               metadata=legit.metadata, embedding=[], root=project)),
                 ):
-                    try:
+                    with self.subTest(label, sink=sink), self.assertRaisesRegex(ValueError, "invalid category"):
                         attempt()
-                        outcomes[sink] = "wrote"
-                    except (KeyError, ValueError) as exc:
-                        outcomes[sink] = f"{type(exc).__name__}: {exc}"
+
+                # Retrieval rebuilds the index and scores every row; hygiene
+                # fingerprints every row. Neither fails on the planted row.
+                hits = retrieval.query("Legit decision survives", root=project)["results"]
+                self.assertIn(legit.id, [hit["id"] for hit in hits])
+                self.assertEqual(sorted(index_store.load_index(project)), [legit.id, 99])
+                memory_hygiene.hygiene_scan(project)
+                self.assertEqual({path.name: path.read_bytes() for path in storage.jsonl_dir(project).iterdir()}, store)
+                report = memory_manager.doctor(project)
+                self.assertEqual(report["invalid_jsonl_rows"], 1)
+                self.assertIn("Invalid JSONL row count: 1.", report["warnings"])
+
+                # The canonical row in the same file still edits and deletes; the planted row rides along.
+                storage.update_record_metadata(legit.id, {"status": "stale"}, project)
+                self.assertEqual(storage.get_record(legit.id, project).metadata, {"status": "stale"})
+                storage.delete_record(legit.id, project)
+                self.assertEqual([(record.id, record.category) for record in storage.iter_records(project)],
+                                 [(99, category)])
 
                 self.assertEqual(victim.read_text(encoding="utf-8"), "precious line\n")
                 self.assertEqual([path for path in base.rglob("*") if path.is_file() and project not in path.parents],
                                  [victim])
-                # The planted row never becomes a record, and the sinks refuse the name itself.
-                self.assertTrue(outcomes["update_record_metadata"].startswith("KeyError"), outcomes)
-                self.assertTrue(outcomes["delete_record"].startswith("KeyError"), outcomes)
-                self.assertRegex(outcomes["add_record"], r"^ValueError: .*invalid category")
-                self.assertRegex(outcomes["update_record"], r"^ValueError: .*invalid category")
-                self.assertIsNone(storage.get_record(99, project))
-                self.assertEqual([record.content for record in storage.iter_records(project)],
-                                 ["Legit decision survives."])
-                report = memory_manager.doctor(project)
-                self.assertEqual(report["invalid_jsonl_rows"], 1)
-                self.assertIn("Invalid JSONL row count: 1.", report["warnings"])
+
+    def test_edits_naming_a_planted_row_write_nothing_until_it_gets_a_store_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = _jsonl_project(Path(tmp) / "project")
+            legit = memory_manager.add_record("decisions", "Legit decision survives.", root=project)
+            _plant(project, "decisions.jsonl", id=99, category="../../../outside")
+            config_file = recall_config.config_path(project)
+            before = {path: path.read_bytes() for path in (config_file, *storage.jsonl_dir(project).iterdir())}
+
+            # Supersede and conflict resolution look up both records before they
+            # write either, so the legit record is never left superseded alone.
+            for label, attempt in (
+                ("supersede legit with planted", partial(memory_lifecycle.supersede, legit.id, 99, project)),
+                ("supersede planted with legit", partial(memory_lifecycle.supersede, 99, legit.id, project)),
+                ("planted wins conflict", partial(lifecycle_service.resolve_conflict, 99, [legit.id], project)),
+                ("legit wins conflict", partial(lifecycle_service.resolve_conflict, legit.id, [99], project)),
+                ("edit keeps the category", partial(memory_manager.edit_record, 99, project, content="Edited.")),
+            ):
+                with self.subTest(label), self.assertRaisesRegex(ValueError, "invalid category"):
+                    attempt()
+            self.assertEqual({path: path.read_bytes() for path in before}, before)
+            self.assertEqual(sorted(storage.jsonl_dir(project).iterdir()), sorted(set(before) - {config_file}))
+
+            # A store name is the way out: then the row edits like any other.
+            memory_manager.edit_record(99, project, category="requirements")
+            self.assertEqual(storage.get_record(99, project).category, "requirements")
+            storage.delete_record(99, project)
+            self.assertEqual([record.id for record in storage.iter_records(project)], [legit.id])
 
     def test_only_store_names_become_jsonl_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

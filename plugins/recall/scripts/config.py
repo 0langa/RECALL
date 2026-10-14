@@ -573,7 +573,12 @@ def add_category(
 
 
 def category_weight(config: dict[str, Any], category: str) -> float:
-    normalized = normalize_category(category)
+    try:
+        normalized = normalize_category(category)
+    except ValueError:
+        # A stored row can carry a category without a letter or digit; scoring
+        # it must not fail the whole retrieval.
+        return 1.0
     details = config.get("categories", {}).get(normalized, {})
     return float(details.get("weight", 1.0))
 
