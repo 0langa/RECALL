@@ -48,6 +48,13 @@ class InspectPackageSecretTests(unittest.TestCase):
         self.assertEqual(len(errors), 1, errors)
         self.assertIn("scripts/memory_manager.py (line 3)", errors[0])
 
+    def test_the_shipped_scripts_pass_including_the_inspector_itself(self) -> None:
+        module = load_inspect_package()
+        for script in sorted((ROOT / "scripts").glob("*.py")):
+            with self.subTest(script=script.name):
+                text = script.read_text(encoding="utf-8")
+                self.assertEqual(module.find_secret_lines(f"scripts/{script.name}", text, module.SECRET_PATTERNS), [])
+
     def test_unquoted_non_expressions_and_quoted_literals_fail(self) -> None:
         for name, text in {
             "scripts/a.py": "token=dummy-secret-value\n",

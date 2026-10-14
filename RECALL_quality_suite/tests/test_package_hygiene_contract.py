@@ -80,6 +80,13 @@ class PackageHygieneContractTests(unittest.TestCase):
         self.assertEqual(len(failures), 1, failures)
         self.assertIn(f"(line {ORDINARY_PYTHON.count(chr(10)) + 1})", failures[0])
 
+    def test_the_plugin_scripts_pass_including_the_release_inspector(self) -> None:
+        module = load_package_hygiene_module()
+        for script in sorted(INSPECT_PACKAGE.parent.glob("*.py")):
+            with self.subTest(script=script.name):
+                text = script.read_text(encoding="utf-8")
+                self.assertEqual(module.find_secret_lines(f"scripts/{script.name}", text, module.SECRET_PATTERNS), [])
+
     def test_secret_filter_matches_the_plugin_release_inspector(self) -> None:
         suite = load_package_hygiene_module()
         plugin = load_module("inspect_package", INSPECT_PACKAGE)

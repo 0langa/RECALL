@@ -32,17 +32,16 @@ def _is_plausible_secret(match: "re.Match[str]", name: str = "") -> bool:
     Structural patterns (no capture group, e.g. the ``sk-`` key prefix) are
     trusted outright. For the keyword pattern, a quoted literal assigned to a
     secret-named key counts as a secret. In Python files an unquoted value that
-    is an ordinary expression, or that sits on a full-line comment, does not:
-    ``token = marker.group(0)`` and ``session_token = event.session_id`` are
-    code. An unquoted non-expression such as ``token=dummy-secret-value`` still
-    fails.
+    is an ordinary expression (a name, attribute access, call or subscript), or
+    that sits on a full-line comment, is code and does not count. An unquoted
+    value that is not an expression, such as a dash-joined word, still fails.
     """
     if match.lastindex is None:
         return True
     keyword = match.group(1)
     remainder = match.group(0)[match.end(1) - match.start(0):].lstrip(" \t:=")
     quoted = remainder[:1] in {"'", '"'}
-    value = re.split(r"[,);\s]", remainder.strip("'\""), maxsplit=1)[0]
+    value = re.split(r"[,);\s]", remainder.strip("'\""), maxsplit=1)[0].strip("`")
     if not value:
         return False
     if value.lower() in _NOT_A_SECRET_VALUE:
