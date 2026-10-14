@@ -58,6 +58,33 @@ class MemoryManagerTests(unittest.TestCase):
             self.assertEqual(report["malformed_jsonl_rows"], 1)
             self.assertTrue(any("Malformed JSONL" in warning for warning in report["warnings"]))
 
+    def test_jsonl_edits_keep_rows_without_an_integer_id(self) -> None:
+        # Reads skip these rows. An edit of another record in the same file
+        # must neither fail on them nor drop them.
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.ensure_config(tmp)
+            cfg = recall_config.load_config(tmp)
+            cfg["backend"] = "jsonl"
+            recall_config.save_config(cfg, tmp)
+            kept = memory_manager.add_record("commands", "Run the unit suite before a release.", root=tmp)
+            edited = memory_manager.add_record("commands", "Run ruff before a release.", root=tmp)
+            removed = memory_manager.add_record("commands", "Run mypy before a release.", root=tmp)
+            row = {"category": "commands", "timestamp": "2026-10-14T00:00:00+00:00", "content": "x", "metadata": {}}
+            malformed = [{**row, "id": "abc"}, {**row, "id": float("inf")}, row, ["not", "an", "object"], 7]
+            path = recall_config.memory_dir(tmp) / "jsonl" / "commands.jsonl"
+            with path.open("a", encoding="utf-8") as handle:
+                handle.writelines(json.dumps(value) + "\n" for value in malformed)
+
+            memory_manager.update_record_metadata(kept.id, {"status": "stale"}, tmp)
+            memory_manager.edit_record(edited.id, tmp, content="Run ruff and mypy before a release.")
+            memory_manager.delete_record(removed.id, tmp)
+
+            self.assertEqual(memory_manager.get_record(kept.id, tmp).metadata, {"status": "stale"})
+            self.assertEqual(memory_manager.get_record(edited.id, tmp).content, "Run ruff and mypy before a release.")
+            self.assertIsNone(memory_manager.get_record(removed.id, tmp))
+            rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(rows[2:], malformed)
+
     def test_unknown_category_is_created(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             record = memory_manager.add_record("API Contracts", "Do not break the v1 payload shape.", root=tmp)

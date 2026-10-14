@@ -377,6 +377,23 @@ class MemoryLifecycleTests(unittest.TestCase):
             self.assertEqual(fetched_secondary.metadata["status"], "superseded")
             self.assertEqual(fetched_secondary.metadata["superseded_by"], primary.id)
 
+    def test_merge_with_a_missing_secondary_writes_nothing(self) -> None:
+        # JSONL has no multi-file rollback, so every lookup must come first.
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.ensure_config(tmp)
+            cfg = recall_config.load_config(tmp)
+            cfg["backend"] = "jsonl"
+            recall_config.save_config(cfg, tmp)
+            primary = memory_manager.add_record("requirements", "Primary memory remains.", root=tmp)
+            secondary = memory_manager.add_record("requirements", "Secondary memory is folded in.", root=tmp)
+            path = recall_config.memory_dir(tmp) / "jsonl" / "requirements.jsonl"
+            before = path.read_bytes()
+
+            with self.assertRaisesRegex(KeyError, "#12345"):
+                memory_manager.merge_records(primary.id, [secondary.id, 12345], tmp)
+
+            self.assertEqual(path.read_bytes(), before)
+
 
 if __name__ == "__main__":
     unittest.main()

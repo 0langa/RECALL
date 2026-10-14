@@ -202,6 +202,8 @@ def merge(
 ) -> dict[str, Any]:
     primary = get_required(primary_id, root)
     secondary_ints = [record_id for record_id in normalize_ids(list(secondary_ids)) if record_id != primary.id]
+    # Look up every record before writing any: JSONL has no multi-file rollback.
+    secondaries = [get_required(secondary_id, root) for secondary_id in secondary_ints]
     primary_metadata = dict(primary.metadata or {})
     primary_metadata["merged_from"] = add_ids(primary_metadata.get("merged_from"), secondary_ints)
     primary_metadata["related_to"] = add_ids(primary_metadata.get("related_to"), secondary_ints)
@@ -209,8 +211,7 @@ def merge(
     primary_metadata["updated_at"] = utc_now()
     updated_primary = storage.update_record_metadata(primary.id, primary_metadata, root)
     updated_secondaries = []
-    for secondary_id in secondary_ints:
-        secondary = get_required(secondary_id, root)
+    for secondary in secondaries:
         metadata = dict(secondary.metadata or {})
         metadata.update(
             {
