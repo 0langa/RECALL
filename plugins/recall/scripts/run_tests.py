@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import concurrent.futures
 from dataclasses import dataclass
 import importlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -211,12 +213,26 @@ def print_text_report(results: list[TestResult], elapsed: float, workers: int, *
         print(result.stderr.rstrip())
 
 
+def isolate_user_state() -> None:
+    """Point RECALL_STATE_DIR at a fresh temp folder unless one is set.
+
+    Hooks write turn state for a project without a store into a per-user
+    folder (config.user_state_dir), and a test run must never use the
+    developer's real one. main(), tests/conftest.py (pytest) and
+    tests/test_hooks.py (plain unittest) call this before any test starts, so
+    hook subprocesses inherit the variable. A blank value counts as unset, as
+    in config.user_state_dir. The folder is removed when the process exits.
+    """
+    if os.environ.get("RECALL_STATE_DIR", "").strip():
+        return
+    state = tempfile.mkdtemp(prefix="recall-test-state-")
+    os.environ["RECALL_STATE_DIR"] = state
+    atexit.register(shutil.rmtree, state, ignore_errors=True)
+
+
 def main() -> None:
-    # Hooks keep turn state for a project without a store in per-user state.
-    # Keep test projects out of the developer's real state folder.
-    with tempfile.TemporaryDirectory(prefix="recall-test-state-", ignore_cleanup_errors=True) as state:
-        os.environ.setdefault("RECALL_STATE_DIR", state)
-        run_suite()
+    isolate_user_state()
+    run_suite()
 
 
 def run_suite() -> None:

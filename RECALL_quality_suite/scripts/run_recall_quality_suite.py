@@ -5,8 +5,10 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -118,6 +120,12 @@ def main() -> None:
 
     env = os.environ.copy()
     env["RECALL_PLUGIN_ROOT"] = str(plugin_root)
+    # Hooks write turn state for a project without a store into a per-user
+    # folder. Every gate gets a temp one instead of the developer's real one.
+    state_dir = None
+    if not env.get("RECALL_STATE_DIR", "").strip():
+        state_dir = tempfile.mkdtemp(prefix="recall-quality-state-")
+        env["RECALL_STATE_DIR"] = state_dir
 
     gate_specs: list[dict[str, Any]] = []
 
@@ -174,7 +182,11 @@ def main() -> None:
         "optional": not args.require_package,
     })
 
-    gates = run_gate_specs(gate_specs, jobs=args.jobs, serial=args.serial)
+    try:
+        gates = run_gate_specs(gate_specs, jobs=args.jobs, serial=args.serial)
+    finally:
+        if state_dir:
+            shutil.rmtree(state_dir, ignore_errors=True)
     for gate in gates:
         if gate["name"] != "package_hygiene":
             continue
