@@ -13,6 +13,58 @@ SECRET_PATTERNS = [
     re.compile(r"(?i)(api[_-]?key|token|password|secret)\s*[:=]\s*['\"]?[^'\"\s]+"),
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
 ]
+# Keep this filter identical to plugins/recall/scripts/inspect_package.py;
+# test_package_hygiene_contract.py checks that the two agree.
+# Values that make the keyword=value pattern match source code (type
+# annotations) rather than a real secret literal.
+_NOT_A_SECRET_VALUE = {
+    "str", "int", "float", "bool", "bytes", "list", "dict", "set", "tuple",
+    "any", "none", "object", "optional", "callable",
+}
+# An unquoted right-hand side that is a Python name, attribute access, call or
+# subscript (``marker.group(0)``, ``event.session_id``, ``raw[:8]``) is code.
+_PYTHON_EXPRESSION = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?:\s*[(\[].*)?")
+
+
+def _is_plausible_secret(match: "re.Match[str]", name: str = "") -> bool:
+    """Filter keyword=value false positives out of the keyword pattern.
+
+    Structural patterns (no capture group, e.g. the ``sk-`` key prefix) are
+    trusted outright. For the keyword pattern, a quoted literal assigned to a
+    secret-named key counts as a secret. In Python files an unquoted value that
+    is an ordinary expression (a name, attribute access, call or subscript), or
+    that sits on a full-line comment, is code and does not count. An unquoted
+    value that is not an expression, such as a dash-joined word, still fails.
+    """
+    if match.lastindex is None:
+        return True
+    keyword = match.group(1)
+    remainder = match.group(0)[match.end(1) - match.start(0):].lstrip(" \t:=")
+    quoted = remainder[:1] in {"'", '"'}
+    value = re.split(r"[,);\s]", remainder.strip("'\""), maxsplit=1)[0].strip("`")
+    if not value:
+        return False
+    if value.lower() in _NOT_A_SECRET_VALUE:
+        return False
+    if value.lower().startswith(keyword.lower()):
+        return False
+    if quoted or not name.lower().endswith(".py"):
+        return True
+    text = match.string
+    line_start = text.rfind("\n", 0, match.start()) + 1
+    if text[line_start:match.start()].lstrip().startswith("#"):
+        return False
+    return not _PYTHON_EXPRESSION.fullmatch(value)
+
+
+def find_secret_lines(name: str, text: str, patterns: "list[re.Pattern[str]]") -> list[int]:
+    """Return the 1-based line numbers of every plausible secret in ``text``."""
+    lines: set[int] = set()
+    for pattern in patterns:
+        for match in pattern.finditer(text):
+            if _is_plausible_secret(match, name):
+                lines.add(text.count("\n", 0, match.start()) + 1)
+    return sorted(lines)
 
 FORBIDDEN_PATH_PARTS = [
     ".recall",
@@ -73,10 +125,11 @@ def inspect_zip(zip_path: Path) -> dict[str, Any]:
                 text = archive.read(info).decode("utf-8", errors="ignore")
             except Exception:
                 continue
-            for pattern in SECRET_PATTERNS:
-                if pattern.search(text):
-                    failures.append(f"secret-like string found in packaged text file: {name}")
-                    break
+            secret_lines = find_secret_lines(name, text, SECRET_PATTERNS)
+            if secret_lines:
+                failures.append(
+                    f"secret-like string found in packaged text file: {name} (line {', '.join(map(str, secret_lines))})"
+                )
 
     return {
         "status": "fail" if failures else "pass",
