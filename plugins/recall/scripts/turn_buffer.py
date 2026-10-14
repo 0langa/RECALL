@@ -411,9 +411,16 @@ def cleanup_expired(root: str | Path | None, retention_days: int = 7) -> None:
         folder = runtime / folder_name
         if not folder.exists():
             continue
+        # Concurrent hooks may remove, hold, or refill entries; skip those.
         for path in folder.rglob("*"):
-            if path.is_file() and path.stat().st_mtime < cutoff:
-                path.unlink(missing_ok=True)
+            try:
+                if path.is_file() and path.stat().st_mtime < cutoff:
+                    path.unlink(missing_ok=True)
+            except OSError:
+                continue
         for directory in sorted((path for path in folder.rglob("*") if path.is_dir()), reverse=True):
-            if not any(directory.iterdir()):
-                directory.rmdir()
+            try:
+                if not any(directory.iterdir()):
+                    directory.rmdir()
+            except OSError:
+                continue
