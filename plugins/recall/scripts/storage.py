@@ -219,6 +219,18 @@ def _jsonl_replacement(path: Path) -> Iterator[Any]:
         temporary.unlink(missing_ok=True)
 
 
+def _row_id(payload: Any) -> int | None:
+    """Return a JSONL row's record id, converted as the reader does, or None.
+
+    Rows in jsonl/ are untrusted. An edit passes a row without a usable id
+    through unchanged instead of failing on it.
+    """
+    try:
+        return int(payload["id"])
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+
+
 def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
     row = connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -633,7 +645,7 @@ def update_record_metadata(record_id: int, metadata: dict[str, Any], root: str |
                     payload = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if int(payload.get("id", -1)) == record_id:
+                if _row_id(payload) == record_id:
                     payload["metadata"] = metadata
                 rewritten.append(payload)
     with _jsonl_replacement(path) as handle:
@@ -707,7 +719,7 @@ def update_record(
                     payload = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if int(payload.get("id", -1)) == record_id:
+                if _row_id(payload) == record_id:
                     found = True
                     if path.stem == category:
                         payload.update(
@@ -766,7 +778,7 @@ def delete_record(record_id: int, root: str | Path | None = None) -> MemoryRecor
                     payload = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if int(payload.get("id", -1)) != record_id:
+                if _row_id(payload) != record_id:
                     payloads.append(payload)
         with _jsonl_replacement(path) as handle:
             for payload in payloads:
@@ -800,7 +812,7 @@ def _iter_jsonl_records_unlocked(root: str | Path | None = None) -> Iterable[Mem
                         payload.get("metadata", {}),
                         embedding=payload.get("embedding"),
                     )
-                except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                except (json.JSONDecodeError, KeyError, TypeError, ValueError, OverflowError):
                     continue
 
 
