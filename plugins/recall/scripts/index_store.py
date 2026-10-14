@@ -51,6 +51,11 @@ def _migrate_stale_embeddings(records: list[storage.MemoryRecord], root: str | P
         if len(record.embedding or []) == DIMENSIONS:
             continue
         record.embedding = embed(record.content)
+        # Retrieval runs this rebuild. A row whose category is not a store
+        # name is indexed with the fresh vector, not rewritten: that edit
+        # fails closed and would take retrieval down with it.
+        if not recall_config.is_canonical_category(record.category):
+            continue
         storage.update_record(
             record.id,
             category=record.category,

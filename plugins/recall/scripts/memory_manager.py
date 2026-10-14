@@ -193,6 +193,10 @@ def edit_record(
         if category is not None
         else record.category
     )
+    if storage.backend(root) == "jsonl":
+        # A row that keeps a category that is not a store name fails before
+        # the edit adds that category to the config or writes anything.
+        storage.jsonl_path(normalized_category, root)
     if normalized_category not in recall_config.load_config(root)["categories"]:
         recall_config.add_category(
             normalized_category,

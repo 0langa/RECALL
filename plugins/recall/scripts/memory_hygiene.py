@@ -116,8 +116,12 @@ def _structured_claims_compatible(
 
 def content_fingerprint(category: str, content: str, metadata: dict[str, Any] | None = None) -> str:
     metadata = metadata or {}
+    try:
+        category = recall_config.normalize_category(category)
+    except ValueError:
+        pass  # A stored row can carry a category without a letter or digit; fingerprint it as stored.
     payload = {
-        "category": recall_config.normalize_category(category),
+        "category": category,
         "content": " ".join(content.lower().split()),
         "source": normalized_metadata_value(metadata.get("source")),
         "tool_name": normalized_metadata_value(metadata.get("tool_name")),

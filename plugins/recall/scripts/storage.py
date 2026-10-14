@@ -788,9 +788,11 @@ def _iter_jsonl_records_unlocked(root: str | Path | None = None) -> Iterable[Mem
                     continue
                 try:
                     payload = json.loads(line)
-                    # Edits rewrite jsonl/<category>.jsonl, so a row whose
-                    # category is not a store name never becomes a record.
-                    if not recall_config.is_canonical_category(payload["category"]):
+                    # Reads keep a row whose category is not a store name, so
+                    # an existing store never loses rows: only an edit turns
+                    # the category into a path, and jsonl_path() refuses it.
+                    # A category that is not a string is malformed.
+                    if not isinstance(payload["category"], str):
                         continue
                     yield MemoryRecord(
                         int(payload["id"]),
