@@ -12,7 +12,7 @@ The server is provider-neutral.
 ## Install
 
 ```bash
-codex plugin marketplace add 0langa/RECALL --ref v1.6.1
+codex plugin marketplace add 0langa/RECALL --ref v1.6.2
 codex plugin add recall@recall-local
 ```
 
@@ -79,7 +79,7 @@ python ./scripts/recall_skill.py --root <project-root> hygiene-apply --safe --pl
 
 Apply does not make a new plan.
 Use canonical project-relative source paths such as `README.md`.
-Equivalent `./README.md` and `.\README.md` paths still fail closed in v1.6.1.
+Equivalent `./README.md` and `.\README.md` paths still fail closed in v1.6.2.
 Create a new plan with canonical paths.
 Do not change the reviewed plan.
 
@@ -122,4 +122,4 @@ Codex did not expose an observed model name in standard output.
 This is not proof of the exact v1.6.0 ZIP.
 For the v1.6.0 release, Codex CLI `0.154.0` installed and listed the exact package.
 Its plugin MCP tools did not enter the native model registry, so native Codex MCP behavior proof is pending.
-These checks were not repeated for v1.6.1.
+These checks were not repeated for v1.6.1 or v1.6.2.

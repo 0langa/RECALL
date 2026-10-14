@@ -1,18 +1,23 @@
 # Changelog
 
-## Unreleased
+## 1.6.2 - 2026-10-15
 
+Released as tag `v1.6.2`.
+
+- Stopped hooks from creating `.recall/` and `.recall/runtime/` in projects where RECALL was never initialized. Their turn state for such a project now lives in a per-user folder: `%LOCALAPPDATA%\RECALL\state` on Windows, `$XDG_STATE_HOME/recall` (default `~/.local/state/recall`) elsewhere, or `RECALL_STATE_DIR` when set. The memory-free turn guard works there too. A project with a store keeps its turn state in `.recall/runtime/` as before.
+- Made `doctor` find text garbled by the pre-1.6.1 Windows MCP bug (UTF-8 read as cp1252) and list each change in `garbled_text`. `doctor --repair` restores that text. It changes only text that turns back into exactly the stored text, and it keeps each card's status and claims. On a JSONL store with malformed rows it changes nothing, because rewriting a JSONL file drops the rows it cannot parse.
 - Kept JSONL rows with non-canonical categories readable. Edits of them now fail with an invalid-category error instead of reporting the record as missing.
 - Made a JSONL edit write the record exactly once, to `jsonl/<category>.jsonl`: an index rebuild no longer deletes a row stored in another category's file, and moving a row into the file it already sits in no longer writes it twice.
 - Made JSONL edits keep rows whose id is not an integer instead of failing for every record in the same file, and made reads skip an infinite id instead of failing.
 - Made `merge` look up every record before it writes one, so a missing record no longer leaves a partial merge on JSONL.
-- Stopped hooks from creating `.recall/runtime/` in projects where RECALL was never initialized. Their turn state for such a project now lives in a per-user folder: `%LOCALAPPDATA%\RECALL\state` on Windows, `$XDG_STATE_HOME/recall` (default `~/.local/state/recall`) elsewhere, or `RECALL_STATE_DIR` when set. The memory-free turn guard works there too. A project with a store keeps its turn state in `.recall/runtime/` as before.
-- Made `doctor` find text garbled by the pre-1.6.1 Windows MCP bug (UTF-8 read as cp1252) and list each change in `garbled_text`. `doctor --repair` restores that text. It changes only text that turns back into exactly the stored text, and it keeps each card's status and claims. On a JSONL store with malformed rows it changes nothing, because rewriting a JSONL file drops the rows it cannot parse.
+- Made the package secret checks in `scripts/inspect_package.py` and the quality suite look at every match in a file, not only the first, and stopped them from flagging ordinary Python assignments and annotations. Findings now name the line.
 - Made plain `pytest`, `python -m unittest discover` and the quality suite point `RECALL_STATE_DIR` at a temp folder, as `scripts/run_tests.py` already did, so test runs no longer write hook turn state into the real per-user folder.
 
 Upgrade notes:
 
+- Hook turn state for a project where RECALL was never initialized now lives in `%LOCALAPPDATA%\RECALL\state` on Windows and in `$XDG_STATE_HOME/recall` (default `~/.local/state/recall`) elsewhere. Set `RECALL_STATE_DIR` to use another folder. Entries expire after 7 days. See `docs/PRIVACY.md`.
 - A `.recall/` folder that holds only `runtime/` was left by 1.6.1 hooks in a project that was never initialized. You can delete it.
+- To find text garbled by the pre-1.6.1 Windows MCP bug, run `python ./scripts/recall_skill.py --root <project-root> doctor` and review `garbled_text`. This writes nothing. Then run `python ./scripts/recall_skill.py --root <project-root> doctor --repair` to restore that text. On a JSONL store, first fix or remove the rows that `doctor` reports as malformed; until then the repair changes nothing. This replaces the 1.6.1 advice to correct such cards by hand.
 
 ## 1.6.1 - 2026-10-14
 

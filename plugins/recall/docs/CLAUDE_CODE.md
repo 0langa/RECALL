@@ -49,7 +49,7 @@ When `claim_key` is present, the legacy route returns a wrapper.
 Use `response.plan` for apply.
 
 Use canonical project-relative source paths such as `README.md`.
-Equivalent `./README.md` and `.\README.md` paths still fail closed in v1.6.1.
+Equivalent `./README.md` and `.\README.md` paths still fail closed in v1.6.2.
 Create a new plan with canonical paths.
 Do not edit the reviewed plan.
 
@@ -81,4 +81,4 @@ The observed model was `claude-sonnet-5`.
 This only proves host readiness.
 It does not prove the exact v1.6.0 ZIP.
 The v1.6.0 release passed all 13 exact-package native behavior checks with Claude Code `2.1.268`.
-These checks were not repeated for v1.6.1.
+These checks were not repeated for v1.6.1 or v1.6.2.

@@ -7,14 +7,14 @@ Python 3.11 or later must be available to the host.
 ## Codex from GitHub
 
 ```bash
-codex plugin marketplace add 0langa/RECALL --ref v1.6.1
+codex plugin marketplace add 0langa/RECALL --ref v1.6.2
 codex plugin add recall@recall-local
 ```
 
 You can also use the Git URL:
 
 ```bash
-codex plugin marketplace add https://github.com/0langa/RECALL --ref v1.6.1
+codex plugin marketplace add https://github.com/0langa/RECALL --ref v1.6.2
 codex plugin add recall@recall-local
 ```
 
@@ -97,6 +97,6 @@ Readiness checks used Codex CLI `0.154.0`, Claude Code `2.1.268`, and Kimi Code 
 Those checks do not prove the exact v1.6.0 ZIP.
 The v1.6.0 release passed all 13 exact-package native behavior checks with Claude Code `2.1.268`.
 Native Codex MCP behavior and native Kimi Code behavior proof are pending.
-These native checks were not repeated for v1.6.1.
+These native checks were not repeated for v1.6.1 or v1.6.2.
 
-The release asset is at the [v1.6.1 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.1).
+The release asset is at the [v1.6.2 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.2).

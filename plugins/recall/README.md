@@ -12,7 +12,7 @@ It makes no network call for storage, retrieval, or embeddings.
 For Codex from GitHub:
 
 ```bash
-codex plugin marketplace add 0langa/RECALL --ref v1.6.1
+codex plugin marketplace add 0langa/RECALL --ref v1.6.2
 codex plugin add recall@recall-local
 ```
 
@@ -127,7 +127,7 @@ Changed records or sources are skipped or rejected.
 One plan cannot change one card twice.
 
 Use canonical project-relative source paths such as `README.md`.
-RECALL 1.6.1 still rejects equivalent `./README.md` and `.\README.md` source paths during plan validation.
+RECALL 1.6.2 still rejects equivalent `./README.md` and `.\README.md` source paths during plan validation.
 Make a new plan with canonical paths.
 Never modify the hashed reviewed plan.
 
@@ -180,6 +180,11 @@ This is no speed claim.
 It does not cover JSONL scale, cold start, installed hosts, or user benefit.
 
 ## Release evidence
+
+RECALL 1.6.2 was released on 2026-10-15 as a patch release for 1.6.1.
+The [v1.6.2 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.2) holds the exact ZIP and its SHA-256.
+See [CHANGELOG.md](CHANGELOG.md) for its fixes and upgrade notes.
+The native host checks below were not repeated for 1.6.2.
 
 RECALL 1.6.1 was released on 2026-10-14 as a patch release for 1.6.0.
 The [v1.6.1 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.1) holds the exact ZIP and its SHA-256.
