@@ -133,6 +133,29 @@ class RecoveryTests(unittest.TestCase):
             recovery_service.import_memory(archive, target, replace=True)
             self.assertEqual([record.content for record in storage.iter_records(target)], ["Source record"])
 
+    def test_import_rejects_categories_that_are_not_store_names(self) -> None:
+        # JSONL restores use the category as a file name. A crafted export
+        # must not write outside the store or plant unnormalized categories.
+        for backend in ("jsonl", "sqlite"):
+            for category in ("../../../outside", "..\\..\\outside", "Mixed Case", ""):
+                with self.subTest(backend=backend, category=category), tempfile.TemporaryDirectory() as tmp:
+                    project = Path(tmp) / "project"
+                    cfg = config.load_config(project)
+                    cfg["backend"] = backend
+                    config.save_config(cfg, project)
+                    existing = memory_manager.add_record("requirements", "Keep me", root=project)
+                    archive = Path(tmp) / "crafted.json"
+                    archive.write_text(json.dumps({
+                        "format": recovery_service.FORMAT, "config": cfg,
+                        "records": [{"id": 1, "category": category, "timestamp": existing.timestamp,
+                                     "content": "planted", "metadata": {}, "embedding": []}],
+                    }), encoding="utf-8")
+
+                    with self.assertRaisesRegex(ValueError, "category"):
+                        recovery_service.restore_memory(archive, project)
+                    self.assertEqual(list(Path(tmp).rglob("outside*")), [])
+                    self.assertEqual([record.content for record in storage.iter_records(project)], ["Keep me"])
+
     def test_malformed_export_is_rejected_without_mutation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             existing = memory_manager.add_record("requirements", "Keep me", root=tmp)

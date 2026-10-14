@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from store_lock import exclusive_lock
+from store_lock import exclusive_lock, replace_file
 
 
 DEFAULT_CATEGORIES: dict[str, dict[str, Any]] = {
@@ -314,6 +314,21 @@ def normalize_category(name: str) -> str:
     return normalized
 
 
+def is_canonical_category(name: object) -> bool:
+    """Return True only for a stored category name, which normalizes to itself.
+
+    JSONL stores name each file jsonl/<category>.jsonl. A canonical name only
+    has lowercase ASCII letters, digits and single inner underscores, so it
+    cannot carry a path separator, "..", a drive letter or a UNC prefix.
+    """
+    if not isinstance(name, str):
+        return False
+    try:
+        return normalize_category(name) == name
+    except ValueError:
+        return False
+
+
 def default_config() -> dict[str, Any]:
     return deepcopy(DEFAULT_CONFIG)
 
@@ -427,7 +442,7 @@ def _write_config_payload(payload: dict[str, Any], raw_root: str | Path | None =
             temporary.unlink(missing_ok=True)
             raise
     try:
-        os.replace(temporary, config_path(root))
+        replace_file(temporary, config_path(root))
     finally:
         temporary.unlink(missing_ok=True)
 

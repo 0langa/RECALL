@@ -49,7 +49,7 @@ When `claim_key` is present, the legacy route returns a wrapper.
 Use `response.plan` for apply.
 
 Use canonical project-relative source paths such as `README.md`.
-Equivalent `./README.md` and `.\README.md` paths fail closed in the v1.6.0 candidate.
+Equivalent `./README.md` and `.\README.md` paths fail closed in v1.6.0.
 Create a new plan with canonical paths.
 Do not edit the reviewed plan.
 
@@ -69,10 +69,15 @@ RECALL needs local Python.
 It needs no API key or hosted RECALL service.
 All memory stays in the project store.
 
+The MCP server starts with `python`.
+Hooks start with `python3` on macOS and Linux.
+On Windows, Claude Code runs plugin hooks through Git Bash.
+There the hooks use the Python launcher (`py -3`) when it is installed, and `python3` otherwise.
+
 ## Tested host scope
 
 Claude Code `2.1.268` passed an isolated-home readiness check.
 The observed model was `claude-sonnet-5`.
 This only proves host readiness.
 It does not prove the exact v1.6.0 ZIP.
-Exact installed-package proof is pending at candidate freeze.
+The v1.6.0 release passed all 13 exact-package native behavior checks with Claude Code `2.1.268`.

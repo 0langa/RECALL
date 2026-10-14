@@ -1,9 +1,8 @@
 # Changelog
 
-## 1.6.0 - 2026-09-13
+## 1.6.0 - 2026-09-14
 
-Release candidate.
-This entry does not claim that the tag or public release exists.
+Released as tag `v1.6.0`.
 
 - Made SQLite save selection and writes use one `BEGIN IMMEDIATE` transaction.
 - Added a store-local process lock and atomic per-file replacement to the JSONL write path.
@@ -50,7 +49,12 @@ Evidence limits at candidate freeze:
 
 Host readiness used Codex CLI `0.154.0`, Claude Code `2.1.268`, and Kimi Code `0.42.0`.
 Readiness does not prove the exact package.
-Final public evidence belongs with the [v1.6.0 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.0).
+
+Release evidence, recorded with the [v1.6.0 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.0):
+
+- CI, smoke, package, and all 20 sealed matched evaluation cells passed.
+- Claude Code `2.1.268` passed all 13 exact-package native behavior checks.
+- Native Codex MCP behavior proof and native Kimi Code behavior proof are pending.
 
 ## 1.5.5 - 2026-08-19
 

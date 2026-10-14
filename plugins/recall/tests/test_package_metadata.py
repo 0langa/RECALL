@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parents[1]
+
+
+def git_bash() -> str | None:
+    git = shutil.which("git")
+    if git is None:
+        return None
+    for parent in Path(git).resolve().parents:
+        candidate = parent / "bin" / "bash.exe"
+        if candidate.is_file():
+            return str(candidate)
+    return None
 
 
 class PackageMetadataTests(unittest.TestCase):
@@ -390,6 +402,96 @@ class PackageMetadataTests(unittest.TestCase):
                     current_scope = Path(tmp) / ".recall" / "runtime" / "policy" / "current-scope.json"
                     policy = json.loads(current_scope.read_text(encoding="utf-8"))
                     self.assertEqual(policy["provider"], "claude-code")
+
+
+    @unittest.skipUnless(os.name == "nt", "Claude Code runs Windows hooks through Git Bash.")
+    def test_claude_code_git_bash_hooks_do_not_depend_on_python3(self) -> None:
+        # Claude Code has no commandWindows field: on Windows it runs `command`
+        # through Git Bash, where `python3` is often only the Microsoft Store
+        # stub that prints "Python was not found" and exits non-zero.
+        bash = git_bash()
+        if bash is None:
+            self.skipTest("Git Bash is not installed")
+        if shutil.which("py") is None:
+            # Without the launcher the command falls back to python3, which
+            # this test replaces with a failing stub.
+            self.skipTest("The Python launcher (py) is not installed")
+        hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+        with tempfile.TemporaryDirectory() as tmp:
+            stub = Path(tmp) / "stub"
+            stub.mkdir()
+            (stub / "python3").write_text(
+                "#!/bin/sh\necho 'Python was not found' >&2\nexit 49\n", encoding="utf-8", newline="\n",
+            )
+            project = Path(tmp) / "project"
+            (project / ".git").mkdir(parents=True)
+            env = os.environ.copy()
+            env.pop("PLUGIN_ROOT", None)
+            env["CLAUDE_PLUGIN_ROOT"] = str(ROOT)
+            env["PATH"] = str(stub) + os.pathsep + env.get("PATH", "")
+            for event_name, matcher_groups in hooks.items():
+                payload = {"hook_event_name": event_name, "cwd": str(project), "session_id": "git-bash",
+                           "prompt": "Continue normal work."}
+                completed = subprocess.run(
+                    [bash, "-c", matcher_groups[0]["hooks"][0]["command"]],
+                    input=json.dumps(payload),
+                    text=True,
+                    capture_output=True,
+                    cwd=ROOT,
+                    env=env,
+                )
+                self.assertEqual(completed.returncode, 0, f"{event_name}: {completed.stderr}")
+                self.assertTrue(json.loads(completed.stdout)["continue"], event_name)
+            current_scope = project / ".recall" / "runtime" / "policy" / "current-scope.json"
+            self.assertEqual(json.loads(current_scope.read_text(encoding="utf-8"))["provider"], "claude-code")
+
+    @unittest.skipIf(os.name == "nt", "macOS and Linux run the POSIX `command` string.")
+    def test_posix_hook_commands_keep_python3_in_posix_shells(self) -> None:
+        # Every macOS and Linux user runs `command`: Claude Code through
+        # `sh -c`, Codex through the login shell ($SHELL -lc; zsh by default on
+        # macOS). Only OS=Windows_NT selects `py -3`, so a `py` on PATH (such
+        # as Homebrew's python-launcher) must not change the interpreter.
+        hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+        shells = [["/bin/sh", "-c"]]
+        for name, flags in (("bash", ["-c"]), ("zsh", ["-f", "-c"])):  # zsh -f skips user startup files
+            executable = shutil.which(name)
+            if executable:
+                shells.append([executable, *flags])
+        with tempfile.TemporaryDirectory() as tmp:
+            stub = Path(tmp) / "stub"
+            stub.mkdir()
+            calls = Path(tmp) / "calls.log"
+            (stub / "python3").write_text(
+                f'#!/bin/sh\necho python3 >> "{calls}"\nexec "{sys.executable}" "$@"\n', encoding="utf-8",
+            )
+            (stub / "py").write_text(f'#!/bin/sh\necho py >> "{calls}"\nexit 97\n', encoding="utf-8")
+            for path in stub.iterdir():
+                path.chmod(0o755)
+            env = {key: value for key, value in os.environ.items() if key not in {"OS", "CLAUDE_PLUGIN_ROOT", "PLUGIN_ROOT"}}
+            env["PATH"] = str(stub) + os.pathsep + env.get("PATH", "")
+            for shell in shells:
+                for provider, variable in (("claude-code", "CLAUDE_PLUGIN_ROOT"), ("codex", "PLUGIN_ROOT")):
+                    project = Path(tmp) / f"{Path(shell[0]).name}-{provider}"
+                    (project / ".git").mkdir(parents=True)
+                    for event_name, matcher_groups in hooks.items():
+                        payload = {"hook_event_name": event_name, "cwd": str(project), "session_id": "posix",
+                                   "prompt": "Continue normal work."}
+                        completed = subprocess.run(
+                            [*shell, matcher_groups[0]["hooks"][0]["command"]],
+                            input=json.dumps(payload),
+                            text=True,
+                            capture_output=True,
+                            cwd=ROOT,
+                            env={**env, variable: str(ROOT)},
+                            timeout=60,
+                        )
+                        label = f"{shell[0]} {provider} {event_name}"
+                        self.assertEqual(completed.returncode, 0, f"{label}: {completed.stderr}")
+                        self.assertTrue(json.loads(completed.stdout)["continue"], label)
+                    current_scope = project / ".recall" / "runtime" / "policy" / "current-scope.json"
+                    self.assertEqual(json.loads(current_scope.read_text(encoding="utf-8"))["provider"], provider)
+            launchers = calls.read_text(encoding="utf-8").split()
+            self.assertEqual(launchers, ["python3"] * (len(shells) * 2 * len(hooks)))
 
 
 if __name__ == "__main__":

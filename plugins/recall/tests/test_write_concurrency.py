@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -37,6 +38,18 @@ def worker(folder: Path, number: int, mode: str) -> None:
                 memory_manager.add_record("facts", "Uncommitted interrupted writer", root=root)
             (folder / "locked").write_text("ready", encoding="utf-8")
             wait_for(folder / "never", 60)
+        return
+    if mode == "state_reader":
+        import turn_policy
+
+        # Another hook polling a policy file while this test rewrites it.
+        target = folder / "state.json"
+        (folder / "locked").write_text("ready", encoding="utf-8")
+        reads = misses = 0
+        while not (folder / "done").exists():
+            reads += 1
+            misses += not turn_policy._read(target)
+        (folder / "reader.json").write_text(json.dumps({"reads": reads, "misses": misses}), encoding="utf-8")
         return
     if mode == "rewrite_interrupt":
         replace = storage.os.replace
@@ -288,6 +301,54 @@ class WriteConcurrencyTests(unittest.TestCase):
         self.assertEqual(retry["record"].metadata["confirmed_count"], 1)
         self.assertEqual(len(list(storage.iter_records(root))), 1)
 
+
+    def test_state_writes_retry_transient_permission_errors(self) -> None:
+        # Windows refuses to replace a file another process has open. Model
+        # two such refusals on every platform; the write must still land.
+        import turn_policy
+
+        real_replace = os.replace
+        attempts: list[str] = []
+
+        def busy_twice(source, target):
+            attempts.append(str(target))
+            if attempts.count(str(target)) <= 2:
+                raise PermissionError(13, "The process cannot access the file")
+            return real_replace(source, target)
+
+        root = self.folder / "store"
+        config.ensure_config(root)
+        state = self.folder / "state.json"
+        with mock.patch.object(os, "replace", side_effect=busy_twice):
+            turn_policy._write(state, {"scope_known": True, "updated_at": time.time()})
+            cfg = config.load_config(root)
+            cfg["capture_mode"] = "minimal"
+            config.save_config(cfg, root)
+        self.assertTrue(turn_policy._read(state)["scope_known"])
+        self.assertEqual(config.load_config(root)["capture_mode"], "minimal")
+        self.assertEqual(len(attempts), 6)
+        self.assertEqual([path.name for path in self.folder.rglob("*.tmp")], [])
+
+    @unittest.skipUnless(sys.platform == "win32", "only Windows denies replacing an open file")
+    def test_policy_state_survives_a_concurrent_reader(self) -> None:
+        import turn_policy
+
+        folder = self.folder / "state"
+        folder.mkdir()
+        target = folder / "state.json"
+        turn_policy._write(target, {"scope_known": True, "updated_at": time.time()})
+        process = self.start(folder, 0, "state_reader")
+        try:
+            wait_for(folder / "locked")
+            for number in range(300):
+                turn_policy._write(target, {"scope_known": True, "number": number, "updated_at": time.time()})
+        finally:
+            (folder / "done").write_text("done", encoding="utf-8")
+            process.wait(timeout=30)
+        report = json.loads((folder / "reader.json").read_text(encoding="utf-8"))
+        self.assertGreater(report["reads"], 0)
+        self.assertEqual(report["misses"], 0, report)
+        self.assertEqual(turn_policy._read(target)["number"], 299)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--worker":

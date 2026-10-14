@@ -46,10 +46,22 @@ def print_json(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))
 
 
+def read_stdin_text() -> str:
+    # Piped JSON is UTF-8. Text-mode stdin would use the locale code page on
+    # Windows (often cp1252) and corrupt or reject non-ASCII memory text.
+    buffer = getattr(sys.stdin, "buffer", None)
+    if buffer is None:
+        return sys.stdin.read()
+    try:
+        return buffer.read().decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"stdin is not valid UTF-8: {exc}") from exc
+
+
 def load_json_card(*, file_path: str | None, use_stdin: bool) -> dict[str, Any]:
     if bool(file_path) == use_stdin:
         raise ValueError("save-turn-card requires exactly one of --file or --stdin.")
-    raw = sys.stdin.read() if use_stdin else Path(str(file_path)).read_text(encoding="utf-8")
+    raw = read_stdin_text() if use_stdin else Path(str(file_path)).read_text(encoding="utf-8")
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -61,7 +73,7 @@ def load_json_card(*, file_path: str | None, use_stdin: bool) -> dict[str, Any]:
 
 def load_stdin_object() -> dict[str, Any]:
     try:
-        payload = json.loads(sys.stdin.read())
+        payload = json.loads(read_stdin_text())
     except json.JSONDecodeError as exc:
         raise ValueError(f"stdin JSON is invalid: {exc}") from exc
     if not isinstance(payload, dict):

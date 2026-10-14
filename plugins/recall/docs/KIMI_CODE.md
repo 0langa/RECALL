@@ -39,7 +39,7 @@ When `claim_key` is present, use `response.plan`.
 Apply does not make a new plan.
 
 Use canonical project-relative source paths such as `README.md`.
-Equivalent `./README.md` and `.\README.md` paths fail closed in the v1.6.0 candidate.
+Equivalent `./README.md` and `.\README.md` paths fail closed in v1.6.0.
 Create a new plan with canonical paths.
 Do not edit the reviewed plan.
 
@@ -104,4 +104,5 @@ Kimi Code `0.42.0` passed an isolated-home readiness check.
 The configured model was `kimi-for-coding`.
 This only proves host readiness.
 It does not prove the exact v1.6.0 ZIP.
-Exact installed-package proof is pending at candidate freeze.
+For the v1.6.0 release, Kimi Code `0.42.0` installed and enabled the exact package and MCP server.
+The isolated host had no provider credential, so native Kimi behavior proof is pending.

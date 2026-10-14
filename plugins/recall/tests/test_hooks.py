@@ -495,6 +495,23 @@ class HookTests(unittest.TestCase):
             self.assertFalse((Path(tmp) / ".recall").exists())
             self.assertFalse((Path(tmp) / ".codex_memory").exists())
 
+    def test_prompt_activation_keeps_the_store_out_of_git(self) -> None:
+        # Hook activation must protect the store the same way the CLI and MCP
+        # initialize paths do, or `git add -A` commits project memory.
+        for prompt in ("@recall initialize this project", "@recall remember: the build uses CMake presets."):
+            with self.subTest(prompt=prompt), tempfile.TemporaryDirectory() as tmp:
+                (Path(tmp) / ".git").mkdir()
+                (Path(tmp) / ".gitignore").write_text("build/\n", encoding="utf-8")
+                run_hook(
+                    "prompt_inspector.py",
+                    {"cwd": tmp, "session_id": "s", "turn_id": "t", "hook_event_name": "UserPromptSubmit", "prompt": prompt},
+                )
+                self.assertTrue(recall_config.project_is_active(tmp))
+                lines = (Path(tmp) / ".gitignore").read_text(encoding="utf-8").splitlines()
+                self.assertEqual(lines[0], "build/")
+                self.assertIn(".recall/", lines)
+                self.assertIn(".codex_memory/", lines)
+
     def test_malformed_hook_json_is_noop(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             output = run_hook_raw("pre_compact.py", '{"cwd": "' + tmp.replace("\\", "\\\\"))
@@ -706,6 +723,35 @@ class HookTests(unittest.TestCase):
             result = query_memory(tmp, "finalizer internals hidden", "requirements")
             self.assertEqual(len(result["results"]), 1)
             self.assertEqual(result["results"][0]["metadata"]["status"], "active")  # F13: asserted intent is unverified.
+
+    def test_stop_on_jsonl_backend_says_turn_memory_needs_sqlite(self) -> None:
+        # Turn finalization is one SQLite transaction. On JSONL every dirty
+        # turn used to end in "finalizer failed ... retained for retry",
+        # a retry that can never succeed.
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.activate_project(tmp, activated_by="test")
+            cfg = recall_config.load_config(tmp)
+            cfg["backend"] = "jsonl"
+            recall_config.save_config(cfg, tmp)
+            activate_recall(
+                tmp,
+                "session-jsonl",
+                "turn-jsonl",
+                prompt="[@recall](plugin://recall@recall-local) You must keep finalizer internals hidden from users.",
+            )
+            stop = {
+                "cwd": tmp,
+                "session_id": "session-jsonl",
+                "hook_event_name": "Stop",
+                "turn_id": "turn-jsonl",
+                "last_assistant_message": "Implemented quiet Stop finalization.",
+            }
+            output = run_hook("stop.py", stop)
+            self.assertEqual(output, {
+                "continue": True,
+                "systemMessage": "RECALL did not save this turn: automatic turn memory needs the SQLite backend.",
+            })
+            self.assertEqual(run_hook("stop.py", stop), {"continue": True})
 
     def test_explicit_recall_requirement_stores_clean_requirement_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

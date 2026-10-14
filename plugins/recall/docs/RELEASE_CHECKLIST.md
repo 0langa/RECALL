@@ -4,7 +4,9 @@ This table starts fresh for v1.6.0.
 It does not reuse checks from an older release.
 `Pending at candidate freeze` is not a pass.
 
-The final public asset and evidence will be at the [v1.6.0 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.0) after publication.
+RECALL 1.6.0 was released on 2026-09-14.
+The final asset and its verification record are at the [v1.6.0 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.0).
+The table below keeps the state at candidate freeze.
 
 ## Candidate evidence table
 
