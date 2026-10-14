@@ -19,7 +19,7 @@ from typing import Any, Callable, Iterable, Iterator, ParamSpec, TypeVar
 
 import config as recall_config
 import security
-from store_lock import exclusive_lock
+from store_lock import exclusive_lock, replace_file
 
 
 SCHEMA_VERSION = 2
@@ -182,7 +182,7 @@ def _jsonl_replacement(path: Path) -> Iterator[Any]:
             temporary.unlink(missing_ok=True)
             raise
     try:
-        os.replace(temporary, path)
+        replace_file(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
 

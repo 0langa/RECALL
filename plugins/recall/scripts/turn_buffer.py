@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import config as recall_config
-from store_lock import exclusive_lock
+from store_lock import exclusive_lock, replace_file
 import turn_policy
 
 
@@ -114,9 +114,10 @@ def compact_event_summary(event: dict[str, Any]) -> str | None:
 
 def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    # A unique name keeps two writers of one path from sharing a temp file.
+    tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
     tmp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    tmp.replace(path)
+    replace_file(tmp, path)
 
 
 def append_event(
@@ -295,7 +296,7 @@ def _publish_new_request(path: Path, payload: dict[str, Any]) -> None:
             json.dump(payload, handle, sort_keys=True)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary_name, path)
+        replace_file(temporary_name, path)
     finally:
         if temporary_name:
             try:

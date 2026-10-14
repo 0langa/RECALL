@@ -15,6 +15,7 @@ from typing import Any
 import uuid
 
 import config as recall_config
+from store_lock import read_text, replace_file
 
 MAX_AGE = 7 * 86400
 CURRENT_SCOPE_FILE = "current-scope.json"
@@ -52,7 +53,7 @@ def _turn_states(root: str | Path) -> list[dict[str, Any]]:
 
 def _read(path: Path) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(read_text(path))
         if isinstance(value, dict) and time.time() - float(value.get("updated_at", 0)) < MAX_AGE:
             return value
     except (OSError, ValueError, TypeError):
@@ -64,7 +65,7 @@ def _write(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
     temporary.write_text(json.dumps(value, sort_keys=True), encoding="utf-8")
-    temporary.replace(path)
+    replace_file(temporary, path)
 
 
 def normalize_identity(event):

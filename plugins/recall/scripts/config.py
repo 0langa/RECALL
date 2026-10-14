@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from store_lock import exclusive_lock
+from store_lock import exclusive_lock, replace_file
 
 
 DEFAULT_CATEGORIES: dict[str, dict[str, Any]] = {
@@ -427,7 +427,7 @@ def _write_config_payload(payload: dict[str, Any], raw_root: str | Path | None =
             temporary.unlink(missing_ok=True)
             raise
     try:
-        os.replace(temporary, config_path(root))
+        replace_file(temporary, config_path(root))
     finally:
         temporary.unlink(missing_ok=True)
 
