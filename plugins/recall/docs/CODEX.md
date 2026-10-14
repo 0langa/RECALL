@@ -93,6 +93,26 @@ Do not retrieve for a small self-contained task.
 Do not retrieve for an explicit memory-free task.
 The runtime interlock must block memory work before it reads project memory data.
 
+### Hook output when memory is disabled
+
+`SessionStart`, `UserPromptSubmit`, `PostToolUse`, `PreCompact`, and `Stop`
+return the shared Codex output shape when the interlock denies memory access:
+
+```json
+{"continue": true, "systemMessage": "RECALL is disabled for this turn."}
+```
+
+`continue` permits the user turn to proceed; it does not enable memory access.
+The guard still stops memory reads, capture, and saves before they occur.
+Internal `action`, `memory_action`, and `reason` fields remain available to
+RECALL's CLI and MCP callers, but are not part of this hook response.
+`PreCompact` and `SessionStart` do not accept a `reason` output field.
+
+Checked against the official [hook output contract](https://learn.chatgpt.com/docs/hooks)
+and [plugin hook packaging rules](https://developers.openai.com/plugins/build/plugins)
+on 2026-10-01. Plugin hooks use the same event schemas as other Codex hooks.
+Tests cover all five guarded events, late deliveries, and denied memory access.
+
 ## Tested host scope
 
 Codex CLI `0.154.0` passed an isolated-home readiness check.

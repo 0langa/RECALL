@@ -879,7 +879,7 @@ class HookTests(unittest.TestCase):
                     },
                 },
             )
-            self.assertEqual(output.get("memory_action"), "disabled")
+            self.assertEqual(output, {"continue": True, "systemMessage": "RECALL is disabled for this turn."})
             events = runtime_events(tmp, "session-project-active", "turn-project-active")
             self.assertEqual(events, [])
 
@@ -893,7 +893,7 @@ class HookTests(unittest.TestCase):
                     "last_assistant_message": "The intentionally failing command failed as expected.",
                 },
             )
-            self.assertEqual(stop.get("memory_action"), "disabled")
+            self.assertEqual(stop, {"continue": True, "systemMessage": "RECALL is disabled for this turn."})
             result = query_memory(tmp, "does_not_exist", "debug_history")
             self.assertEqual(result["results"], [])
 
@@ -1057,9 +1057,8 @@ class ConservativePromptAdmissionTests(unittest.TestCase):
             self.assertEqual(records[0].metadata["turn_id"], "admission-turn")
         # Redelivery cannot add records or confirmations.
         replay = run_hook("stop.py", {**payload, "hook_event_name": "Stop"})
-        if submitted.get("memory_action") == "disabled":
-            self.assertEqual(replay["action"], "disabled")
-            self.assertEqual(replay["reason"], "task_no_memory")
+        if submitted.get("systemMessage") == "RECALL is disabled for this turn.":
+            self.assertEqual(replay, {"continue": True, "systemMessage": "RECALL is disabled for this turn."})
         else:
             self.assertEqual(replay, {"continue": True})
         self.assertEqual([(r.id, r.metadata) for r in storage.iter_records(root)],

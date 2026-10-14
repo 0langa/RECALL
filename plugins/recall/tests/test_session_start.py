@@ -74,7 +74,7 @@ class SessionStartTests(unittest.TestCase):
             )
             turn_policy.finish_turn(tmp, private.session_id, private.turn_id, provider=private.provider)
             disabled = run_session_start({"cwd": tmp, "hook_event_name": "SessionStart"})
-            self.assertEqual(disabled["reason"], "task_no_memory")
+            self.assertEqual(disabled, {"continue": True, "systemMessage": "RECALL is disabled for this turn."})
 
             normalize_hook_event(
                 {"cwd": tmp, "session_id": "normal", "turn_id": "turn", "prompt": "Continue normal work."},

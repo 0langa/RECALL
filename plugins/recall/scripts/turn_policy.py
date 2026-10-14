@@ -179,11 +179,11 @@ def policy_status(
 
 
 def disabled_result(*, hook: bool = False) -> dict[str, Any]:
-    result: dict[str, Any] = {"action": "disabled", "reason": "task_no_memory", "memory_action": "disabled"}
     if hook:
-        result["continue"] = True
-        result["systemMessage"] = "RECALL is disabled for this turn."
-    return result
+        # Hook schemas reject internal result fields. Use the common output
+        # shape, including for SessionStart and PreCompact (no "reason").
+        return {"continue": True, "systemMessage": "RECALL is disabled for this turn."}
+    return {"action": "disabled", "reason": "task_no_memory", "memory_action": "disabled"}
 
 
 def finish_turn(

@@ -60,8 +60,8 @@ class RuntimeInterlockTests(unittest.TestCase):
                 "tool_response": {"exit_code": 1, "stdout": "FAILED provider-isolation"},
             }
             self.assertEqual(
-                run_hook("post_tool_use.py", {**tool, "provider": "codex"})["memory_action"],
-                "disabled",
+                run_hook("post_tool_use.py", {**tool, "provider": "codex"}),
+                {"continue": True, "systemMessage": "RECALL is disabled for this turn."},
             )
             self.assertEqual(
                 run_hook("post_tool_use.py", {**tool, "provider": "claude"}),
@@ -105,7 +105,9 @@ class RuntimeInterlockTests(unittest.TestCase):
                         with patch("storage.iter_records", side_effect=AssertionError("canonical read")), \
                              patch("turn_buffer.mark_active", side_effect=AssertionError("buffer write")):
                             result = tool("unknown-" + state, marker, session)
-                        self.assertEqual(result.get("memory_action"), "disabled", result)
+                        self.assertEqual(result, {
+                            "continue": True, "systemMessage": "RECALL is disabled for this turn.",
+                        })
                         self.assertFalse(any(marker.encode() in p.read_bytes()
                                              for p in Path(tmp).rglob("*") if p.is_file()))
 
@@ -136,7 +138,9 @@ class RuntimeInterlockTests(unittest.TestCase):
                 self.assertFalse(turn_policy.policy_status(tmp)["scope_known"])
                 with patch("retrieval.assess_relevance", side_effect=AssertionError("memory read")), patch("storage.iter_records", side_effect=AssertionError("memory read")):
                     output = run_hook("prompt_inspector.py", {**payload, "prompt": text})
-                    self.assertEqual(output["memory_action"], "disabled")
+                    self.assertEqual(output, {
+                        "continue": True, "systemMessage": "RECALL is disabled for this turn.",
+                    })
                     self.assertNotIn("hookSpecificOutput", output)
                     run_hook("post_tool_use.py", {**payload, "tool_name": "Bash", "tool_input": {"command": "python -m pytest"}, "tool_response": {"exit_code": 0, "stdout": "1 passed 秘密"}})
                     run_hook("pre_compact.py", {**payload, "summary": text})
@@ -263,7 +267,7 @@ class RuntimeInterlockTests(unittest.TestCase):
                     "tool_response": {"exit_code": 1, "stdout": "FAILED PRIVATE_LATE_OUTPUT"},
                 },
             )
-            self.assertEqual(late["action"], "disabled")
+            self.assertEqual(late, {"continue": True, "systemMessage": "RECALL is disabled for this turn."})
             for path in recall_config.memory_dir(tmp).rglob("*"):
                 if path.is_file():
                     self.assertNotIn("PRIVATE_LATE_OUTPUT", path.read_text(encoding="utf-8", errors="ignore"))
