@@ -134,8 +134,13 @@ def diagnostics(root: str | Path | None = None) -> dict[str, Any]:
     return diagnostics_for_records(records, root)
 
 
-def diagnostics_for_records(records: list[storage.MemoryRecord], root: str | Path | None = None) -> dict[str, Any]:
-    inspected = inspect_index(root)
+def diagnostics_for_records(
+    records: list[storage.MemoryRecord],
+    root: str | Path | None = None,
+    inspected: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if inspected is None:
+        inspected = inspect_index(root)
     index = inspected["index"]
     record_ids = {record.id for record in records}
     index_ids = set(index)
@@ -161,7 +166,9 @@ def ensure_complete_for_records(
     records: list[storage.MemoryRecord],
     root: str | Path | None = None,
 ) -> dict[int, dict[str, Any]]:
-    report = diagnostics_for_records(records, root)
-    if not report["index_complete"]:
-        rebuild(root)
+    # Each retrieving prompt lands here; parse and validate the index once.
+    inspected = inspect_index(root)
+    if diagnostics_for_records(records, root, inspected)["index_complete"]:
+        return inspected["index"]
+    rebuild(root)
     return load_index(root)

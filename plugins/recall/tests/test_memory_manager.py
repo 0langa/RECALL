@@ -242,6 +242,24 @@ class MemoryManagerTests(unittest.TestCase):
             payloads = [json.loads(line) for line in index_store.index_path(tmp).read_text(encoding="utf-8").splitlines()]
             self.assertEqual({payload["embedding_model"] for payload in payloads}, {"local-hash-v2"})
 
+    def test_query_reads_a_complete_index_once(self) -> None:
+        # Every retrieving prompt runs a query; the index check and the index
+        # load parsed and validated the whole file twice.
+        from unittest import mock
+
+        import index_store
+
+        with tempfile.TemporaryDirectory() as tmp:
+            memory_manager.add_records_batch(
+                [{"category": "decisions", "content": f"Parser stage {n} caches tokens in build/{n}."} for n in range(20)],
+                tmp,
+            )
+            index_store.rebuild(tmp)
+            with mock.patch.object(index_store, "inspect_index", wraps=index_store.inspect_index) as reads:
+                result = memory_manager.query("parser stage caches tokens", root=tmp)
+            self.assertTrue(result["results"])
+            self.assertEqual(reads.call_count, 1)
+
     def test_vector_index_records_include_model_and_dimensions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory_manager.add_record("decisions", "Index records include portable metadata.", root=tmp)
