@@ -30,6 +30,20 @@ def wait_for(path: Path, timeout: float = 30) -> None:
         time.sleep(0.01)
 
 
+def worker_interpreter() -> tuple[str, dict[str, str] | None]:
+    """Return an interpreter and environment for a worker that kill() really stops.
+
+    A Windows venv's python.exe is a launcher that runs the real interpreter
+    as its own child. kill() then stops only the launcher, and the worker
+    still holds the store lock while the test cleans up. Start the base
+    interpreter inside the venv instead, as multiprocessing does.
+    """
+    base = getattr(sys, "_base_executable", sys.executable)
+    if sys.platform != "win32" or os.path.normcase(base) == os.path.normcase(sys.executable):
+        return sys.executable, None
+    return base, {**os.environ, "__PYVENV_LAUNCHER__": sys.executable}
+
+
 def worker(folder: Path, number: int, mode: str) -> None:
     root = folder / "store"
     if mode == "interrupt":
@@ -119,10 +133,11 @@ class WriteConcurrencyTests(unittest.TestCase):
     def start(self, folder: Path, number: int, mode: str) -> subprocess.Popen:
         stdout = (folder / f"worker-{mode}-{number}.stdout").open("w", encoding="utf-8")
         stderr = (folder / f"worker-{mode}-{number}.stderr").open("w", encoding="utf-8")
+        executable, env = worker_interpreter()
         try:
             return subprocess.Popen(
-                [sys.executable, str(Path(__file__).resolve()), "--worker", str(folder), str(number), mode],
-                stdout=stdout, stderr=stderr,
+                [executable, str(Path(__file__).resolve()), "--worker", str(folder), str(number), mode],
+                stdout=stdout, stderr=stderr, env=env,
             )
         finally:
             stdout.close()
