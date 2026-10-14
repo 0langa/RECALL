@@ -412,6 +412,10 @@ class PackageMetadataTests(unittest.TestCase):
         bash = git_bash()
         if bash is None:
             self.skipTest("Git Bash is not installed")
+        if shutil.which("py") is None:
+            # Without the launcher the command falls back to python3, which
+            # this test replaces with a failing stub.
+            self.skipTest("The Python launcher (py) is not installed")
         hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
         with tempfile.TemporaryDirectory() as tmp:
             stub = Path(tmp) / "stub"
@@ -440,6 +444,54 @@ class PackageMetadataTests(unittest.TestCase):
                 self.assertTrue(json.loads(completed.stdout)["continue"], event_name)
             current_scope = project / ".recall" / "runtime" / "policy" / "current-scope.json"
             self.assertEqual(json.loads(current_scope.read_text(encoding="utf-8"))["provider"], "claude-code")
+
+    @unittest.skipIf(os.name == "nt", "macOS and Linux run the POSIX `command` string.")
+    def test_posix_hook_commands_keep_python3_in_posix_shells(self) -> None:
+        # Every macOS and Linux user runs `command`: Claude Code through
+        # `sh -c`, Codex through the login shell ($SHELL -lc; zsh by default on
+        # macOS). Only OS=Windows_NT selects `py -3`, so a `py` on PATH (such
+        # as Homebrew's python-launcher) must not change the interpreter.
+        hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+        shells = [["/bin/sh", "-c"]]
+        for name, flags in (("bash", ["-c"]), ("zsh", ["-f", "-c"])):  # zsh -f skips user startup files
+            executable = shutil.which(name)
+            if executable:
+                shells.append([executable, *flags])
+        with tempfile.TemporaryDirectory() as tmp:
+            stub = Path(tmp) / "stub"
+            stub.mkdir()
+            calls = Path(tmp) / "calls.log"
+            (stub / "python3").write_text(
+                f'#!/bin/sh\necho python3 >> "{calls}"\nexec "{sys.executable}" "$@"\n', encoding="utf-8",
+            )
+            (stub / "py").write_text(f'#!/bin/sh\necho py >> "{calls}"\nexit 97\n', encoding="utf-8")
+            for path in stub.iterdir():
+                path.chmod(0o755)
+            env = {key: value for key, value in os.environ.items() if key not in {"OS", "CLAUDE_PLUGIN_ROOT", "PLUGIN_ROOT"}}
+            env["PATH"] = str(stub) + os.pathsep + env.get("PATH", "")
+            for shell in shells:
+                for provider, variable in (("claude-code", "CLAUDE_PLUGIN_ROOT"), ("codex", "PLUGIN_ROOT")):
+                    project = Path(tmp) / f"{Path(shell[0]).name}-{provider}"
+                    (project / ".git").mkdir(parents=True)
+                    for event_name, matcher_groups in hooks.items():
+                        payload = {"hook_event_name": event_name, "cwd": str(project), "session_id": "posix",
+                                   "prompt": "Continue normal work."}
+                        completed = subprocess.run(
+                            [*shell, matcher_groups[0]["hooks"][0]["command"]],
+                            input=json.dumps(payload),
+                            text=True,
+                            capture_output=True,
+                            cwd=ROOT,
+                            env={**env, variable: str(ROOT)},
+                            timeout=60,
+                        )
+                        label = f"{shell[0]} {provider} {event_name}"
+                        self.assertEqual(completed.returncode, 0, f"{label}: {completed.stderr}")
+                        self.assertTrue(json.loads(completed.stdout)["continue"], label)
+                    current_scope = project / ".recall" / "runtime" / "policy" / "current-scope.json"
+                    self.assertEqual(json.loads(current_scope.read_text(encoding="utf-8"))["provider"], provider)
+            launchers = calls.read_text(encoding="utf-8").split()
+            self.assertEqual(launchers, ["python3"] * (len(shells) * 2 * len(hooks)))
 
 
 if __name__ == "__main__":
