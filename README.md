@@ -139,6 +139,8 @@ One store-local operating-system lock serializes writers.
 Each JSONL file replacement uses flush, `fsync`, and atomic replace.
 JSONL does not provide one rollback across several files.
 Multi-file power-loss safety is not certified.
+Automatic turn memory from the `Stop` hook needs SQLite.
+With JSONL, save through MCP, the CLI, or an explicit `@recall remember:` prompt.
 
 The vector index is a derived file.
 RECALL can rebuild it from canonical storage.

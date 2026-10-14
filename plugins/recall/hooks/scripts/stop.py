@@ -17,6 +17,7 @@ from hook_io import normalize_hook_event, read_hook_input
 import observability
 import security
 from services.finalizer_service import apply_finalizer_batch
+import storage
 import turn_buffer
 import turn_policy
 
@@ -202,6 +203,16 @@ def main() -> None:
 
         if turn_buffer.finalizer_status(root, session_id, turn_id, provider=event.provider) in {"requested", "finalized"}:
             output({"continue": True})
+            return
+
+        if storage.backend(root) != "sqlite":
+            # Turn finalization is one SQLite transaction; JSONL has no
+            # multi-file rollback, so it supports explicit saves only.
+            turn_policy.finish_turn(root, session_id, turn_id, provider=event.provider)
+            output({
+                "continue": True,
+                "systemMessage": "RECALL did not save this turn: automatic turn memory needs the SQLite backend.",
+            })
             return
 
         cfg = recall_config.load_config_if_present(root)

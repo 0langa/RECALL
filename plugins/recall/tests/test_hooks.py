@@ -724,6 +724,35 @@ class HookTests(unittest.TestCase):
             self.assertEqual(len(result["results"]), 1)
             self.assertEqual(result["results"][0]["metadata"]["status"], "active")  # F13: asserted intent is unverified.
 
+    def test_stop_on_jsonl_backend_says_turn_memory_needs_sqlite(self) -> None:
+        # Turn finalization is one SQLite transaction. On JSONL every dirty
+        # turn used to end in "finalizer failed ... retained for retry",
+        # a retry that can never succeed.
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.activate_project(tmp, activated_by="test")
+            cfg = recall_config.load_config(tmp)
+            cfg["backend"] = "jsonl"
+            recall_config.save_config(cfg, tmp)
+            activate_recall(
+                tmp,
+                "session-jsonl",
+                "turn-jsonl",
+                prompt="[@recall](plugin://recall@recall-local) You must keep finalizer internals hidden from users.",
+            )
+            stop = {
+                "cwd": tmp,
+                "session_id": "session-jsonl",
+                "hook_event_name": "Stop",
+                "turn_id": "turn-jsonl",
+                "last_assistant_message": "Implemented quiet Stop finalization.",
+            }
+            output = run_hook("stop.py", stop)
+            self.assertEqual(output, {
+                "continue": True,
+                "systemMessage": "RECALL did not save this turn: automatic turn memory needs the SQLite backend.",
+            })
+            self.assertEqual(run_hook("stop.py", stop), {"continue": True})
+
     def test_explicit_recall_requirement_stores_clean_requirement_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             activate_recall(
