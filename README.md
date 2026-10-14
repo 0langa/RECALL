@@ -121,7 +121,7 @@ Do not edit a reviewed plan after review.
 Make a new plan if the source or store changed.
 
 Use canonical project-relative paths such as `README.md` in source metadata.
-The v1.6.0 candidate rejects equivalent forms such as `./README.md` and `.\README.md` during saved-plan validation.
+RECALL 1.6.0 rejects equivalent forms such as `./README.md` and `.\README.md` during saved-plan validation.
 This is a fail-closed limit.
 It does not cause an unsafe apply.
 
@@ -139,6 +139,8 @@ One store-local operating-system lock serializes writers.
 Each JSONL file replacement uses flush, `fsync`, and atomic replace.
 JSONL does not provide one rollback across several files.
 Multi-file power-loss safety is not certified.
+Automatic turn memory from the `Stop` hook needs SQLite.
+With JSONL, save through MCP, the CLI, or an explicit `@recall remember:` prompt.
 
 The vector index is a derived file.
 RECALL can rebuild it from canonical storage.
@@ -158,17 +160,21 @@ python build_plugin.py
 The output is `dist/recall.zip`.
 Do not commit this ZIP.
 
-## v1.6.0 evidence status
+## v1.6.0 release
 
-The v1.6.0 release candidate is not the public release.
-Exact ZIP, installed-package host proof, matched-benefit evaluation, CI, tag, and GitHub release proof are pending at candidate freeze.
-The public release and its asset will be at the [v1.6.0 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.0) after publication.
+RECALL 1.6.0 was released on 2026-09-14.
+The [v1.6.0 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.0) holds `recall.zip`, its SHA-256, and the verification record.
+Its CI, smoke, package, and sealed matched evaluation gates passed.
 
-Host readiness was checked with Codex CLI `0.154.0`, Claude Code `2.1.268`, and Kimi Code `0.42.0`.
-These checks only show that the host CLIs can start in isolated test homes.
-They do not prove the exact v1.6.0 ZIP.
+Native host proof differs by host:
 
-See the [release checklist](plugins/recall/docs/RELEASE_CHECKLIST.md) for the evidence table and known limits.
+- Claude Code `2.1.268` passed all 13 exact-package native behavior checks.
+- Codex CLI `0.154.0` installed and listed the exact package.
+  Its plugin MCP tools did not enter the native model registry, so native Codex MCP behavior proof is pending.
+- Kimi Code `0.42.0` installed and enabled the exact package and MCP server.
+  The isolated host had no provider credential, so native Kimi behavior proof is pending.
+
+See the [release checklist](plugins/recall/docs/RELEASE_CHECKLIST.md) for the candidate evidence table and known limits.
 
 ## License
 

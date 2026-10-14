@@ -1,4 +1,7 @@
-"""Bounded OS-owned file locks; closing or process exit releases ownership."""
+"""Bounded OS-owned file locks; closing or process exit releases ownership.
+
+Also holds the small replace/read helpers that tolerate Windows sharing denials.
+"""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -13,6 +16,36 @@ if sys.platform == "win32":
     import msvcrt
 else:
     import fcntl
+
+
+def replace_file(source: str | Path, target: str | Path, timeout: float = 2.0) -> None:
+    """Atomically replace target, waiting out transient Windows sharing denials.
+
+    Windows refuses to replace a file while another process has it open, so a
+    hook reading shared state makes a concurrent writer fail with
+    PermissionError. Readers hold these small files for milliseconds.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.005)
+
+
+def read_text(path: Path, timeout: float = 0.5) -> str:
+    """Read UTF-8 text, waiting out the brief denial during a Windows replace."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            return path.read_text(encoding="utf-8")
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.005)
 
 
 @contextmanager

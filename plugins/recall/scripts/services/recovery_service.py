@@ -146,6 +146,13 @@ def _validated(path: str | Path) -> dict[str, Any]:
     for record in records:
         if not isinstance(record, dict) or not required.issubset(record):
             raise ValueError("RECALL export contains an invalid record")
+        # JSONL restores use the category as a file name, so only canonical
+        # category names may pass (no path separators or "..").
+        category = record["category"]
+        if not recall_config.is_canonical_category(category):
+            raise ValueError(f"RECALL export contains an invalid record category: {category!r}")
+        if isinstance(record["id"], bool) or not isinstance(record["id"], int) or record["id"] < 1:
+            raise ValueError(f"RECALL export contains an invalid record id: {record['id']!r}")
     return security.redact_value(payload)
 
 
@@ -180,16 +187,17 @@ def import_memory(path: str | Path, root: str | Path | None = None, *, replace: 
                 )
             connection.commit()
     else:
-        base = storage.jsonl_dir(root)
-        base.mkdir(parents=True, exist_ok=True)
-        for old in base.glob("*.jsonl"):
-            old.unlink()
+        storage.jsonl_dir(root).mkdir(parents=True, exist_ok=True)
         grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for record in records:
             grouped[str(record["category"])].append(record)
+        # Check every target before deleting anything. A linked jsonl/ must
+        # not make the restore delete or write files in another directory.
+        targets = {category: storage.jsonl_path(category, root) for category in grouped}
+        for old in storage.jsonl_files(root):
+            old.unlink()
         for category, category_records in grouped.items():
-            target = base / f"{category}.jsonl"
-            target.write_text("".join(json.dumps(record, sort_keys=True) + "\n" for record in category_records), encoding="utf-8")
+            targets[category].write_text("".join(json.dumps(record, sort_keys=True) + "\n" for record in category_records), encoding="utf-8")
     index_store.rebuild(root)
     return {"path": str(Path(path).expanduser().resolve()), "records": len(records), "format": FORMAT}
 

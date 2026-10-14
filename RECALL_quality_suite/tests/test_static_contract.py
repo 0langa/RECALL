@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -74,48 +75,47 @@ class StaticPluginContractTests(unittest.TestCase):
         self.assertIn(".codex_memory", contents)
 
 
+CONTROL_DOCS = [
+    "RUNBOOK.md",
+    "docs/TEST_PLAN.md",
+    "docs/EXTENDING.md",
+    "docs/TDD_PROCESS.md",
+    "docs/RESULTS_INTERPRETATION.md",
+    "rubrics/production_release_criteria.md",
+    "rubrics/source_blind_quality_gate.md",
+]
+
+
 class QualitySuiteDocumentationContractTests(unittest.TestCase):
     def test_required_quality_suite_docs_exist(self) -> None:
         suite_root = Path(__file__).resolve().parents[1]
-        required = [
-            "README.md",
-            "RUNBOOK.md",
-            "docs/TEST_PLAN.md",
-            "docs/EXTENDING.md",
-            "docs/DEVELOPMENT_WORKFLOW.md",
-            "docs/TDD_PROCESS.md",
-            "docs/RELEASE_ROADMAP_GATES.md",
-            "docs/MEMORY_QUALITY_EVOLUTION_PLAN.md",
-            "docs/AGENT_IMPLEMENTATION_PROTOCOL.md",
-            "rubrics/production_release_criteria.md",
-            "rubrics/source_blind_quality_gate.md",
-        ]
+        required = ["README.md", *CONTROL_DOCS]
         missing = [path for path in required if not (suite_root / path).exists()]
         self.assertEqual(missing, [])
 
     def test_readme_links_development_control_docs(self) -> None:
         suite_root = Path(__file__).resolve().parents[1]
         readme = (suite_root / "README.md").read_text(encoding="utf-8")
-        expected_links = [
-            "RUNBOOK.md",
-            "docs/TEST_PLAN.md",
-            "docs/EXTENDING.md",
-            "docs/DEVELOPMENT_WORKFLOW.md",
-            "docs/TDD_PROCESS.md",
-            "docs/RELEASE_ROADMAP_GATES.md",
-            "docs/MEMORY_QUALITY_EVOLUTION_PLAN.md",
-            "docs/AGENT_IMPLEMENTATION_PROTOCOL.md",
-            "rubrics/production_release_criteria.md",
-            "rubrics/source_blind_quality_gate.md",
-        ]
-        for link in expected_links:
-            self.assertIn(link, readme)
+        for link in CONTROL_DOCS:
+            self.assertIn(f"]({link})", readme)
 
     def test_runbook_points_to_development_workflow_entrypoint(self) -> None:
         suite_root = Path(__file__).resolve().parents[1]
         runbook = (suite_root / "RUNBOOK.md").read_text(encoding="utf-8")
-        self.assertIn("docs/DEVELOPMENT_WORKFLOW.md", runbook)
+        self.assertIn("docs/TEST_PLAN.md", runbook)
         self.assertIn("docs/TDD_PROCESS.md", runbook)
+
+    def test_control_doc_references_resolve(self) -> None:
+        # Every suite doc that the README or RUNBOOK points at must exist, so a
+        # removed doc cannot leave a dangling entry point behind.
+        suite_root = Path(__file__).resolve().parents[1]
+        reference = re.compile(r"(?<![\w/.-])((?:docs|rubrics)/[\w.-]+\.md)\b")
+        for name in ("README.md", "RUNBOOK.md"):
+            text = (suite_root / name).read_text(encoding="utf-8")
+            referenced = sorted(set(reference.findall(text)))
+            self.assertTrue(referenced, f"{name} references no control docs")
+            missing = [path for path in referenced if not (suite_root / path).exists()]
+            self.assertEqual(missing, [], f"{name} references missing docs")
 
     def test_release_criteria_define_alpha_to_final_path(self) -> None:
         suite_root = Path(__file__).resolve().parents[1]
@@ -145,13 +145,6 @@ class QualitySuiteDocumentationContractTests(unittest.TestCase):
     def test_new_control_docs_cover_required_topics(self) -> None:
         suite_root = Path(__file__).resolve().parents[1]
         expectations = {
-            "docs/DEVELOPMENT_WORKFLOW.md": [
-                "classify",
-                "validation",
-                "source-blind",
-                "release blocker",
-                "memory discipline",
-            ],
             "docs/TDD_PROCESS.md": [
                 "failing test",
                 "bug",
@@ -159,29 +152,6 @@ class QualitySuiteDocumentationContractTests(unittest.TestCase):
                 "docs-only",
                 "forbidden",
                 "done",
-            ],
-            "docs/RELEASE_ROADMAP_GATES.md": [
-                "Alpha",
-                "Beta",
-                "Release Candidate",
-                "Final Product",
-                "current project should be treated as alpha-stage",
-            ],
-            "docs/MEMORY_QUALITY_EVOLUTION_PLAN.md": [
-                "stale",
-                "superseded",
-                "contradiction",
-                "long-session",
-                "cross-agent",
-                "missing-information honesty",
-            ],
-            "docs/AGENT_IMPLEMENTATION_PROTOCOL.md": [
-                "read first",
-                "plan work",
-                "run validation",
-                "update docs",
-                "never",
-                "final status",
             ],
         }
         for relative_path, required_phrases in expectations.items():

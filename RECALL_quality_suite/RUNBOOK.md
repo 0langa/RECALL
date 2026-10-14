@@ -4,11 +4,10 @@
 
 Read these first and follow them in order:
 
-1. `docs/DEVELOPMENT_WORKFLOW.md`
+1. `docs/TEST_PLAN.md`
 2. `docs/TDD_PROCESS.md`
-3. `docs/RELEASE_ROADMAP_GATES.md`
-4. `docs/MEMORY_QUALITY_EVOLUTION_PLAN.md`
-5. `docs/AGENT_IMPLEMENTATION_PROTOCOL.md`
+3. `rubrics/production_release_criteria.md`
+4. `rubrics/source_blind_quality_gate.md`
 
 Use this runbook for command execution after the workflow is understood.
 

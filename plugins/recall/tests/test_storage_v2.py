@@ -9,6 +9,7 @@ import threading
 import unittest
 from unittest import mock
 from contextlib import closing
+from functools import partial
 from pathlib import Path
 
 
@@ -18,6 +19,34 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import config as recall_config  # noqa: E402
 import memory_manager  # noqa: E402
 import storage  # noqa: E402
+from services import recovery_service  # noqa: E402
+
+
+def _jsonl_project(project: Path) -> Path:
+    cfg = recall_config.load_config(project)
+    cfg["backend"] = "jsonl"
+    recall_config.save_config(cfg, project)
+    return project
+
+
+def _plant(project: Path, file_name: str, **row: object) -> None:
+    """Append a row the way a cloned repository's committed .recall/jsonl can carry it."""
+    payload = {"timestamp": "2026-10-14T00:00:00+00:00", "content": "planted", "metadata": {},
+               "embedding": [], **row}
+    with (storage.jsonl_dir(project) / file_name).open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload) + "\n")
+
+
+def _link_directory(link: Path, target: Path) -> None:
+    """Create a directory symlink, or a junction where Windows symlinks need privileges."""
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as exc:
+        if sys.platform != "win32":
+            raise unittest.SkipTest("directory symlinks are unavailable") from exc
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
 
 
 class StorageV2Tests(unittest.TestCase):
@@ -305,6 +334,126 @@ class StorageV2Tests(unittest.TestCase):
             result = memory_manager.repair(tmp, restore_backup=True)
             self.assertEqual(result["restored_from"], str(backup_path))
             self.assertFalse(result["doctor"]["storage_corrupted"])
+
+
+class JsonlStoreConfinementTests(unittest.TestCase):
+    """Rows and files in .recall/jsonl are untrusted: a cloned repository can commit them."""
+
+    def test_planted_row_category_cannot_reach_a_file_outside_the_store(self) -> None:
+        # Review reproduction: one lifecycle edit of a planted row created or
+        # rewrote <category>.jsonl three levels above jsonl/.
+        for label in ("posix_relative", "windows_relative", "absolute"):
+            with self.subTest(label), tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp).resolve()
+                project = _jsonl_project(base / "a" / "project")
+                legit = memory_manager.add_record("decisions", "Legit decision survives.", root=project)
+                victim = base / "a" / "outside.jsonl"
+                victim.write_text("precious line\n", encoding="utf-8")
+                category = {
+                    "posix_relative": "../../../outside",
+                    "windows_relative": "..\\..\\..\\outside",
+                    "absolute": str(victim.with_suffix("")),
+                }[label]
+                _plant(project, "decisions.jsonl", id=99, category=category)
+
+                outcomes = {}
+                for sink, attempt in (
+                    ("update_record_metadata", partial(storage.update_record_metadata, 99, {"status": "stale"}, project)),
+                    ("delete_record", partial(storage.delete_record, 99, project)),
+                    ("add_record", partial(storage.add_record, category, legit.timestamp, "planted", {}, [], project)),
+                    ("update_record", partial(storage.update_record, legit.id, category=category, content=legit.content,
+                                              metadata=legit.metadata, embedding=[], root=project)),
+                ):
+                    try:
+                        attempt()
+                        outcomes[sink] = "wrote"
+                    except (KeyError, ValueError) as exc:
+                        outcomes[sink] = f"{type(exc).__name__}: {exc}"
+
+                self.assertEqual(victim.read_text(encoding="utf-8"), "precious line\n")
+                self.assertEqual([path for path in base.rglob("*") if path.is_file() and project not in path.parents],
+                                 [victim])
+                # The planted row never becomes a record, and the sinks refuse the name itself.
+                self.assertTrue(outcomes["update_record_metadata"].startswith("KeyError"), outcomes)
+                self.assertTrue(outcomes["delete_record"].startswith("KeyError"), outcomes)
+                self.assertRegex(outcomes["add_record"], r"^ValueError: .*invalid category")
+                self.assertRegex(outcomes["update_record"], r"^ValueError: .*invalid category")
+                self.assertIsNone(storage.get_record(99, project))
+                self.assertEqual([record.content for record in storage.iter_records(project)],
+                                 ["Legit decision survives."])
+                report = memory_manager.doctor(project)
+                self.assertEqual(report["invalid_jsonl_rows"], 1)
+                self.assertIn("Invalid JSONL row count: 1.", report["warnings"])
+
+    def test_only_store_names_become_jsonl_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = _jsonl_project(Path(tmp) / "project")
+            for category in ("..", "../x", "x/../decisions", "/etc/passwd", "C:\\x", "C:x", "c:decisions",
+                             "\\\\server\\share\\x", "//server/share/x", "Decisions", "", None, 7):
+                with self.subTest(category=category):
+                    self.assertFalse(recall_config.is_canonical_category(category))
+                    with self.assertRaisesRegex(ValueError, "category"):
+                        storage.jsonl_path(category, project)
+            self.assertEqual(storage.jsonl_path("api_contracts", project),
+                             storage.jsonl_dir(project) / "api_contracts.jsonl")
+
+    def test_linked_jsonl_directory_cannot_redirect_reads_writes_or_deletes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp).resolve()
+            project = _jsonl_project(base / "project")
+            elsewhere = base / "elsewhere"
+            elsewhere.mkdir()
+            foreign = json.dumps({"id": 1, "category": "decisions", "timestamp": "2026-10-14T00:00:00+00:00",
+                                  "content": "Another directory's data.", "metadata": {}, "embedding": []}) + "\n"
+            victim = elsewhere / "decisions.jsonl"
+            victim.write_text(foreign, encoding="utf-8")
+            _link_directory(storage.jsonl_dir(project), elsewhere)
+
+            self.assertEqual(list(storage.iter_records(project)), [])
+            with self.assertRaisesRegex(ValueError, "outside the memory store"):
+                memory_manager.add_record("decisions", "Must not land elsewhere.", root=project)
+            archive = base / "export.json"
+            archive.write_text(json.dumps({
+                "format": recovery_service.FORMAT, "config": recall_config.load_config(project),
+                "records": [{"id": 1, "category": "decisions", "timestamp": "2026-10-14T00:00:00+00:00",
+                             "content": "Restored.", "metadata": {}, "embedding": []}],
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "outside the memory store"):
+                recovery_service.restore_memory(archive, project)
+
+            self.assertEqual(victim.read_text(encoding="utf-8"), foreign)
+            self.assertEqual([path.name for path in elsewhere.iterdir()], ["decisions.jsonl"])
+            report = memory_manager.doctor(project)
+            self.assertEqual(report["unsafe_jsonl_files"], 1)
+            self.assertTrue(any("outside the memory store" in warning for warning in report["warnings"]))
+
+    def test_normal_jsonl_store_still_loads_and_edits(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = _jsonl_project(Path(tmp) / "project")
+            first = memory_manager.add_record("decisions", "Keep JSONL as a supported backend.", root=project)
+            second = memory_manager.add_record("API Contracts", "Do not break the v1 payload shape.", root=project)
+            _plant(project, "debug_history.jsonl", id=7, category="debug_history", content="An older row.")
+
+            self.assertEqual(sorted((record.id, record.category) for record in storage.iter_records(project)),
+                             sorted([(first.id, "decisions"), (second.id, "api_contracts"), (7, "debug_history")]))
+            storage.update_record_metadata(first.id, {"status": "stale"}, project)
+            storage.update_record(second.id, category="requirements", content=second.content,
+                                  metadata=second.metadata, embedding=second.embedding or [], root=project)
+            storage.delete_record(7, project)
+
+            records = {record.id: record for record in storage.iter_records(project)}
+            self.assertEqual(sorted(records), sorted([first.id, second.id]))
+            self.assertEqual(records[first.id].metadata["status"], "stale")
+            self.assertEqual(records[second.id].category, "requirements")
+            self.assertEqual(sorted(path.name for path in storage.jsonl_dir(project).glob("*.jsonl")),
+                             ["api_contracts.jsonl", "debug_history.jsonl", "decisions.jsonl", "requirements.jsonl"])
+            report = memory_manager.doctor(project)
+            self.assertEqual((report["invalid_jsonl_rows"], report["unsafe_jsonl_files"]), (0, 0))
+
+            # The same store opened through a linked project path resolves to the same files.
+            link = Path(tmp) / "linked-project"
+            _link_directory(link, project)
+            self.assertEqual(sorted(record.id for record in storage.iter_records(link)), sorted(records))
 
 
 if __name__ == "__main__":

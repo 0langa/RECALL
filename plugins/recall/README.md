@@ -127,7 +127,7 @@ Changed records or sources are skipped or rejected.
 One plan cannot change one card twice.
 
 Use canonical project-relative source paths such as `README.md`.
-The v1.6.0 candidate rejects equivalent `./README.md` and `.\README.md` source paths during plan validation.
+RECALL 1.6.0 rejects equivalent `./README.md` and `.\README.md` source paths during plan validation.
 Make a new plan with canonical paths.
 Never modify the hashed reviewed plan.
 
@@ -146,6 +146,8 @@ A store-local operating-system lock serializes operations.
 Each JSONL file is flushed, synced, and atomically replaced.
 JSONL does not have one rollback across several files.
 Multi-file power-loss safety is not certified.
+Automatic turn memory from the `Stop` hook needs SQLite.
+With JSONL, save through MCP, the CLI, or an explicit `@recall remember:` prompt.
 
 The vector index is derived data.
 Run `doctor` to inspect it.
@@ -162,11 +164,10 @@ Do not treat one retrieval match or one bounded fixture as broad truth proof.
 
 ## Capture and memory-free turns
 
-The candidate runtime guard blocks memory retrieval, injection, prompt capture, tool-result capture, compaction capture, and Stop finalization for an explicit memory-free turn.
+The runtime guard blocks memory retrieval, injection, prompt capture, tool-result capture, compaction capture, and Stop finalization for an explicit memory-free turn.
 It must make that decision before a memory-data read or store initialization.
 
-The runtime lane passed its final review.
-The final clean-candidate source gates are still required before this behavior is release proof.
+The runtime lane passed its final review, and the v1.6.0 release source gates passed.
 
 ## Tested host scope
 
@@ -180,6 +181,8 @@ It does not cover JSONL scale, cold start, installed hosts, or user benefit.
 
 ## Release evidence
 
-At candidate freeze, exact ZIP, installed-package host, matched-benefit, CI, tag, and release evidence are pending.
-See [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md).
-The public asset will be at the [v1.6.0 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.0) after publication.
+RECALL 1.6.0 was released on 2026-09-14.
+The [v1.6.0 GitHub release](https://github.com/0langa/RECALL/releases/tag/v1.6.0) holds the exact ZIP, its SHA-256, and the verification record.
+Claude Code `2.1.268` passed all 13 exact-package native behavior checks.
+Native Codex MCP behavior and native Kimi Code behavior proof are pending.
+See [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) for the candidate evidence table.

@@ -178,6 +178,47 @@ class RuntimeInterlockTests(unittest.TestCase):
                 later = normalize_hook_event({}, fallback_event="PostToolUse", fallback_root=tmp)
             self.assertNotEqual(first.turn_id, later.turn_id)
 
+    def test_prompt_prunes_expired_runtime_state_at_most_once_per_interval(self):
+        # Every policy lookup reads all turn files, so expired state must not
+        # pile up for the life of the project.
+        with tempfile.TemporaryDirectory() as tmp:
+            recall_config.activate_project(tmp)
+            prompt = {"cwd": tmp, "session_id": "live", "prompt": "Continue normal work."}
+            run_hook("prompt_inspector.py", {**prompt, "turn_id": "first"})
+            folder = recall_config.memory_dir(tmp) / "runtime" / "policy"
+            old = __import__("time").time() - 8 * 86400
+
+            def plant(path: Path, payload: dict) -> Path:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(payload), encoding="utf-8")
+                os.utime(path, (old, old))
+                return path
+
+            expired = [
+                plant(folder / "turn-expired.json", {"scope_known": True, "updated_at": old}),
+                plant(folder / "session-expired.json", {"scope_known": True, "updated_at": old}),
+                plant(folder / "turn-orphan.json.0123.tmp", {}),
+                plant(turn_buffer.turn_events_path(tmp, "gone", "turn"), {"signal": "test_fail"}),
+                plant(turn_buffer.activation_path(tmp, "gone", "turn"), {"status": "active"}),
+            ]
+            # An old file mtime alone is not expiry; the recorded state decides.
+            current = plant(folder / "turn-current.json", {"scope_known": True, "updated_at": __import__("time").time()})
+
+            run_hook("prompt_inspector.py", {**prompt, "turn_id": "second"})
+            self.assertEqual([path for path in expired if path.exists()], [])
+            self.assertTrue(current.exists())
+            self.assertTrue(turn_policy.policy_status(tmp, "live", "second")["scope_known"])
+
+            late = plant(folder / "turn-late-expired.json", {"scope_known": True, "updated_at": old})
+            run_hook("prompt_inspector.py", {**prompt, "turn_id": "third"})
+            self.assertTrue(late.exists(), "cleanup must not run on every prompt")
+
+            stamp = folder / turn_policy.CLEANUP_STAMP
+            os.utime(stamp, (old, old))
+            run_hook("prompt_inspector.py", {**prompt, "turn_id": "fourth"})
+            self.assertFalse(late.exists())
+            self.assertTrue(turn_policy.policy_status(tmp, "live", "fourth")["scope_known"])
+
     def test_closed_no_memory_turn_yields_to_new_normal_scope_but_not_active_disabled_scope(self):
         with tempfile.TemporaryDirectory() as tmp:
             old = normalize_hook_event(

@@ -19,7 +19,7 @@ from typing import Any
 
 import config as recall_config
 import security
-from store_lock import exclusive_lock
+from store_lock import exclusive_lock, replace_file
 import turn_policy
 
 
@@ -48,7 +48,7 @@ def _atomic_write(path: Path, payload: bytes) -> None:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary_name, path)
+        replace_file(temporary_name, path)
     finally:
         if temporary_name:
             try:

@@ -23,6 +23,18 @@ SECRET_PATTERNS = [
     re.compile(r"\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\b"),
     # GitHub / GitLab tokens
     re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr|glpat)_[A-Za-z0-9]{20,}\b"),
+    # GitHub fine-grained personal access tokens
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}"),
+    # Slack bot, user, app, refresh and session tokens
+    re.compile(r"\bxox[abeoprs]-[A-Za-z0-9-]{10,}"),
+    # Google API keys
+    re.compile(r"\bAIza[0-9A-Za-z_-]{35}"),
+    # Stripe secret and restricted keys
+    re.compile(r"\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}"),
+    # npm access tokens
+    re.compile(r"\bnpm_[A-Za-z0-9]{36}\b"),
+    # Password in URL userinfo (scheme://user:password@host); keeps the host
+    re.compile(r"(?<=://)[^\s/:@'\"]+:[^\s/@'\"]+(?=@)"),
     # Private key blocks
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----"),
 ]

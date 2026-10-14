@@ -19,7 +19,7 @@ from typing import Any, Callable, Iterable, Iterator, ParamSpec, TypeVar
 
 import config as recall_config
 import security
-from store_lock import exclusive_lock
+from store_lock import exclusive_lock, replace_file
 
 
 SCHEMA_VERSION = 2
@@ -64,6 +64,38 @@ def db_path(root: str | Path | None = None) -> Path:
 
 def jsonl_dir(root: str | Path | None = None) -> Path:
     return recall_config.memory_dir(root) / "jsonl"
+
+
+def _resolves_inside(path: Path, store: Path) -> bool:
+    try:
+        return path.resolve().is_relative_to(store)
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
+def jsonl_path(category: str, root: str | Path | None = None) -> Path:
+    """Return jsonl/<category>.jsonl, refusing a category or link that leaves the store.
+
+    Rows in jsonl/ are untrusted, because a cloned repository can commit its
+    .recall/ directory. The store root itself is resolved first, so a linked
+    .recall/ directory still works.
+    """
+    if not recall_config.is_canonical_category(category):
+        raise ValueError(f"RECALL JSONL record has an invalid category: {category!r}")
+    base = jsonl_dir(root)
+    path = base / f"{category}.jsonl"
+    if not _resolves_inside(path, base.parent.resolve()):
+        raise ValueError(f"RECALL JSONL file resolves outside the memory store: {path}")
+    return path
+
+
+def jsonl_files(root: str | Path | None = None) -> list[Path]:
+    """Return jsonl/*.jsonl, leaving out links that resolve outside the store."""
+    base = jsonl_dir(root)
+    if not base.exists():
+        return []
+    store = base.parent.resolve()
+    return [path for path in sorted(base.glob("*.jsonl")) if _resolves_inside(path, store)]
 
 
 def vector_index_path(root: str | Path | None = None) -> Path:
@@ -182,7 +214,7 @@ def _jsonl_replacement(path: Path) -> Iterator[Any]:
             temporary.unlink(missing_ok=True)
             raise
     try:
-        os.replace(temporary, path)
+        replace_file(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -408,7 +440,7 @@ def add_record(
     else:
         jsonl_dir(root).mkdir(parents=True, exist_ok=True)
         record_id = next_jsonl_id(root)
-        path = jsonl_dir(root) / f"{category}.jsonl"
+        path = jsonl_path(category, root)
         path.parent.mkdir(parents=True, exist_ok=True)
         with _jsonl_replacement(path) as handle:
             if path.exists():
@@ -590,7 +622,7 @@ def update_record_metadata(record_id: int, metadata: dict[str, Any], root: str |
     record = get_record(record_id, root)
     if record is None:
         raise KeyError(f"RECALL memory #{record_id} was not found.")
-    path = jsonl_dir(root) / f"{record.category}.jsonl"
+    path = jsonl_path(record.category, root)
     rewritten: list[dict[str, Any]] = []
     if path.exists():
         with path.open(encoding="utf-8") as handle:
@@ -662,9 +694,10 @@ def update_record(
             embedding=embedding,
         )
 
+    target_path = jsonl_path(category, root)
     payloads_by_path: dict[Path, list[dict[str, Any]]] = {}
     found = False
-    for path in sorted(jsonl_dir(root).glob("*.jsonl")):
+    for path in jsonl_files(root):
         payloads: list[dict[str, Any]] = []
         with path.open(encoding="utf-8") as handle:
             for line in handle:
@@ -691,7 +724,6 @@ def update_record(
         payloads_by_path[path] = payloads
     if not found:
         raise KeyError(f"RECALL memory #{record_id} was not found.")
-    target_path = jsonl_dir(root) / f"{category}.jsonl"
     if existing.category != category:
         payloads_by_path.setdefault(target_path, []).append(
             {
@@ -723,7 +755,7 @@ def delete_record(record_id: int, root: str | Path | None = None) -> MemoryRecor
             connection.execute("DELETE FROM memories WHERE id = ?", (record_id,))
         return existing
 
-    path = jsonl_dir(root) / f"{existing.category}.jsonl"
+    path = jsonl_path(existing.category, root)
     payloads: list[dict[str, Any]] = []
     if path.exists():
         with path.open(encoding="utf-8") as handle:
@@ -749,16 +781,17 @@ def iter_jsonl_records(root: str | Path | None = None) -> Iterable[MemoryRecord]
 
 
 def _iter_jsonl_records_unlocked(root: str | Path | None = None) -> Iterable[MemoryRecord]:
-    base = jsonl_dir(root)
-    if not base.exists():
-        return
-    for path in sorted(base.glob("*.jsonl")):
+    for path in jsonl_files(root):
         with path.open(encoding="utf-8") as handle:
             for line in handle:
                 if not line.strip():
                     continue
                 try:
                     payload = json.loads(line)
+                    # Edits rewrite jsonl/<category>.jsonl, so a row whose
+                    # category is not a store name never becomes a record.
+                    if not recall_config.is_canonical_category(payload["category"]):
+                        continue
                     yield MemoryRecord(
                         int(payload["id"]),
                         payload["category"],
@@ -776,8 +809,9 @@ def jsonl_diagnostics(root: str | Path | None = None) -> dict[str, Any]:
     malformed_rows = 0
     invalid_rows = 0
     if not base.exists():
-        return {"malformed_jsonl_rows": 0, "invalid_jsonl_rows": 0}
-    for path in sorted(base.glob("*.jsonl")):
+        return {"malformed_jsonl_rows": 0, "invalid_jsonl_rows": 0, "unsafe_jsonl_files": 0}
+    files = jsonl_files(root)
+    for path in files:
         with path.open(encoding="utf-8") as handle:
             for line in handle:
                 if not line.strip():
@@ -788,9 +822,17 @@ def jsonl_diagnostics(root: str | Path | None = None) -> dict[str, Any]:
                     malformed_rows += 1
                     continue
                 required = ("id", "category", "timestamp", "content")
-                if not isinstance(payload, dict) or any(key not in payload for key in required):
+                if (
+                    not isinstance(payload, dict)
+                    or any(key not in payload for key in required)
+                    or not recall_config.is_canonical_category(payload["category"])
+                ):
                     invalid_rows += 1
-    return {"malformed_jsonl_rows": malformed_rows, "invalid_jsonl_rows": invalid_rows}
+    return {
+        "malformed_jsonl_rows": malformed_rows,
+        "invalid_jsonl_rows": invalid_rows,
+        "unsafe_jsonl_files": len(list(base.glob("*.jsonl"))) - len(files),
+    }
 
 
 def next_jsonl_id(root: str | Path | None = None) -> int:

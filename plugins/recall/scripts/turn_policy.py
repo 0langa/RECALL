@@ -15,9 +15,12 @@ from typing import Any
 import uuid
 
 import config as recall_config
+from store_lock import read_text, replace_file
 
 MAX_AGE = 7 * 86400
 CURRENT_SCOPE_FILE = "current-scope.json"
+CLEANUP_STAMP = "cleanup.stamp"
+CLEANUP_INTERVAL = 86400
 
 
 def _folder(root: str | Path) -> Path:
@@ -50,7 +53,7 @@ def _turn_states(root: str | Path) -> list[dict[str, Any]]:
 
 def _read(path: Path) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(read_text(path))
         if isinstance(value, dict) and time.time() - float(value.get("updated_at", 0)) < MAX_AGE:
             return value
     except (OSError, ValueError, TypeError):
@@ -62,7 +65,7 @@ def _write(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
     temporary.write_text(json.dumps(value, sort_keys=True), encoding="utf-8")
-    temporary.replace(path)
+    replace_file(temporary, path)
 
 
 def normalize_identity(event):
@@ -110,6 +113,7 @@ def normalize_identity(event):
             # The first delivery owns the policy. A retry keeps that turn's
             # closed/open state and must not replace a newer current scope.
             return replace(event, session_id=session_id, turn_id=turn_id)
+        cleanup_expired_if_due(event.root)
         previous_turn_id = str(session_pointer.get("turn_id") or "")
         if previous_turn_id and previous_turn_id != turn_id:
             # A new prompt in the same host session is a new turn boundary.
@@ -217,6 +221,37 @@ def finish_turn(
 def cleanup_expired(root: str | Path | None) -> None:
     if root is None:
         return
-    for path in _folder(root).glob("*.json"):
-        if not _read(path) and time.time() - path.stat().st_mtime > MAX_AGE:
-            path.unlink(missing_ok=True)
+    folder = _folder(root)
+    for path in [*folder.glob("*.json"), *folder.glob("*.tmp")]:
+        try:
+            # _read ignores expired state; a leftover .tmp is an interrupted write.
+            if (path.suffix == ".tmp" or not _read(path)) and time.time() - path.stat().st_mtime > MAX_AGE:
+                path.unlink(missing_ok=True)
+        except OSError:
+            continue  # Another hook may hold or replace it; retry next time.
+
+
+def cleanup_expired_if_due(root: str | Path | None) -> None:
+    """Prune expired runtime state at most once per CLEANUP_INTERVAL.
+
+    Every policy lookup reads all turn files, so expired ones must not pile
+    up. The stamp keeps the full scan off the per-hook path.
+    """
+    if root is None or not _folder(root).is_dir():
+        return
+    stamp = _folder(root) / CLEANUP_STAMP
+    try:
+        if time.time() - stamp.stat().st_mtime < CLEANUP_INTERVAL:
+            return
+    except OSError:
+        pass
+    try:
+        stamp.touch()
+    except OSError:
+        return
+    import turn_buffer  # Deferred: turn_buffer imports this module.
+
+    try:
+        turn_buffer.cleanup_expired(root)
+    except OSError:
+        pass  # Best effort: a concurrent hook may change the tree; retry next interval.

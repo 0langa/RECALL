@@ -45,6 +45,44 @@ class SecretDetectionTests(unittest.TestCase):
             self.assertTrue(security.contains_secret(value), value)
             self.assertNotEqual(security.redact_text(value), value)
 
+    def test_common_provider_token_shapes_are_blocked(self) -> None:
+        # Fixture-only fakes in each provider's documented token format.
+        values = {
+            "github fine-grained": "CI pushes with github_pat_11ABCDEFG0aBcDeFgHiJkL_" + "x1Y2z3" * 9 + "abcde",
+            "slack": "notify via xoxb-" + "1234567890-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx",
+            "google": "maps key AIza" + "SyA1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q",
+            "stripe": "billing uses sk_live_" + "4eC39HqLyjWDarjtT1zdp7dc",
+            "stripe restricted": "reports use rk_live_" + "51H8xYzAbCdEfGhIjKlMnOp",
+            "npm": "publish with npm_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8",
+        }
+        for name, value in values.items():
+            self.assertTrue(security.contains_secret(value), name)
+            self.assertIn("[REDACTED]", security.redact_text(value), name)
+
+    def test_url_credentials_are_redacted_but_the_endpoint_survives(self) -> None:
+        for value, kept in (
+            ("DATABASE_URL=postgres://app:Sup3rS3cret@db.internal:5432/app", "@db.internal:5432/app"),
+            ("clone https://ci-bot:s3cr3tP4ss@git.example.com/org/repo.git", "https://"),
+        ):
+            self.assertTrue(security.contains_secret(value), value)
+            redacted = security.redact_text(value)
+            self.assertNotIn("Sup3rS3cret", redacted)
+            self.assertNotIn("s3cr3tP4ss", redacted)
+            self.assertIn(kept, redacted)
+
+    def test_token_prefix_mentions_and_plain_urls_are_not_secrets(self) -> None:
+        values = [
+            "Fine-grained tokens start with github_pat_ and expire.",
+            "Slack bot tokens use the xoxb- prefix.",
+            "Google keys begin with AIza; Stripe live keys with sk_live_.",
+            "Set npm_config_cache to a local folder.",
+            "See https://github.com/0langa/RECALL/releases/tag/v1.6.0 for notes.",
+            "Push to git@github.com:0langa/RECALL.git or ssh://git@github.com/0langa/RECALL.",
+        ]
+        for value in values:
+            self.assertFalse(security.contains_secret(value), value)
+            self.assertEqual(security.redact_text(value), value)
+
 
 if __name__ == "__main__":
     unittest.main()
