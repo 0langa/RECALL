@@ -11,6 +11,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import encoding_repair  # noqa: E402
 import memory_manager  # noqa: E402
 import config as recall_config  # noqa: E402
 
@@ -201,6 +202,59 @@ class MemoryManagerTests(unittest.TestCase):
             report = memory_manager.repair(tmp)
             self.assertTrue(report["doctor"]["index_complete"])
             self.assertEqual(report["doctor"]["warnings"], [])
+
+    def test_garbled_text_detection_accepts_only_exact_round_trips(self) -> None:
+        original = "Keep Grüße, naïve résumé – 日本語 ✅ in release notes."
+        garbled = original.encode("utf-8").decode("cp1252")
+        self.assertEqual(encoding_repair.repaired_text(garbled), original)
+        for text in (
+            original,  # correct text
+            "Plain ASCII text.",
+            "café and Grüße",  # cp1252 bytes are not valid UTF-8
+            "日本語",  # not encodable in cp1252
+            garbled + " für",  # partly correct text is not an exact round-trip
+            "Price: 5 €",
+        ):
+            with self.subTest(text=text):
+                self.assertIsNone(encoding_repair.repaired_text(text))
+
+    def test_doctor_lists_garbled_text_and_only_repair_rewrites_it(self) -> None:
+        original = "Release notes keep Grüße and naïve résumé – ✅ intact."
+        garbled = original.encode("utf-8").decode("cp1252")
+        for backend in ("sqlite", "jsonl"):
+            with self.subTest(backend=backend), tempfile.TemporaryDirectory() as tmp:
+                recall_config.ensure_config(tmp)
+                cfg = recall_config.load_config(tmp)
+                cfg["backend"] = backend
+                recall_config.save_config(cfg, tmp)
+                bad = memory_manager.add_record(
+                    "requirements", garbled, memory_manager.build_card_metadata(summary=garbled, base={"notes": ["ok", garbled]}), tmp,
+                )
+                good = memory_manager.add_record("requirements", "The café menu stays in Grüße format.", root=tmp)
+
+                report = memory_manager.doctor(tmp)
+                self.assertEqual(report["garbled_text"]["records"], 1)
+                change = report["garbled_text"]["changes"][0]
+                self.assertEqual(change["id"], bad.id)
+                self.assertEqual(sorted(change["fields"]), ["content", "metadata.notes[1]", "metadata.summary"])
+                self.assertEqual((change["before"], change["after"]), (garbled, original))
+                self.assertIn("doctor --repair", report["repairs_available"])
+                self.assertTrue(any("garbled" in warning for warning in report["warnings"]))
+                self.assertNotIn("text_repaired", report)
+                self.assertEqual(memory_manager.get_record(bad.id, tmp).content, garbled)
+
+                repaired = memory_manager.doctor(tmp, repair_text=True)
+                self.assertEqual(repaired["text_repaired"]["records"], 1)
+                self.assertEqual(repaired["garbled_text"]["records"], 0)
+                self.assertNotIn("doctor --repair", repaired["repairs_available"])
+                self.assertTrue(repaired["index_complete"])
+                fixed = memory_manager.get_record(bad.id, tmp)
+                self.assertEqual(fixed.content, original)
+                self.assertEqual(fixed.metadata["summary"], original)
+                self.assertEqual(fixed.metadata["notes"], ["ok", original])
+                self.assertIn("encoding_repaired_at", fixed.metadata)
+                self.assertEqual(memory_manager.get_record(good.id, tmp).content, good.content)
+                self.assertEqual(memory_manager.doctor(tmp, repair_text=True)["text_repaired"]["records"], 0)
 
     def test_sqlite_migration_preserves_old_schema_records(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

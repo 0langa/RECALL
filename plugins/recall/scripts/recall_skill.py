@@ -315,7 +315,7 @@ def handle_contract(args: argparse.Namespace, root: Path | None) -> None:
 
 
 def handle_doctor(args: argparse.Namespace, root: Path | None) -> None:
-    print_json({"action": "doctor", "report": memory_manager.doctor(root)})
+    print_json({"action": "doctor", "report": memory_manager.doctor(root, repair_text=args.repair)})
 
 
 def handle_repair(args: argparse.Namespace, root: Path | None) -> None:
@@ -712,7 +712,9 @@ def main() -> None:
 
     subparsers.add_parser("contract").set_defaults(handler=handle_contract)
 
-    subparsers.add_parser("doctor").set_defaults(handler=handle_doctor)
+    doctor_parser = subparsers.add_parser("doctor")
+    doctor_parser.add_argument("--repair", action="store_true", help=memory_manager.DOCTOR_REPAIR_HELP)
+    doctor_parser.set_defaults(handler=handle_doctor)
     repair_parser = subparsers.add_parser("repair")
     repair_parser.add_argument("--restore-backup", action="store_true", help="Restore memory.sqlite from the newest migration backup (use after doctor reports storage_corrupted).")
     repair_parser.set_defaults(handler=handle_repair)

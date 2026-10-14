@@ -13,6 +13,7 @@ from typing import Any
 
 import config as recall_config
 from embedder import embed
+import encoding_repair
 import index_store
 import memory_hygiene
 import memory_lifecycle
@@ -39,6 +40,10 @@ CARD_STATUSES = {
     "archived",
 }
 AUTO_WRITE_SOURCES = {"post_tool_use", "pre_compact", "stop"}
+DOCTOR_REPAIR_HELP = (
+    "Restore text garbled by the pre-1.6.1 Windows MCP bug (UTF-8 read as cp1252), exact round-trips only. "
+    "Without it, doctor only lists the changes in garbled_text."
+)
 PROVIDER_METADATA_FIELDS = {
     "origin_provider",
     "origin_agent",
@@ -551,8 +556,42 @@ def rebuild_index(root: str | Path | None = None) -> dict[str, Any]:
     return index_store.rebuild(root)
 
 
+MAX_REPORTED_TEXT_REPAIRS = 50
+
+
 @memory_action
-def doctor(root: str | Path | None = None) -> dict[str, Any]:
+@storage.atomic_write
+def repair_garbled_text(root: str | Path | None = None) -> list[dict[str, Any]]:
+    """Restore text garbled by the pre-1.6.1 Windows MCP bug, exact round-trips only.
+
+    The facts are unchanged, so status, claims and verification stay as stored.
+    """
+    repaired: list[dict[str, Any]] = []
+    for record in list(storage.iter_records(root)):
+        repair = encoding_repair.record_repair(record.content, record.metadata)
+        if repair is None:
+            continue
+        content, metadata, changes = repair
+        metadata["encoding_repaired_at"] = utc_now()
+        if "recall_fingerprint" in metadata:
+            metadata["recall_fingerprint"] = memory_hygiene.content_fingerprint(record.category, content, metadata)
+        storage.update_record(
+            record.id,
+            category=record.category,
+            content=content,
+            metadata=metadata,
+            embedding=embed(content),
+            root=root,
+        )
+        repaired.append(encoding_repair.change_report(record.id, record.category, changes))
+    if repaired:
+        _maintain_index(root)
+    return repaired
+
+
+@memory_action
+def doctor(root: str | Path | None = None, repair_text: bool = False) -> dict[str, Any]:
+    """Diagnose the store. Only `repair_text` writes: it restores garbled text first."""
     integrity = storage.integrity_check(root)
     if not integrity["ok"]:
         backup = storage.latest_backup(root)
@@ -566,6 +605,7 @@ def doctor(root: str | Path | None = None) -> dict[str, Any]:
             "backup_available": str(backup) if backup else None,
         }
     storage.init_store(root)
+    text_repaired = repair_garbled_text(root) if repair_text else None
     index_report = index_store.diagnostics(root)
     backend = storage.backend(root)
     jsonl_report = storage.jsonl_diagnostics(root) if backend == "jsonl" else {
@@ -595,7 +635,14 @@ def doctor(root: str | Path | None = None) -> dict[str, Any]:
     if recall_config.memory_dir(root).name == recall_config.LEGACY_MEMORY_DIR_NAME:
         warnings.append("Active store is the legacy .codex_memory directory; migrate to .recall with migrate-store.")
         repairs_available.append("migrate-store")
-    return {
+    garbled = encoding_repair.find_garbled(storage.iter_records(root))
+    if garbled:
+        warnings.append(
+            f"{len(garbled)} record(s) hold text garbled by the pre-1.6.1 Windows MCP bug "
+            "(UTF-8 read as cp1252); review garbled_text, then run doctor --repair."
+        )
+        repairs_available.append("doctor --repair")
+    report: dict[str, Any] = {
         "backend": backend,
         "storage_corrupted": False,
         "integrity_errors": [],
@@ -614,7 +661,11 @@ def doctor(root: str | Path | None = None) -> dict[str, Any]:
         "repairs_available": repairs_available,
         "storage_path": str(db_path(root) if backend == "sqlite" else jsonl_dir(root)),
         "index_path": index_report["index_path"],
+        "garbled_text": {"records": len(garbled), "changes": garbled[:MAX_REPORTED_TEXT_REPAIRS]},
     }
+    if text_repaired is not None:
+        report["text_repaired"] = {"records": len(text_repaired), "changes": text_repaired[:MAX_REPORTED_TEXT_REPAIRS]}
+    return report
 
 
 @memory_action
@@ -720,7 +771,8 @@ def main() -> None:
     define.add_argument("--weight", type=float, default=1.0)
 
     subparsers.add_parser("rebuild-index")
-    subparsers.add_parser("doctor")
+    doctor_parser = subparsers.add_parser("doctor")
+    doctor_parser.add_argument("--repair", action="store_true", help=DOCTOR_REPAIR_HELP)
     repair_parser = subparsers.add_parser("repair")
     repair_parser.add_argument("--restore-backup", action="store_true", help="Restore memory.sqlite from the newest migration backup (use after doctor reports storage_corrupted).")
 
@@ -765,7 +817,7 @@ def main() -> None:
     elif args.command == "rebuild-index":
         print(json.dumps(rebuild_index(args.root), indent=2, sort_keys=True))
     elif args.command == "doctor":
-        print(json.dumps(doctor(args.root), indent=2, sort_keys=True))
+        print(json.dumps(doctor(args.root, repair_text=args.repair), indent=2, sort_keys=True))
     elif args.command == "repair":
         print(json.dumps(repair(args.root, args.restore_backup), indent=2, sort_keys=True))
 

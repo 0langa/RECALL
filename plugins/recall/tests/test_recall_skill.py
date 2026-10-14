@@ -14,6 +14,7 @@ ADAPTER = ROOT / "scripts" / "recall_skill.py"
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import config as recall_config  # noqa: E402
+import storage  # noqa: E402
 
 
 def run_skill(root: str, *args: str) -> dict:
@@ -146,6 +147,22 @@ class RecallSkillAdapterTests(unittest.TestCase):
 
             self.assertEqual(repair["action"], "repair")
             self.assertTrue(repair["report"]["doctor"]["index_complete"])
+
+    def test_doctor_repairs_garbled_text_only_with_the_repair_flag(self) -> None:
+        original = "Docs keep the Grüße greeting."
+        garbled = original.encode("utf-8").decode("cp1252")
+        with tempfile.TemporaryDirectory() as tmp:
+            run_skill(tmp, "save-insight", "requirements", garbled, "--status", "active")
+
+            dry_run = run_skill(tmp, "doctor")
+            self.assertEqual(dry_run["report"]["garbled_text"]["records"], 1)
+            self.assertEqual(dry_run["report"]["garbled_text"]["changes"][0]["after"], original)
+            self.assertEqual([record.content for record in storage.iter_records(tmp)], [garbled])
+
+            repaired = run_skill(tmp, "doctor", "--repair")
+            self.assertEqual(repaired["report"]["text_repaired"]["records"], 1)
+            self.assertEqual(repaired["report"]["garbled_text"]["records"], 0)
+            self.assertEqual([record.content for record in storage.iter_records(tmp)], [original])
 
     def test_save_insight_accepts_provider_provenance_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
