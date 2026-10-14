@@ -14,6 +14,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import config as recall_config  # noqa: E402
+
+
+def hook_scope_path(project: str | Path, state: str) -> Path:
+    """Hooks keep turn state for a project without a store in per-user state."""
+    with mock.patch.dict(os.environ, {"RECALL_STATE_DIR": state}):
+        return recall_config.project_state_dir(project) / "policy" / "current-scope.json"
 
 
 def git_bash() -> str | None:
@@ -309,9 +318,10 @@ class PackageMetadataTests(unittest.TestCase):
                 "last_assistant_message": "Windows command hook regression completed.",
             },
         }
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as state:
             (Path(tmp) / ".git").mkdir()
             env = os.environ.copy()
+            env["RECALL_STATE_DIR"] = state
             env.pop("CLAUDE_PLUGIN_ROOT", None)
             env["PLUGIN_ROOT"] = str(ROOT)
             for event_name, matcher_groups in hooks.items():
@@ -336,9 +346,10 @@ class PackageMetadataTests(unittest.TestCase):
                 output = json.loads(completed.stdout)
                 self.assertTrue(output["continue"], event_name)
                 if event_name == "UserPromptSubmit":
-                    current_scope = Path(tmp) / ".recall" / "runtime" / "policy" / "current-scope.json"
+                    current_scope = hook_scope_path(tmp, state)
                     policy = json.loads(current_scope.read_text(encoding="utf-8"))
                     self.assertEqual(policy["provider"], "codex")
+            self.assertFalse((Path(tmp) / ".recall").exists())
 
     @unittest.skipUnless(os.name == "nt", "Windows hook command regression only runs on Windows.")
     def test_windows_hook_commands_run_with_claude_plugin_root_and_no_plugin_root(self) -> None:
@@ -372,9 +383,10 @@ class PackageMetadataTests(unittest.TestCase):
                 "last_assistant_message": "Claude Code plugin root regression completed.",
             },
         }
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as state:
             (Path(tmp) / ".git").mkdir()
             env = os.environ.copy()
+            env["RECALL_STATE_DIR"] = state
             env.pop("PLUGIN_ROOT", None)
             env["CLAUDE_PLUGIN_ROOT"] = str(ROOT)
             for event_name, matcher_groups in hooks.items():
@@ -399,9 +411,10 @@ class PackageMetadataTests(unittest.TestCase):
                 output = json.loads(completed.stdout)
                 self.assertTrue(output["continue"], event_name)
                 if event_name == "UserPromptSubmit":
-                    current_scope = Path(tmp) / ".recall" / "runtime" / "policy" / "current-scope.json"
+                    current_scope = hook_scope_path(tmp, state)
                     policy = json.loads(current_scope.read_text(encoding="utf-8"))
                     self.assertEqual(policy["provider"], "claude-code")
+            self.assertFalse((Path(tmp) / ".recall").exists())
 
 
     @unittest.skipUnless(os.name == "nt", "Claude Code runs Windows hooks through Git Bash.")
@@ -429,6 +442,8 @@ class PackageMetadataTests(unittest.TestCase):
             env.pop("PLUGIN_ROOT", None)
             env["CLAUDE_PLUGIN_ROOT"] = str(ROOT)
             env["PATH"] = str(stub) + os.pathsep + env.get("PATH", "")
+            state = str(Path(tmp) / "state")
+            env["RECALL_STATE_DIR"] = state
             for event_name, matcher_groups in hooks.items():
                 payload = {"hook_event_name": event_name, "cwd": str(project), "session_id": "git-bash",
                            "prompt": "Continue normal work."}
@@ -442,8 +457,9 @@ class PackageMetadataTests(unittest.TestCase):
                 )
                 self.assertEqual(completed.returncode, 0, f"{event_name}: {completed.stderr}")
                 self.assertTrue(json.loads(completed.stdout)["continue"], event_name)
-            current_scope = project / ".recall" / "runtime" / "policy" / "current-scope.json"
+            current_scope = hook_scope_path(project, state)
             self.assertEqual(json.loads(current_scope.read_text(encoding="utf-8"))["provider"], "claude-code")
+            self.assertFalse((project / ".recall").exists())
 
     @unittest.skipIf(os.name == "nt", "macOS and Linux run the POSIX `command` string.")
     def test_posix_hook_commands_keep_python3_in_posix_shells(self) -> None:
@@ -469,6 +485,8 @@ class PackageMetadataTests(unittest.TestCase):
                 path.chmod(0o755)
             env = {key: value for key, value in os.environ.items() if key not in {"OS", "CLAUDE_PLUGIN_ROOT", "PLUGIN_ROOT"}}
             env["PATH"] = str(stub) + os.pathsep + env.get("PATH", "")
+            state = str(Path(tmp) / "state")
+            env["RECALL_STATE_DIR"] = state
             for shell in shells:
                 for provider, variable in (("claude-code", "CLAUDE_PLUGIN_ROOT"), ("codex", "PLUGIN_ROOT")):
                     project = Path(tmp) / f"{Path(shell[0]).name}-{provider}"
@@ -488,8 +506,9 @@ class PackageMetadataTests(unittest.TestCase):
                         label = f"{shell[0]} {provider} {event_name}"
                         self.assertEqual(completed.returncode, 0, f"{label}: {completed.stderr}")
                         self.assertTrue(json.loads(completed.stdout)["continue"], label)
-                    current_scope = project / ".recall" / "runtime" / "policy" / "current-scope.json"
+                    current_scope = hook_scope_path(project, state)
                     self.assertEqual(json.loads(current_scope.read_text(encoding="utf-8"))["provider"], provider)
+                    self.assertFalse((project / ".recall").exists())
             launchers = calls.read_text(encoding="utf-8").split()
             self.assertEqual(launchers, ["python3"] * (len(shells) * 2 * len(hooks)))
 
