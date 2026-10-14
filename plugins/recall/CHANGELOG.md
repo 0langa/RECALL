@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Kept JSONL rows with non-canonical categories readable. Edits of them now fail with an invalid-category error instead of reporting the record as missing.
+- Made a JSONL edit write the record exactly once, to `jsonl/<category>.jsonl`: an index rebuild no longer deletes a row stored in another category's file, and moving a row into the file it already sits in no longer writes it twice.
+- Made JSONL edits keep rows whose id is not an integer instead of failing for every record in the same file, and made reads skip an infinite id instead of failing.
+- Made `merge` look up every record before it writes one, so a missing record no longer leaves a partial merge on JSONL.
+
 ## 1.6.1 - 2026-10-14
 
 Released as tag `v1.6.1`.
