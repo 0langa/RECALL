@@ -222,6 +222,26 @@ class MemoryManagerTests(unittest.TestCase):
             result = memory_manager.query("migration", exclude_categories=["risks"], root=tmp)
             self.assertEqual([item["category"] for item in result["results"]], ["commands"])
 
+    def test_index_rebuild_reads_config_once_not_per_record(self) -> None:
+        # Rebuild runs after every finalizer save, edit, delete and hygiene
+        # apply. Loading the config for each record made it O(records)
+        # config reads: about 4.6 s of 4.8 s for 3,000 cards on Windows.
+        from unittest import mock
+
+        import index_store
+
+        with tempfile.TemporaryDirectory() as tmp:
+            memory_manager.add_records_batch(
+                [{"category": "decisions", "content": f"Component {n} owns cache directory build/{n}."} for n in range(40)],
+                tmp,
+            )
+            with mock.patch.object(index_store.recall_config, "load_config", wraps=recall_config.load_config) as loads:
+                report = index_store.rebuild(tmp)
+            self.assertEqual(report["indexed_records"], 40)
+            self.assertLessEqual(loads.call_count, 5)
+            payloads = [json.loads(line) for line in index_store.index_path(tmp).read_text(encoding="utf-8").splitlines()]
+            self.assertEqual({payload["embedding_model"] for payload in payloads}, {"local-hash-v2"})
+
     def test_vector_index_records_include_model_and_dimensions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory_manager.add_record("decisions", "Index records include portable metadata.", root=tmp)

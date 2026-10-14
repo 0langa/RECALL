@@ -16,14 +16,21 @@ def index_path(root: str | Path | None = None) -> Path:
     return storage.vector_index_path(root)
 
 
-def build_index_record(record: storage.MemoryRecord, root: str | Path | None = None) -> dict[str, Any]:
-    cfg = recall_config.load_config(root)
+def _embedding_model(root: str | Path | None = None) -> str:
+    return str(recall_config.load_config(root).get("embedding_model", EMBEDDING_MODEL))
+
+
+def build_index_record(
+    record: storage.MemoryRecord,
+    root: str | Path | None = None,
+    embedding_model: str | None = None,
+) -> dict[str, Any]:
     embedding = record.embedding or []
     return {
         "id": record.id,
         "category": record.category,
         "timestamp": record.timestamp,
-        "embedding_model": cfg.get("embedding_model", EMBEDDING_MODEL),
+        "embedding_model": embedding_model or _embedding_model(root),
         "dimensions": len(embedding) or DIMENSIONS,
         "embedding": embedding,
     }
@@ -114,9 +121,11 @@ def rebuild(root: str | Path | None = None) -> dict[str, Any]:
     migrated_embeddings = _migrate_stale_embeddings(records, root)
     path = index_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
+    # One config read per rebuild; per record it dominated rebuild time.
+    embedding_model = _embedding_model(root)
     with path.open("w", encoding="utf-8") as handle:
         for record in records:
-            handle.write(json.dumps(build_index_record(record, root), sort_keys=True) + "\n")
+            handle.write(json.dumps(build_index_record(record, root, embedding_model), sort_keys=True) + "\n")
     return {"index_path": str(path), "indexed_records": len(records), "migrated_embeddings": migrated_embeddings}
 
 
