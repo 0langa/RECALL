@@ -24,7 +24,20 @@ CLEANUP_INTERVAL = 86400
 
 
 def _folder(root: str | Path) -> Path:
+    # Hooks run in every project with a project marker. Until a project has a
+    # RECALL store, its turn policy lives in per-user state, so a hook never
+    # creates .recall/ in a project that nobody initialized.
+    if recall_config.persistent_memory_exists(root):
+        return _project_folder(root)
+    return _user_folder(root)
+
+
+def _project_folder(root: str | Path) -> Path:
     return recall_config.memory_dir(root) / "runtime" / "policy"
+
+
+def _user_folder(root: str | Path) -> Path:
+    return recall_config.project_state_dir(root) / "policy"
 
 
 def _key(value: str) -> str:
@@ -221,14 +234,16 @@ def finish_turn(
 def cleanup_expired(root: str | Path | None) -> None:
     if root is None:
         return
-    folder = _folder(root)
-    for path in [*folder.glob("*.json"), *folder.glob("*.tmp")]:
-        try:
-            # _read ignores expired state; a leftover .tmp is an interrupted write.
-            if (path.suffix == ".tmp" or not _read(path)) and time.time() - path.stat().st_mtime > MAX_AGE:
-                path.unlink(missing_ok=True)
-        except OSError:
-            continue  # Another hook may hold or replace it; retry next time.
+    # Both folders: per-user state from before the project was initialized
+    # stays until it expires.
+    for folder in dict.fromkeys((_folder(root), _user_folder(root))):
+        for path in [*folder.glob("*.json"), *folder.glob("*.tmp")]:
+            try:
+                # _read ignores expired state; a leftover .tmp is an interrupted write.
+                if (path.suffix == ".tmp" or not _read(path)) and time.time() - path.stat().st_mtime > MAX_AGE:
+                    path.unlink(missing_ok=True)
+            except OSError:
+                continue  # Another hook may hold or replace it; retry next time.
 
 
 def cleanup_expired_if_due(root: str | Path | None) -> None:

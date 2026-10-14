@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -297,6 +298,34 @@ def memory_dir(raw_root: str | Path | None = None) -> Path:
     if legacy.exists():
         return legacy
     return neutral
+
+
+def user_state_dir() -> Path:
+    """Return the per-user folder for state that must not live in a project.
+
+    `RECALL_STATE_DIR` overrides it. The default is `%LOCALAPPDATA%/RECALL/state`
+    on Windows and `$XDG_STATE_HOME/recall` (`~/.local/state/recall`) elsewhere.
+    """
+    override = os.environ.get("RECALL_STATE_DIR", "").strip()
+    if override:
+        return Path(override).expanduser()
+    if os.name == "nt":
+        local = os.environ.get("LOCALAPPDATA", "").strip()
+        return (Path(local) if local else Path.home() / "AppData" / "Local") / "RECALL" / "state"
+    state = os.environ.get("XDG_STATE_HOME", "").strip()
+    return (Path(state) if state else Path.home() / ".local" / "state") / "recall"
+
+
+def project_state_dir(raw_root: str | Path | None = None) -> Path:
+    """Per-user runtime folder for one project that has no RECALL store.
+
+    Hooks run in every project with a project marker, so their turn state for
+    a project that was never initialized lives here instead of creating
+    `.recall/` in it.
+    """
+    root = project_root(raw_root)
+    key = hashlib.sha256(os.path.normcase(str(root)).encode("utf-8")).hexdigest()[:32]
+    return user_state_dir() / "projects" / key
 
 
 def config_path(raw_root: str | Path | None = None) -> Path:

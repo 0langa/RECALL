@@ -206,6 +206,7 @@ python ./scripts/recall_skill.py stale-memory 42 --note "Repository state now co
 
 - If the user only describes a topic and gives no IDs, do not guess. Run `review-memory` first.
 - If `doctor` reports index problems, use `repair` before creating more memories.
+- If `doctor` lists `garbled_text` (text saved through MCP on Windows before 1.6.1), show the user the listed changes, then run `doctor --repair` only after they agree.
 - If the request is really about adding a new durable fact, switch to `save-insight`.
 - If a cleanup request could destroy information, prefer `archive-noise` or `prune-memory` over `delete-memory`.
 - If a retrieved memory conflicts with the repository, stale or supersede it rather than silently editing history.

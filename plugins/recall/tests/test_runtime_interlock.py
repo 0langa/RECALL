@@ -219,6 +219,38 @@ class RuntimeInterlockTests(unittest.TestCase):
             self.assertFalse(late.exists())
             self.assertTrue(turn_policy.policy_status(tmp, "live", "fourth")["scope_known"])
 
+    def test_hooks_keep_turn_state_out_of_projects_without_a_store(self):
+        # Hooks run in every project with a project marker. Turn state for a
+        # project nobody initialized goes to per-user state, and the no-memory
+        # interlock still holds there.
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"RECALL_STATE_DIR": str(Path(tmp) / "state")}):
+            project = Path(tmp) / "project"
+            (project / ".git").mkdir(parents=True)
+            base = {"cwd": str(project), "session_id": "plain"}
+            tool = {"tool_name": "Bash", "tool_input": {"command": "python -m pytest"},
+                    "tool_response": {"exit_code": 0, "stdout": "3 passed"}}
+            disabled = {"continue": True, "systemMessage": "RECALL is disabled for this turn."}
+            run_hook("session_start.py", {**base, "hook_event_name": "SessionStart"})
+            run_hook("prompt_inspector.py", {**base, "turn_id": "normal", "prompt": "Continue normal work."})
+            self.assertEqual(run_hook("post_tool_use.py", {**base, "turn_id": "normal", **tool}), {"continue": True})
+            run_hook("stop.py", {**base, "turn_id": "normal", "last_assistant_message": "Done."})
+            run_hook("prompt_inspector.py", {**base, "turn_id": "private", "prompt": "Do not use memory for this task."})
+            self.assertEqual(run_hook("post_tool_use.py", {**base, "turn_id": "private", **tool}), disabled)
+            self.assertEqual(run_hook("pre_compact.py", {**base, "turn_id": "private", "trigger": "manual"}), disabled)
+            self.assertEqual(run_hook("stop.py", {**base, "turn_id": "private", "last_assistant_message": "Done."}), disabled)
+
+            self.assertEqual(sorted(path.name for path in project.iterdir()), [".git"])
+            self.assertTrue(turn_policy.policy_status(project, "plain", "private")["disabled"])
+            folder = recall_config.project_state_dir(project) / "policy"
+            self.assertTrue((folder / "current-scope.json").is_file())
+            self.assertIn(Path(tmp) / "state", folder.parents)
+
+            # Once the project has a store, its turn state lives in the store.
+            recall_config.activate_project(project)
+            run_hook("prompt_inspector.py", {**base, "turn_id": "active", "prompt": "Continue normal work."})
+            self.assertTrue((recall_config.memory_dir(project) / "runtime" / "policy" / "current-scope.json").is_file())
+            self.assertFalse(turn_policy.policy_status(project, "plain", "active")["disabled"])
+
     def test_closed_no_memory_turn_yields_to_new_normal_scope_but_not_active_disabled_scope(self):
         with tempfile.TemporaryDirectory() as tmp:
             old = normalize_hook_event(

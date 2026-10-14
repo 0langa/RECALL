@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 
@@ -211,6 +212,14 @@ def print_text_report(results: list[TestResult], elapsed: float, workers: int, *
 
 
 def main() -> None:
+    # Hooks keep turn state for a project without a store in per-user state.
+    # Keep test projects out of the developer's real state folder.
+    with tempfile.TemporaryDirectory(prefix="recall-test-state-", ignore_cleanup_errors=True) as state:
+        os.environ.setdefault("RECALL_STATE_DIR", state)
+        run_suite()
+
+
+def run_suite() -> None:
     default_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description="Run RECALL unittest files in parallel.")
     parser.add_argument("--plugin-root", default=str(default_root))

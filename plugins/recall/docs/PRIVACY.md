@@ -6,6 +6,8 @@ RECALL is local-first project memory for Codex, Kimi Code, and Claude Code.
 
 RECALL stores runtime memory data in the active project's `.recall/` directory. Projects that only have an older `.codex_memory/` store can continue using that legacy store for backward compatibility. The default backend is SQLite, with JSONL available through local config.
 
+Hooks never create `.recall/` in a project where RECALL was never initialized. For such a project they keep short-lived turn state (turn and session ids, and whether the turn is memory-free; never prompt text) in a per-user folder: `%LOCALAPPDATA%\RECALL\state` on Windows, `$XDG_STATE_HOME/recall` (default `~/.local/state/recall`) elsewhere, or the folder named by `RECALL_STATE_DIR`. Entries expire after 7 days and are pruned the next time a prompt runs in that project.
+
 RECALL does not require hosted services, remote APIs, external databases, model downloads, or cloud storage for its V1 behavior.
 
 ## Data Sent By RECALL
@@ -24,4 +26,4 @@ Do not store credentials, tokens, private keys, passwords, or sensitive personal
 
 ## Deletion
 
-Delete the active project's `.recall/` directory to remove current RECALL runtime data. If the project still uses a legacy `.codex_memory/` store, delete that legacy directory too.
+Delete the active project's `.recall/` directory to remove current RECALL runtime data. If the project still uses a legacy `.codex_memory/` store, delete that legacy directory too. Delete the per-user state folder to remove turn state for projects without a store.
