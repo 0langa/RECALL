@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.3 - 2026-10-26
+
+- Replace the plugin icon and logo with the approved Folded Crest artwork and include its SVG source.
+
+
 ## 1.6.2 - 2026-10-15
 
 Released as tag `v1.6.2`.

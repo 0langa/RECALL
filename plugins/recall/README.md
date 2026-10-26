@@ -12,7 +12,7 @@ It makes no network call for storage, retrieval, or embeddings.
 For Codex from GitHub:
 
 ```bash
-codex plugin marketplace add 0langa/RECALL --ref v1.6.2
+codex plugin marketplace add 0langa/RECALL --ref v1.6.3
 codex plugin add recall@recall-local
 ```
 

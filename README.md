@@ -13,7 +13,7 @@ One source tree provides seven skills, hooks, and one MCP server to all three ho
 You need Codex CLI, Python 3.11 or later, and Git.
 
 ```bash
-codex plugin marketplace add 0langa/RECALL --ref v1.6.2
+codex plugin marketplace add 0langa/RECALL --ref v1.6.3
 codex plugin add recall@recall-local
 ```
 

@@ -12,7 +12,7 @@ The server is provider-neutral.
 ## Install
 
 ```bash
-codex plugin marketplace add 0langa/RECALL --ref v1.6.2
+codex plugin marketplace add 0langa/RECALL --ref v1.6.3
 codex plugin add recall@recall-local
 ```
 

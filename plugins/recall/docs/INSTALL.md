@@ -7,14 +7,14 @@ Python 3.11 or later must be available to the host.
 ## Codex from GitHub
 
 ```bash
-codex plugin marketplace add 0langa/RECALL --ref v1.6.2
+codex plugin marketplace add 0langa/RECALL --ref v1.6.3
 codex plugin add recall@recall-local
 ```
 
 You can also use the Git URL:
 
 ```bash
-codex plugin marketplace add https://github.com/0langa/RECALL --ref v1.6.2
+codex plugin marketplace add https://github.com/0langa/RECALL --ref v1.6.3
 codex plugin add recall@recall-local
 ```
 
