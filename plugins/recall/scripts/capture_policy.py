@@ -168,19 +168,6 @@ def auto_capture_allowed(root: str | None = None) -> bool:
     return capture_mode(root) in AUTO_CAPTURE_MODES
 
 
-def should_activate_turn(
-    root: str | None = None,
-    *,
-    explicit_write: bool = False,
-) -> bool:
-    mode = capture_mode(root)
-    if explicit_write:
-        return True
-    if mode not in AUTO_CAPTURE_MODES:
-        return False
-    return persistent_memory_exists(root)
-
-
 def exit_code(payload: dict[str, Any], output: str) -> int | None:
     response = payload.get("tool_response")
     if isinstance(response, dict):

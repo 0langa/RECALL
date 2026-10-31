@@ -109,39 +109,6 @@ def searchable_text(record: storage.MemoryRecord) -> str:
     return "\n".join(part for part in parts if part)
 
 
-def lexical_overlap_score(query_text: str, content: str) -> float:
-    query_tokens = set(tokenize(query_text))
-    if not query_tokens:
-        return 0.0
-    content_tokens = set(tokenize(content))
-    return len(query_tokens & content_tokens) / len(query_tokens)
-
-
-def weighted_lexical_score(query_text: str, record: storage.MemoryRecord) -> float:
-    metadata = record.metadata or {}
-    query_tokens = set(tokenize(query_text))
-    if not query_tokens:
-        return 0.0
-
-    score = 0.0
-    fields: list[tuple[float, str]] = [(0.35, record.content)]
-    for weight, key in ((0.9, "summary"), (0.65, "details"), (0.25, "source"), (0.2, "status")):
-        value = metadata.get(key)
-        if isinstance(value, str):
-            fields.append((weight, value))
-    tags = metadata.get("tags")
-    if isinstance(tags, list):
-        fields.append((1.0, " ".join(str(tag) for tag in tags)))
-    elif isinstance(tags, str):
-        fields.append((1.0, tags))
-
-    for weight, text in fields:
-        content_tokens = set(tokenize(text))
-        if content_tokens:
-            score += weight * (len(query_tokens & content_tokens) / len(query_tokens))
-    return score
-
-
 GATE_STOPWORDS = frozenset(
     "the and for with that this from into onto over under are is was were been being have has had "
     "will would should could must may might can not all any each when where which while there their "

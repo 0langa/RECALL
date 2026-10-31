@@ -159,29 +159,6 @@ def same_memory_family(record: storage.MemoryRecord, category: str, metadata: di
     return True
 
 
-def find_related_record(
-    category: str,
-    content: str,
-    metadata: dict[str, Any] | None = None,
-    root: str | None = None,
-) -> RelatedRecord | None:
-    metadata = metadata or {}
-    fingerprint = content_fingerprint(category, content, metadata)
-    best: RelatedRecord | None = None
-    for record in storage.iter_records(root):
-        if not same_memory_family(record, category, metadata):
-            continue
-        if (
-            (record.metadata or {}).get("recall_fingerprint") == fingerprint
-            and _structured_claims_compatible(record.metadata, metadata)
-        ):
-            return RelatedRecord("exact", record, 1.0)
-        similarity = token_jaccard(content, record.content)
-        if similarity >= NEAR_DUPLICATE_THRESHOLD and (best is None or similarity > best.similarity):
-            best = RelatedRecord("near", record, similarity)
-    return best
-
-
 def _record_text(record: storage.MemoryRecord) -> str:
     metadata = record.metadata or {}
     return " ".join(
