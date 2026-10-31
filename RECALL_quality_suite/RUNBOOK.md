@@ -71,6 +71,5 @@ quality_results/recall_quality_report.md
 
 ## Stage discipline
 
-- Treat RECALL as alpha-stage unless promotion evidence says otherwise.
 - The source-blind gate is required for final release, not optional polish.
 - Record any promotion blocker in `rubrics/production_release_criteria.md` before closing work.

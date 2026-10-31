@@ -69,14 +69,6 @@ def run_test_file(plugin_root: Path, python: str, path: Path) -> TestResult:
     )
 
 
-def run_all(plugin_root: Path, python: str, tests: list[Path], workers: int) -> list[TestResult]:
-    if workers <= 1:
-        return [run_test_file(plugin_root, python, path) for path in tests]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(run_test_file, plugin_root, python, path) for path in tests]
-        return [future.result() for future in concurrent.futures.as_completed(futures)]
-
-
 def run_mixed(plugin_root: Path, python: str, files: list[Path], methods: list[tuple[str, str]], workers: int) -> list[TestResult]:
     if workers <= 1:
         return [run_test_file(plugin_root, python, path) for path in files] + [
