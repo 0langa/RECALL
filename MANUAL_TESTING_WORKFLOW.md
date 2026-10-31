@@ -560,47 +560,6 @@ Fail if:
 - Memory content cannot answer why it exists.
 - IDs restarting at `#1` in different projects are not a failure; memory IDs are project-local.
 
-## Phase 15: Migration Audit
-
-Status: PASS. Migration dry-run and apply on `migration-copy` preserved records and created a backup; evidence in `quality_results\manual\manual_test_notes.md`.
-
-Use a copied project or backup corpus.
-
-Do not run migration against the only copy of `project` or `project2`. First copy one fixture:
-
-```powershell
-$migration = "C:\Users\ExampleUser\source\test_enviroments\RECALL\migration-copy"
-Remove-Item -Recurse -Force $migration -ErrorAction SilentlyContinue
-Copy-Item -Recurse C:\Users\ExampleUser\source\test_enviroments\RECALL\project $migration
-```
-
-Dry run:
-
-```powershell
-python C:\Users\ExampleUser\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\ExampleUser\source\test_enviroments\RECALL\migration-copy migrate-corpus --dry-run
-```
-
-Apply only after reviewing:
-
-```powershell
-python C:\Users\ExampleUser\source\repos\RECALL\plugins\recall\scripts\recall_skill.py --root C:\Users\ExampleUser\source\test_enviroments\RECALL\migration-copy migrate-corpus --apply
-```
-
-Expected:
-
-- A database backup is created before apply.
-- No IDs or history are deleted.
-- Useful automatic records are linked through `evidence_ids`, `merged_from`, or `superseded_by`.
-- Noise records are archived, not destroyed.
-- Latest score/checkpoint claims remain current.
-
-Fail if:
-
-- Migration deletes records.
-- Useful source records are archived without replacement links.
-- Active command noise remains after migration.
-- Backups are missing or not restorable.
-
 ## Phase 16: Source-Blind Manual Evaluation
 
 Status: PASS after fix. All three source-blind prompts were exercised through `codex exec` against the active fixture; evidence in `quality_results\manual\manual_test_notes.md`.

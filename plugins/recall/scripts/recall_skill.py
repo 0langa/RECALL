@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any
 
 import config as recall_config
-import corpus_migration
 import memory_hygiene
 import memory_noise
 import memory_review
@@ -416,11 +415,6 @@ def handle_apply_finalizer_batch(args: argparse.Namespace, root: Path | None) ->
         raise
 
 
-def handle_migrate_corpus(args: argparse.Namespace, root: Path | None) -> None:
-    report = corpus_migration.apply_migration(root) if args.apply else {"action": "migrate-corpus", "dry_run": True, "plan": corpus_migration.plan_migration(root)}
-    print_json(report)
-
-
 def handle_batch_ingest(args: argparse.Namespace, root: Path | None) -> None:
     payload = load_stdin_object()
     if payload.get("schema") != "recall.batch_ingest.v1" or not isinstance(payload.get("cards"), list):
@@ -748,11 +742,6 @@ def main() -> None:
     finalizer_batch = subparsers.add_parser("apply-finalizer-batch")
     finalizer_batch.add_argument("--stdin", action="store_true", required=True)
     finalizer_batch.set_defaults(handler=handle_apply_finalizer_batch)
-    migrate_corpus = subparsers.add_parser("migrate-corpus")
-    migrate_mode = migrate_corpus.add_mutually_exclusive_group(required=True)
-    migrate_mode.add_argument("--dry-run", action="store_true")
-    migrate_mode.add_argument("--apply", action="store_true")
-    migrate_corpus.set_defaults(handler=handle_migrate_corpus)
     batch_ingest = subparsers.add_parser("batch-ingest")
     batch_ingest.add_argument("--stdin", action="store_true", required=True)
     batch_ingest.set_defaults(handler=handle_batch_ingest)
