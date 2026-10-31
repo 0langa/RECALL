@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Removed the `migrate-corpus` command and `scripts/corpus_migration.py`, a one-store cleanup. `migrate-store` is unchanged.
+- Dropped `docs/RECALL_V1_COMPLETION_PLAN.md`, `docs/E2E_VERIFICATION_LOG.md` and `docs/RELEASE_EVIDENCE_2026-06-12.md`, so they no longer ship in `recall.zip`. Removed the repo-only `MANUAL_TESTING_WORKFLOW.md`, `docs/TURN_MEMORY_RESEARCH_NOTES.md`, the old reports in `plugins/recall/quality_results/` and the 2026-06-12 quality-suite baseline summary.
+- Removed `RECALL_quality_suite/scripts/install_suite.py`, the older `RECALL_quality_suite/ci/recall-quality.yml` template and the alpha-stage status lines in the quality-suite docs. `.github/workflows/recall-quality.yml` is unchanged.
+- Removed unused internal helpers, request and response types, and the bench recorder's emission hash. Behavior does not change.
+
 ## 1.6.3 - 2026-10-26
 
 - Replace the plugin icon and logo with the approved Folded Crest artwork and include its SVG source.
