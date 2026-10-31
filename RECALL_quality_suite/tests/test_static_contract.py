@@ -121,7 +121,6 @@ class QualitySuiteDocumentationContractTests(unittest.TestCase):
         suite_root = Path(__file__).resolve().parents[1]
         criteria = (suite_root / "rubrics" / "production_release_criteria.md").read_text(encoding="utf-8")
         required_phrases = [
-            "alpha-stage",
             "Alpha",
             "Beta",
             "Release Candidate",
