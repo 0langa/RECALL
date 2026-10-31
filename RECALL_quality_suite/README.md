@@ -2,10 +2,6 @@
 
 A source-aware and source-blind testing/evaluation suite for the active development and production-readiness phase of **RECALL**, the Codex local-first project-memory plugin.
 
-This package is designed to be unzipped into the root of the `0langa/RECALL` repository, but it can also run from outside the repo by passing `--repo-root` or `--plugin-root`.
-
-RECALL is not final yet. Treat it as alpha-stage unless the production criteria prove otherwise.
-
 ## What it adds
 
 - Static plugin-shape and manifest contract checks.
@@ -16,7 +12,6 @@ RECALL is not final yet. Treat it as alpha-stage unless the production criteria 
 - Package hygiene checks for built ZIP artifacts.
 - Human scoring rubrics for the real source-blind agent evaluation.
 - Production-release criteria and result interpretation docs.
-- CI workflow template.
 
 ## Control docs
 

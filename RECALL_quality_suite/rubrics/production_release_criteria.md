@@ -1,7 +1,5 @@
 # Production Release Criteria
 
-Current truth: RECALL should be treated as alpha-stage until staged promotion evidence says otherwise.
-
 ## Stage path
 
 Promotion path:

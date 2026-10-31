@@ -25,6 +25,5 @@ A gate may be skipped only when it is explicitly optional, for example package-h
 ## Release interpretation
 
 - All automated mandatory gates passing means the implementation is technically healthy enough for release-candidate testing, not automatic final release.
-- Treat RECALL as alpha-stage until the roadmap and production criteria support promotion.
 - It is not production-ready until the human source-blind agent evaluation also passes.
 - Any hallucinated confidence during the source-blind evaluation is a release blocker.
