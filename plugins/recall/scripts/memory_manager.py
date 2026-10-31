@@ -79,10 +79,6 @@ def jsonl_dir(root: str | Path | None = None) -> Path:
     return storage.jsonl_dir(root)
 
 
-def vector_index_path(root: str | Path | None = None) -> Path:
-    return storage.vector_index_path(root)
-
-
 @memory_action
 def init_store(root: str | Path | None = None) -> None:
     storage.init_store(root)
@@ -512,29 +508,9 @@ def add_record_if_useful(
     return {"action": action, "record": record, "duplicate_id": None}
 
 
-def append_vector_index(
-    record_id: int,
-    category: str,
-    timestamp: str,
-    vector: list[float],
-    root: str | Path | None = None,
-) -> None:
-    record = MemoryRecord(record_id, category, timestamp, "", {}, embedding=vector)
-    _maintain_index(root, record)
-
-
-def next_jsonl_id(root: str | Path | None = None) -> int:
-    return storage.next_jsonl_id(root)
-
-
 @memory_action
 def iter_records(root: str | Path | None = None):
     yield from storage.iter_records(root)
-
-
-@memory_action
-def iter_jsonl_records(root: str | Path | None = None):
-    yield from storage.iter_jsonl_records(root)
 
 
 @memory_action

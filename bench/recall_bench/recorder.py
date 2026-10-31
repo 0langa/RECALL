@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import time
@@ -35,7 +34,6 @@ class Recorder:
         self.journal_path = journal_path
         self.journal_path.parent.mkdir(parents=True, exist_ok=True)
         self._handle = self.journal_path.open("w", encoding="utf-8", newline="\n")
-        self._emission_hash = hashlib.sha256()
         self.entries = 0
 
     def record(
@@ -66,20 +64,6 @@ class Recorder:
         if extra:
             entry["extra"] = extra
         self._write(entry)
-        # Emission hash covers behavior-relevant content only (not timing),
-        # so identical seeds must produce identical hashes across runs.
-        self._emission_hash.update(
-            json.dumps(
-                {
-                    "channel": entry["channel"],
-                    "scenario": entry["scenario"],
-                    "session": entry["session"],
-                    "turn": entry["turn"],
-                    "text": normalize_for_hash(entry["text"]),
-                },
-                sort_keys=True,
-            ).encode("utf-8")
-        )
         self.entries += 1
         return entry
 
@@ -98,9 +82,6 @@ class Recorder:
                 "turn": turn,
             },
         )
-
-    def emission_hash(self) -> str:
-        return self._emission_hash.hexdigest()
 
     def close(self) -> None:
         self._handle.close()

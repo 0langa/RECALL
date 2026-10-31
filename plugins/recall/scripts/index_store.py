@@ -160,13 +160,6 @@ def diagnostics_for_records(
     }
 
 
-def ensure_complete(root: str | Path | None = None) -> dict[int, dict[str, Any]]:
-    report = diagnostics(root)
-    if not report["index_complete"]:
-        rebuild(root)
-    return load_index(root)
-
-
 def ensure_complete_for_records(
     records: list[storage.MemoryRecord],
     root: str | Path | None = None,

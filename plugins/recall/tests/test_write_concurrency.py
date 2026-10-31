@@ -79,16 +79,14 @@ def worker(folder: Path, number: int, mode: str) -> None:
     submitted = json.loads((folder / "submissions.json").read_text(encoding="utf-8"))[number]
     # Widen the old check/insert race without synchronizing inside the lock.
     policy = memory_manager.write_policy
-    target = policy if hasattr(policy, "find_related_write") else memory_manager.memory_hygiene
-    name = "find_related_write" if hasattr(policy, "find_related_write") else "find_related_record"
-    original = getattr(target, name)
+    original = policy.find_related_write
 
     def slow_choice(*args, **kwargs):
         result = original(*args, **kwargs)
         time.sleep(0.08)
         return result
 
-    setattr(target, name, slow_choice)
+    policy.find_related_write = slow_choice
     (folder / f"ready-{number}").write_text("ready", encoding="utf-8")
     wait_for(folder / "go")
     started = time.monotonic()
