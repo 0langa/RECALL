@@ -92,7 +92,7 @@ Record unresolved blockers here until fixed.
   Evidence: the suite has automated source-blind retrieval checks and eval-pack generation, but no recorded hidden-ground-truth human gate result yet.
 - [ ] The normal-user install story still depends on local Python availability and interactive Codex hook trust review.
   Blocks Final Product.
-  Evidence: `plugins/recall/README.md` and `plugins/recall/docs/RECALL_V1_COMPLETION_PLAN.md` both document Python-runtime and hook-trust constraints.
+  Evidence: `plugins/recall/README.md` and `plugins/recall/CHANGELOG.md` both document Python-runtime and hook-trust constraints.
 - [ ] Source-blind fixture realism is improved but still partial; it now includes project-history-backed cards, not a completed long-session or human-scored evidence set.
   Blocks Release Candidate promotion if blind answers remain weak or inconsistent.
   Evidence: the quality suite now includes mixed synthetic and project-history-backed blind cards, but long-session blind evidence and human-scored convergence are still pending.

@@ -44,7 +44,7 @@
       "plugins-recall",
       "project-history"
     ],
-    "source": "plugins/recall/docs/E2E_VERIFICATION_LOG.md",
+    "source": "plugins/recall/CHANGELOG.md",
     "status": "active",
     "importance": 0.96,
     "confidence": 0.97
@@ -94,7 +94,7 @@
       "memory-manager",
       "project-history"
     ],
-    "source": "plugins/recall/docs/RECALL_V1_COMPLETION_PLAN.md",
+    "source": "plugins/recall/CHANGELOG.md",
     "status": "active",
     "importance": 0.99,
     "confidence": 0.98
@@ -173,7 +173,7 @@
       "built-zip",
       "project-history"
     ],
-    "source": "plugins/recall/docs/E2E_VERIFICATION_LOG.md",
+    "source": "plugins/recall/CHANGELOG.md",
     "status": "active",
     "importance": 0.94,
     "confidence": 0.97
@@ -206,7 +206,7 @@
       "built-zip",
       "project-history"
     ],
-    "source": "plugins/recall/docs/E2E_VERIFICATION_LOG.md",
+    "source": "plugins/recall/CHANGELOG.md",
     "status": "active",
     "importance": 0.91,
     "confidence": 0.96
