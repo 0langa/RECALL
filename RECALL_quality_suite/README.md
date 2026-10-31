@@ -12,7 +12,6 @@ A source-aware and source-blind testing/evaluation suite for the active developm
 - Package hygiene checks for built ZIP artifacts.
 - Human scoring rubrics for the real source-blind agent evaluation.
 - Production-release criteria and result interpretation docs.
-- CI workflow template.
 
 ## Control docs
 
